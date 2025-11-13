@@ -1,0 +1,36 @@
+{
+  "name": "indie_author_publishing",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "generate:author-bios": "tsx scripts/generate-author-bios.ts",
+    "classify:books": "tsx scripts/classify-books.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.81.1",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "lucide-react": "^0.553.0",
+    "next": "16.0.1",
+    "openai": "^4.104.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "simple-icons": "^15.20.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.1",
+    "tailwindcss": "^4",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
+  }
+}
