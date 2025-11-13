@@ -101,52 +101,55 @@ export default async function DiscoverPage() {
   const events = (eventsRes.data ?? []) as EventPreview[];
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-16 sm:px-10 lg:py-20">
-      <section className="relative overflow-hidden rounded-3xl border border-zinc-200 bg-gradient-to-br from-[#07090F] via-[#1B114C] to-[#451DB3] p-10 text-white shadow-sm">
-        <div className="absolute inset-0 opacity-30">
-          <div className="absolute -top-24 right-10 h-64 w-64 rounded-full bg-purple-500 blur-[160px]" />
-          <div className="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-indigo-500 blur-[180px]" />
+    <main className="flex w-full flex-col">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0">
+          <Image
+            src="/assets/services-hero-image.png"
+            alt="Discover independent books"
+            fill
+            priority
+            className="object-cover"
+            sizes="100vw"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-[#34146d]/90 to-[#4b1e9d]/90" />
         </div>
-        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.5em] text-purple-200">
-              Catalog
-            </p>
-            <h1 className="mt-3 text-4xl font-semibold leading-tight sm:text-5xl">
-              Curated pathways into IndieConverters worlds.
-            </h1>
-            <p className="mt-4 text-base text-purple-100 sm:text-lg">
-              Browse genre collections, meet authors, and tune into editorial
-              conversations inspired by Hachette’s Discover hub—fully powered by
-              Supabase content.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-4">
-              <Link
-                href="/catalog"
-                className="rounded-full bg-white/90 px-5 py-3 text-sm font-semibold text-[#1B114C] transition hover:bg-white"
+
+        <div className="relative mx-auto flex max-w-4xl flex-col items-center gap-6 px-6 py-20 text-center text-white lg:py-28">
+          <p className="text-xs font-semibold uppercase tracking-[0.5em] text-white/70">
+            Discover
+          </p>
+          <h1 className="text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
+            Explore and discover your next great read.
+          </h1>
+          <p className="text-lg text-white/80">
+            Browse genre collections, meet talented authors, and dive into editorial conversations. Discover indie books that inspire, entertain, and transform.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4 text-sm text-white/80">
+            {["Fiction", "Non-Fiction", "Poetry", "Memoir"].map((item) => (
+              <span
+                key={item}
+                className="rounded-full border border-white/30 px-4 py-1"
               >
-                Explore catalog
-              </Link>
-              <Link
-                href="/authors"
-                className="rounded-full border border-white/40 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-              >
-                Meet the authors
-              </Link>
-            </div>
+                {item}
+              </span>
+            ))}
           </div>
-          <div className="rounded-3xl border border-white/20 bg-white/10 p-6 text-sm text-purple-50 backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.4em] text-purple-200">
-              What’s inside
-            </p>
-            <ul className="mt-3 space-y-2 text-sm">
-              <li>• Genre discovery ribbons linked to catalog filters.</li>
-              <li>• Spotlight carousel featuring Supabase book data.</li>
-              <li>• Editorial picks + events fetched from news/events tables.</li>
-            </ul>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <Link
+              href="/catalog"
+              className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-pink-500 to-orange-400 px-10 py-4 text-lg font-semibold text-white shadow-xl transition hover:scale-[1.02] hover:shadow-2xl"
+            >
+              Discover more
+            </Link>
+        
           </div>
         </div>
       </section>
+
+      {/* Content Sections */}
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-16 sm:px-10 lg:py-20">
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -457,6 +460,8 @@ export default async function DiscoverPage() {
           </Link>
         </div>
       </section>
+
+      </div>
     </main>
   );
 }

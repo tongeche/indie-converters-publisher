@@ -1,49 +1,78 @@
-# IndieConverters — Publisher Platform
+# IndieConverters Publishing Platform
 
-Modern indie-publishing site built with Next.js 16 (App Router), TypeScript, TailwindCSS, and Supabase. The schema described in `Instructions.md` is already deployed through `supabase/migrations/0001_core.sql`, and this app ships with Supabase clients wired to the shared environment variables.
+An independent publishing platform. Provides comprehensive tools for authors to publish, manage, and market their books.
+
+
 
 ## Prerequisites
 
-- Node.js 18+ (uses npm)
-- Supabase CLI (`npm i -g supabase` is intentionally blocked; follow [docs](https://github.com/supabase/cli#install-the-cli))
-- A Supabase project configured with the credentials stored in `.env`
+- Node.js 18+
+- Supabase account and project
+- Environment variables configured
 
-## Setup
+## Quick Start
 
-```bash
-cp .env.local.example .env.local   # then paste your Supabase keys
-npm install                         # already run, but reinstall after pulling changes
-npm run dev                         # http://localhost:3000
+1. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+2. **Configure environment**
+   ```bash
+   cp .env.local.example .env.local
+   # Add your Supabase credentials
+   ```
+
+3. **Run development server**
+   ```bash
+   npm run dev
+   ```
+
+4. **Apply database migrations**
+   ```bash
+   supabase db push
+   ```
+
+## Environment Variables
+
+Create a `.env.local` file with the following:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+OPENAI_API_KEY=your-openai-key
 ```
 
-Run the database migrations (after logging into the CLI) whenever the SQL changes:
-
-```bash
-supabase db push
-```
-
-## Environment variables
-
-| Variable | Purpose |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Browser-safe Supabase URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser-safe anon key |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Server-side mirror (defaults to the public pair) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only key for admin writes (never expose to the browser) |
-| `SUPABASE_DB_PASSWORD`, `SUPABASE_ACCESS_TOKEN` | Used by the CLI for `supabase db push/pull` |
-
-## Project structure
+## Project Structure
 
 ```
-src/app              # App Router routes (home + /instructions)
-src/lib/env          # Client + server env helpers (guards required vars)
-src/lib/supabase     # Browser/server Supabase client factories
-src/types            # Shared domain models
-supabase/migrations  # SQL migrations applied via Supabase CLI
+src/
+├── app/              # Next.js App Router pages
+├── components/       # Reusable UI components
+├── lib/             # Utilities and configurations
+└── types/           # TypeScript type definitions
+
+supabase/
+├── migrations/      # Database migrations
+└── seed/           # Seed data
 ```
 
-## Next steps
+## Features
 
-- Flesh out catalog, author, imprint, news, events, submissions, and newsletter routes using the new Supabase clients.
-- Add API routes/actions that use `createServiceRoleSupabaseClient` for admin workflows.
-- Implement JSON-LD, accessibility checks, and Tailwind-based component primitives per `Instructions.md`.
+- 📚 Book catalog and discovery
+- ✍️ Author profiles and portfolios
+- 🎨 Publishing services marketplace
+- 📰 News and blog system
+- 🔍 Advanced search and filtering
+- 📊 Rating and review system
+- 🏷️ Dynamic tagging system
+
+
+```
+
+See `scripts/README.md` for detailed documentation.
+
+## License
+
+Private project - All rights reserved.
