@@ -93,20 +93,7 @@ export function SiteFooter() {
                 <Link href="/privacy" className="transition hover:text-zinc-900">
                   Privacy Policy
                 </Link>
-                <span>·</span>
-                <Link href="/accessibility" className="transition hover:text-zinc-900">
-                  Accessibility Statement
-                </Link>
-                <span>·</span>
-                <Link href="/do-not-sell" className="transition hover:text-zinc-900">
-                  Do Not Sell My Info
-                </Link>
-                <span>·</span>
-                <Link href="/california" className="transition hover:text-zinc-900">
-                  CA Resident Only
-                </Link>
               </div>
-              <p>E-Commerce Powered by nopCommerce</p>
             </div>
 
             <div className="flex gap-3">
@@ -118,7 +105,8 @@ export function SiteFooter() {
                     href={social.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-600"
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:brightness-110"
+                    style={{ backgroundColor: "#8A20F9" }}
                     aria-label={social.label}
                   >
                     <Icon className="h-4 w-4" />

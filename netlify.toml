@@ -7,9 +7,3 @@
 
 [build.environment]
   NEXT_TELEMETRY_DISABLED = "1"
-
-# Redirect rules
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
