@@ -90,7 +90,7 @@ export async function GET(request: Request) {
       id: book.id,
       slug: book.slug,
       title: book.title,
-      author: book.books_authors?.[0]?.authors?.display_name ?? null,
+      author: book.books_authors?.[0]?.authors?.[0]?.display_name ?? null,
     })) ?? [];
 
   return NextResponse.json<SearchResultResponse>({
