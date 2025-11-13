@@ -24,6 +24,7 @@ export default async function NewsIndexPage() {
     .from("news_articles")
     .select("id, slug, title, dek, hero_image_url, published_at")
     .eq("is_published", true)
+    .eq("type", "news")
     .order("published_at", { ascending: false })
     .limit(24);
 
@@ -95,4 +96,3 @@ export default async function NewsIndexPage() {
     </main>
   );
 }
-

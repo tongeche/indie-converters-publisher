@@ -1,8 +1,12 @@
--- Add new columns to profiles table
-alter table public.profiles
-  add column if not exists bio text,
-  add column if not exists pen_name text,
-  add column if not exists website_url text;
+-- Create profiles table if it doesn't exist
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  bio text,
+  pen_name text,
+  website_url text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
 
 comment on column public.profiles.bio is 'Short author biography used in onboarding and profile displays.';
 comment on column public.profiles.pen_name is 'Optional pen/stage name for the author.';

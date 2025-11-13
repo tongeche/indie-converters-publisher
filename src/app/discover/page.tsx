@@ -54,6 +54,14 @@ const accentColors = [
   "from-[#FCE4EC] to-[#F8BBD0]",
 ];
 
+// Helper function to truncate text to a specific word count
+function truncateWords(text: string | null, maxWords: number): string {
+  if (!text) return "";
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text;
+  return words.slice(0, maxWords).join(" ") + "...";
+}
+
 export default async function DiscoverPage() {
   const supabase = createServerSupabaseClient();
 
@@ -85,6 +93,7 @@ export default async function DiscoverPage() {
       .from("news_articles")
       .select("id, slug, title, dek, hero_image_url, published_at")
       .eq("is_published", true)
+      .eq("type", "news")
       .order("published_at", { ascending: false })
       .limit(3),
     supabase
@@ -215,7 +224,7 @@ export default async function DiscoverPage() {
             </p>
           </div>
           <Link
-            href="/catalog"
+            href="/books"
             className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800"
           >
             View catalog
@@ -252,7 +261,7 @@ export default async function DiscoverPage() {
                     {book.title}
                   </h3>
                   <p className="mt-2 flex-1 text-sm text-zinc-600">
-                    {book.description ?? "Add jacket copy for richer previews."}
+                    {truncateWords(book.description, 39) || "Add jacket copy for richer previews."}
                   </p>
                   <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
                     {(() => {

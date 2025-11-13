@@ -53,7 +53,7 @@ const hashSlug = (value: string) =>
 export default async function Home() {
   const supabase = createServerSupabaseClient();
 
-  const [genresRes, highlightsRes, authorsRes, comingSoonRes, newsRes] = await Promise.all([
+  const [genresRes, highlightsRes, authorsRes, comingSoonRes, blogRes] = await Promise.all([
     supabase
       .from("genres")
       .select("id, slug, label")
@@ -105,6 +105,7 @@ export default async function Home() {
       .from("news_articles")
       .select("id, slug, title, dek, hero_image_url, published_at")
       .eq("is_published", true)
+      .eq("type", "blog")
       .order("published_at", { ascending: false })
       .limit(4),
   ]);
@@ -112,7 +113,7 @@ export default async function Home() {
   const highlights = (highlightsRes.data ?? []) as HighlightBook[];
   const authors = (authorsRes.data ?? []) as Author[];
   const comingSoon = (comingSoonRes.data ?? []) as HighlightBook[];
-  const newsArticles = (newsRes.data ?? []) as NewsArticle[];
+  const blogPosts = (blogRes.data ?? []) as NewsArticle[];
   const genres = ((genresRes.data ?? []) as Genre[]).map<GenreCard>((genre) => {
     const index =
       authors.length > 0 ? hashSlug(genre.slug) % authors.length : -1;
@@ -395,50 +396,52 @@ export default async function Home() {
       <section className="py-12">
         <div className="text-center mb-8">
           <h2 className="text-4xl font-bold text-zinc-900">New Releases</h2>
-          <div className="mt-4 mx-auto w-24 border-t-4 border-zinc-900"></div>
+          <p className="mt-2 text-sm text-zinc-500">
+            Swipe through the latest arrivals curated by our editors.
+          </p>
         </div>
 
         {highlights.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {highlights.map((book) => (
-              <Link
-                key={book.id}
-                href={`/catalog/${book.slug}`}
-                className="group"
-              >
-                <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-zinc-100 shadow-md transition-all duration-300 group-hover:shadow-2xl group-hover:scale-105">
-                  {book.cover_url ? (
-                    <Image
-                      src={book.cover_url}
-                      alt={book.title}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center bg-gradient-to-br from-purple-100 to-purple-200 p-4">
-                      <p className="text-center text-sm font-semibold text-zinc-700">
-                        {book.title}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </Link>
-            ))}
+          <div className="relative">
+            <div className="flex gap-6 overflow-x-auto pb-6 snap-x snap-mandatory scroll-smooth">
+              {highlights.map((book) => (
+                <Link
+                  key={book.id}
+                  href={`/catalog/${book.slug}`}
+                  className="group w-40 flex-shrink-0 snap-start focus:outline-none"
+                >
+                  <div className="relative h-56 overflow-hidden rounded-2xl bg-zinc-100 shadow-md transition-transform duration-300 group-hover:-translate-y-1">
+                    {book.cover_url ? (
+                      <Image
+                        src={book.cover_url}
+                        alt={book.title}
+                        fill
+                        className="object-cover"
+                        sizes="160px"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center bg-gradient-to-br from-purple-100 to-purple-200 p-3">
+                        <p className="text-center text-xs font-semibold text-zinc-700">
+                          {book.title}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-3 text-sm font-semibold text-zinc-900 line-clamp-2 text-center">
+                    {book.title}
+                  </p>
+                </Link>
+              ))}
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-white to-white/0" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-white to-white/0" />
           </div>
         ) : (
           <div className="text-center rounded-3xl border border-dashed border-zinc-200 p-12 text-zinc-600">
             <p className="text-lg">No published books yet.</p>
-            <p className="mt-2 text-sm">Insert rows with `is_published = true` to populate new releases.</p>
-          </div>
-        )}
-
-        {/* Pagination Dots (optional, for carousel effect) */}
-        {highlights.length > 0 && (
-          <div className="mt-8 flex justify-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-zinc-900"></div>
-            <div className="h-2 w-2 rounded-full bg-zinc-300"></div>
-            <div className="h-2 w-2 rounded-full bg-zinc-300"></div>
+            <p className="mt-2 text-sm">
+              Insert rows with <code>is_published = true</code> to populate new releases.
+            </p>
           </div>
         )}
       </section>
@@ -630,12 +633,12 @@ export default async function Home() {
           <h2 className="text-5xl font-bold text-zinc-900">Blog</h2>
         </div>
 
-        {newsArticles.length > 0 ? (
+        {blogPosts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {newsArticles.slice(0, 3).map((article) => (
+            {blogPosts.slice(0, 3).map((article) => (
               <Link
                 key={article.id}
-                href={`/news/${article.slug}`}
+                href={`/blogs/${article.slug}`}
                 className="group"
               >
                 <article className="relative overflow-hidden rounded-3xl shadow-lg transition-all duration-300 group-hover:shadow-2xl">
@@ -680,13 +683,13 @@ export default async function Home() {
         ) : (
           <div className="text-center rounded-3xl border border-dashed border-zinc-200 p-12 text-zinc-600 bg-white">
             <p className="text-lg">No blog posts yet.</p>
-            <p className="mt-2 text-sm">Add news articles to populate this section.</p>
+            <p className="mt-2 text-sm">Add articles with `type = blog` in Supabase to populate this section.</p>
           </div>
         )}
 
         <div className="mt-8 text-center">
           <Link
-            href="/news"
+            href="/blogs"
             className="inline-flex items-center justify-center rounded-full border-2 border-cyan-400 bg-transparent px-8 py-3 text-base font-semibold text-cyan-600 transition hover:bg-cyan-50"
           >
             Show all
@@ -816,4 +819,3 @@ async function BundlesSection() {
     </section>
   );
 }
-

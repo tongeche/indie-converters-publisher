@@ -5,12 +5,19 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser-client";
 
+type Genre = {
+  id: string;
+  slug: string;
+  label: string;
+};
+
 type AuthorCard = {
   id: string;
   slug: string;
   display_name: string;
   short_bio: string | null;
   photo_url: string | null;
+  genres?: string[]; // Array of genre IDs
 };
 
 const fallbackPortrait =
@@ -19,26 +26,70 @@ const fallbackPortrait =
 export default function AuthorsIndexPage() {
   const [authors, setAuthors] = useState<AuthorCard[]>([]);
   const [filteredAuthors, setFilteredAuthors] = useState<AuthorCard[]>([]);
+  const [genres, setGenres] = useState<Genre[]>([]);
   const [displayedCount, setDisplayedCount] = useState(6);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "recent">("name");
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
 
   useEffect(() => {
-    async function fetchAuthors() {
+    async function fetchData() {
       const supabase = createBrowserSupabaseClient();
-      const { data } = await supabase
+      
+      // Fetch all genres
+      const { data: genresData } = await supabase
+        .from("genres")
+        .select("id, slug, label")
+        .order("label", { ascending: true });
+      
+      setGenres((genresData ?? []) as Genre[]);
+
+      // Fetch authors with their associated genres
+      const { data: authorsData } = await supabase
         .from("authors")
         .select("id, slug, display_name, short_bio, photo_url")
         .order("display_name", { ascending: true });
 
-      const fetchedAuthors = (data ?? []) as AuthorCard[];
-      setAuthors(fetchedAuthors);
-      setFilteredAuthors(fetchedAuthors);
+      if (authorsData) {
+        // For each author, fetch their genres through books
+        const authorsWithGenres = await Promise.all(
+          authorsData.map(async (author) => {
+            const { data: authorGenres } = await supabase
+              .from("books_authors")
+              .select(`
+                book_id,
+                books!inner(
+                  books_genres!inner(
+                    genre_id
+                  )
+                )
+              `)
+              .eq("author_id", author.id);
+
+            // Extract unique genre IDs
+            const genreIds = new Set<string>();
+            authorGenres?.forEach((ba: any) => {
+              ba.books?.books_genres?.forEach((bg: any) => {
+                if (bg.genre_id) genreIds.add(bg.genre_id);
+              });
+            });
+
+            return {
+              ...author,
+              genres: Array.from(genreIds)
+            };
+          })
+        );
+
+        setAuthors(authorsWithGenres as AuthorCard[]);
+        setFilteredAuthors(authorsWithGenres as AuthorCard[]);
+      }
+
       setLoading(false);
     }
 
-    fetchAuthors();
+    fetchData();
   }, []);
 
   // Filter and sort authors
@@ -53,6 +104,13 @@ export default function AuthorsIndexPage() {
       );
     }
 
+    // Filter by selected genres
+    if (selectedGenres.length > 0) {
+      result = result.filter(author =>
+        author.genres?.some(genreId => selectedGenres.includes(genreId))
+      );
+    }
+
     // Sort
     if (sortBy === "name") {
       result.sort((a, b) => a.display_name.localeCompare(b.display_name));
@@ -62,7 +120,7 @@ export default function AuthorsIndexPage() {
 
     setFilteredAuthors(result);
     setDisplayedCount(6); // Reset to show first 6 when filters change
-  }, [searchQuery, sortBy, authors]);
+  }, [searchQuery, sortBy, selectedGenres, authors]);
 
   const displayedAuthors = filteredAuthors.slice(0, displayedCount);
   const hasMore = displayedCount < filteredAuthors.length;
@@ -74,6 +132,15 @@ export default function AuthorsIndexPage() {
   const handleClearFilters = () => {
     setSearchQuery("");
     setSortBy("name");
+    setSelectedGenres([]);
+  };
+
+  const toggleGenre = (genreId: string) => {
+    setSelectedGenres(prev =>
+      prev.includes(genreId)
+        ? prev.filter(id => id !== genreId)
+        : [...prev, genreId]
+    );
   };
 
   return (
@@ -149,7 +216,7 @@ export default function AuthorsIndexPage() {
               </div>
 
               {/* Clear Filters Button */}
-              {(searchQuery || sortBy !== "name") && (
+              {(searchQuery || sortBy !== "name" || selectedGenres.length > 0) && (
                 <button
                   onClick={handleClearFilters}
                   className="rounded-full bg-purple-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 focus:outline-none focus:ring-4 focus:ring-purple-200"
@@ -160,8 +227,33 @@ export default function AuthorsIndexPage() {
             </div>
           </div>
 
+          {/* Genre Filter Pills */}
+          {genres.length > 0 && (
+            <div className="mt-6">
+              <p className="mb-3 text-sm font-semibold text-purple-900">Filter by genre:</p>
+              <div className="flex flex-wrap gap-2">
+                {genres.map((genre) => {
+                  const isSelected = selectedGenres.includes(genre.id);
+                  return (
+                    <button
+                      key={genre.id}
+                      onClick={() => toggleGenre(genre.id)}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
+                        isSelected
+                          ? "bg-purple-600 text-white shadow-lg ring-2 ring-purple-300"
+                          : "bg-white border-2 border-purple-200 text-purple-900 hover:border-purple-400 hover:bg-purple-50"
+                      }`}
+                    >
+                      {genre.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Active Filters Display */}
-          {(searchQuery || sortBy !== "name") && (
+          {(searchQuery || sortBy !== "name" || selectedGenres.length > 0) && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-purple-900">Active filters:</span>
               {searchQuery && (
@@ -190,6 +282,22 @@ export default function AuthorsIndexPage() {
                   </button>
                 </span>
               )}
+              {selectedGenres.map((genreId) => {
+                const genre = genres.find(g => g.id === genreId);
+                return genre ? (
+                  <span key={genreId} className="inline-flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-900">
+                    {genre.label}
+                    <button
+                      onClick={() => toggleGenre(genreId)}
+                      className="hover:text-purple-700"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </span>
+                ) : null;
+              })}
             </div>
           )}
         </div>

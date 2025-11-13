@@ -6,7 +6,7 @@ const footerLinks = [
   {
     heading: "Services",
     items: [
-      { label: "Free Publishing Guide", href: "/guide" },
+      { label: "Free Publishing Guide", href: "/news" },
       { label: "Publish Your Book", href: "/publish" },
       { label: "Services", href: "/services" },
       { label: "Book-to-Screen", href: "/book-to-screen" },
@@ -25,7 +25,7 @@ const footerLinks = [
     heading: "Resources",
     items: [
       { label: "Resources", href: "/resources" },
-      { label: "Bookstore", href: "/bookstore" },
+      { label: "Bookstore", href: "/books" },
       { label: "Sign up", href: "/signup" },
     ],
   },

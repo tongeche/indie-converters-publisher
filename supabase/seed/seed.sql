@@ -401,7 +401,7 @@ where b.slug = 'afterglow-parkway'
   );
 
 -- NEWS ARTICLES
-insert into public.news_articles (slug, title, dek, body, hero_image_url, published_at, is_published)
+insert into public.news_articles (slug, title, dek, body, hero_image_url, published_at, is_published, type)
 values
   (
     'lexi-park-announces-luminous-tour',
@@ -410,7 +410,8 @@ values
     'Lexi Park and the IndieConverters Originals crew will visit Boston, Portland, and Miami to share early excerpts, audio experiences, and ocean data visualizations inspired by Luminous Tide.',
     'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=80',
     now() - interval '3 days',
-    true
+    true,
+    'news'
   ),
   (
     'afterglow-sessions-live',
@@ -419,7 +420,8 @@ values
     'The Electric City Studio is streaming a weekly session where jazz, spoken word, and neon-lighting merge to dramatize scenes from Afterglow Parkway.',
     'https://images.unsplash.com/photo-1482192597420-4817fdd7e8b0?auto=format&fit=crop&w=1400&q=80',
     now() - interval '7 days',
-    true
+    true,
+    'news'
   ),
   (
     'indieconverters-acquires-new-imprint',
@@ -428,7 +430,28 @@ values
     'Led by editor Min Jin Lee, the new imprint will commission cross-genre epics with strong international partnerships, syncing with Circe, Pachinko, and future catalog releases.',
     'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=1400&q=80',
     now() - interval '14 days',
-    true
+    true,
+    'news'
+  ),
+  (
+    'manuscript-lab-behind-the-scenes',
+    'Inside the IndieConverters Manuscript Lab',
+    'How our editors, designers, and data team scope every release.',
+    'From editorial scorecards to cover mood boards, this blog pulls back the curtain on our internal playbooks for helping authors launch faster.',
+    'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1400&q=80',
+    now() - interval '5 days',
+    true,
+    'blog'
+  ),
+  (
+    'global-distribution-playbook',
+    'A Distribution Playbook for Indie Authors',
+    'Where and how we place your titles for maximum reach.',
+    'We outline the eBook, audiobook, and print-on-demand channels available through IndieConverters along with tips for pricing, metadata, and pre-orders.',
+    'https://images.unsplash.com/photo-1515165562835-c4c1bfa1c83d?auto=format&fit=crop&w=1400&q=80',
+    now() - interval '9 days',
+    true,
+    'blog'
   )
 on conflict (slug) do update
 set
@@ -437,7 +460,8 @@ set
   body = excluded.body,
   hero_image_url = excluded.hero_image_url,
   published_at = excluded.published_at,
-  is_published = excluded.is_published;
+  is_published = excluded.is_published,
+  type = excluded.type;
 
 -- EVENTS
 insert into public.events (slug, title, location, starts_at, ends_at, body, hero_image_url, is_published)

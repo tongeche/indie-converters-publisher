@@ -2,8 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Search, ShoppingCart, Menu, X } from "lucide-react";
+import { ShoppingCart, Menu, X } from "lucide-react";
 import { GenresDropdown } from "./genres-dropdown";
+import { SearchAutocomplete } from "@/components/search/SearchAutocomplete";
+import { useCart } from "@/lib/cart/CartContext";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser-client";
 import { Session } from "@supabase/supabase-js";
@@ -34,10 +36,11 @@ const navLinks = [
   },
   {
     label: "Blogs",
-    href: "/news",
+    href: "/blogs",
     sublinks: [
-      { href: "/news", label: "Latest posts" },
-      { href: "/events", label: "Events" },
+      { label: "Blog", href: "/blogs" },
+      { label: "Newsroom", href: "/news" },
+      { label: "Events", href: "/events" },
     ],
   },
 ];
@@ -46,6 +49,8 @@ const logoSrc = "/assets/branding/logo.png";
 
 export function SiteHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const { cartCount } = useCart();
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const [session, setSession] = useState<Session | null>(null);
@@ -96,14 +101,7 @@ export function SiteHeader() {
 
         {/* Desktop Search Bar */}
         <div className="hidden flex-1 items-center justify-center max-w-3xl lg:flex">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              type="search"
-              placeholder="Search books, authors..."
-              className="w-full rounded-full bg-white/10 backdrop-blur-sm border border-white/20 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30 focus:bg-white/15 transition"
-            />
-          </div>
+          <SearchAutocomplete />
         </div>
 
         {/* Desktop Navigation */}
@@ -111,21 +109,41 @@ export function SiteHeader() {
           <GenresDropdown />
           {navLinks.map((link) =>
             link.sublinks ? (
-              <div key={link.label} className="group relative">
-                <Link
-                  href={link.href}
-                  className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 transition hover:bg-white/10 hover:text-white whitespace-nowrap"
+              <div
+                key={link.label}
+                className="relative"
+                onMouseEnter={() => setOpenDropdown(link.label)}
+                onMouseLeave={() => setOpenDropdown(null)}
+              >
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setOpenDropdown((current) =>
+                      current === link.label ? null : link.label
+                    );
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-white transition hover:bg-white/10 whitespace-nowrap"
+                  aria-haspopup="menu"
+                  aria-expanded={openDropdown === link.label}
                 >
                   {link.label}
                   <span aria-hidden className="text-xs text-white/60">⌄</span>
-                </Link>
-                <div className="invisible absolute left-0 top-full z-30 mt-2 min-w-[200px] rounded-2xl border border-white/15 bg-[#2d1274]/95 p-3 opacity-0 shadow-xl backdrop-blur transition group-hover:visible group-hover:opacity-100">
+                </button>
+                <div
+                  className={`${
+                    openDropdown === link.label
+                      ? "visible opacity-100 translate-y-0"
+                      : "invisible opacity-0 -translate-y-2"
+                  } absolute left-0 top-full z-30 mt-2 min-w-[200px] rounded-2xl border border-white/15 bg-[#2d1274]/95 p-3 shadow-xl backdrop-blur transition`}
+                >
                   <ul className="flex flex-col gap-1 text-sm">
                     {link.sublinks.map((sublink) => (
                       <li key={sublink.href}>
                         <Link
                           href={sublink.href}
                           className="block rounded-xl px-3 py-2 text-white transition hover:bg-white/10"
+                          onClick={() => setOpenDropdown(null)}
                         >
                           {sublink.label}
                         </Link>
@@ -176,9 +194,11 @@ export function SiteHeader() {
             aria-label="Shopping cart"
           >
             <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6" />
-            <span className="absolute -top-1 -right-1 bg-white text-[#451DB3] text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-              0
-            </span>
+            {cartCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-white text-[#451DB3] text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                {cartCount > 99 ? '99+' : cartCount}
+              </span>
+            )}
           </Link>
 
           {/* Hamburger Menu Button */}
@@ -201,13 +221,8 @@ export function SiteHeader() {
         <div className="lg:hidden border-t border-white/10">
           <nav className="mx-auto max-w-7xl px-4 py-4 space-y-1">
             {/* Mobile Search */}
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <input
-                type="search"
-                placeholder="Search books, authors..."
-                className="w-full rounded-full bg-white/10 backdrop-blur-sm border border-white/20 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30 focus:bg-white/15 transition"
-              />
+            <div className="mb-4">
+              <SearchAutocomplete />
             </div>
 
             {/* Mobile Genres - Simple Link */}

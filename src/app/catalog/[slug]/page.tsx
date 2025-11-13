@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { createServerSupabaseClient } from "@/lib/supabase/server-client";
 import { BookOpen, FileText, Headphones, ChevronDown } from "lucide-react";
+import { BookAddToCartButton } from "@/components/catalog/BookAddToCartButton";
 
 type BookDetail = {
   id: string;
@@ -244,6 +245,20 @@ export default async function BookPage({ params }: PageParams) {
   }
 
   const featuredAuthor = authors[0];
+  const formatPreference = ["Hardcover", "Paperback", "eBook", "Audiobook"];
+  const selectedFormat =
+    book.formats?.find((format) => formatPreference.includes(format)) ??
+    book.formats?.[0] ??
+    null;
+  const formatPriceMap: Record<string, number> = {
+    Hardcover: 28,
+    Paperback: 22,
+    eBook: 14,
+    Audiobook: 18,
+  };
+  const price = selectedFormat
+    ? formatPriceMap[selectedFormat] ?? 20
+    : 20;
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-16 px-6 py-16 sm:px-10 lg:py-20">
@@ -382,12 +397,14 @@ export default async function BookPage({ params }: PageParams) {
             </details>
           )}
 
-          <Link
-            href="/cart"
-            className="inline-flex rounded-full bg-[#F4511E] px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#d74415]"
-          >
-            Add to Cart
-          </Link>
+          <BookAddToCartButton
+            bookId={book.id}
+            title={book.title}
+            price={price}
+            coverUrl={book.cover_url || fallbackCover}
+            description={book.description}
+            format={selectedFormat}
+          />
         </div>
       </section>
 

@@ -199,6 +199,28 @@ npx tsx scripts/generate-author-bios.ts
 - Make sure you've added `OPENAI_API_KEY` to your `.env` file
 - Get an API key from https://platform.openai.com/api-keys
 
+## generate-blog-posts.ts
+
+Use OpenAI to draft polished IndieConverters blog posts and insert them into the `news_articles` table with `type = blog`.
+
+**Usage:**
+```bash
+npx tsx scripts/generate-blog-posts.ts        # defaults to 4 posts
+npx tsx scripts/generate-blog-posts.ts 6      # custom count
+```
+
+**What it does:**
+1. Uses curated topics (distribution, marketing, hybrid launches, etc.) and prompts OpenAI (`gpt-4o-mini`) to return JSON with a title, slug, dek, hero image URL, and 5–7 paragraph body.
+2. Upserts each post into Supabase with `is_published = true` and `type = 'blog'`.
+3. Logs success/failure per post.
+
+**Env requirements:**
+- `OPENAI_API_KEY`
+- `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (preferred) or `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+Posts immediately appear on `/blogs` and the blog strip on the home page.
+
 **Error: Supabase credentials are not set**
 - Verify `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are in `.env`
 

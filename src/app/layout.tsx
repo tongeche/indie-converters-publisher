@@ -4,6 +4,7 @@ import "./globals.css";
 import { TopBanner } from "@/components/layout/top-banner";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
+import { CartProvider } from "@/lib/cart/CartContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,12 +41,14 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-zinc-50 text-zinc-900 antialiased`}
         suppressHydrationWarning
       >
-        <div className="flex min-h-screen flex-col bg-zinc-50">
-          <TopBanner />
-          <SiteHeader />
-          <div className="flex-1">{children}</div>
-          <SiteFooter />
-        </div>
+        <CartProvider>
+          <div className="flex min-h-screen flex-col bg-zinc-50">
+            <TopBanner />
+            <SiteHeader />
+            <div className="flex-1">{children}</div>
+            <SiteFooter />
+          </div>
+        </CartProvider>
       </body>
     </html>
   );
