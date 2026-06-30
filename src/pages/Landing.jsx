@@ -37,41 +37,6 @@ function StatItem({ label, end, active }) {
   );
 }
 
-/* Marquee row — duplicates books for seamless loop */
-function MarqueeRow({ books, direction = 'left', speed = 40 }) {
-  // Duplicate enough times to fill screen at any width
-  const items = [...books, ...books, ...books];
-
-  return (
-    <div className={`marquee marquee--${direction}`}>
-      <div
-        className="marquee-track"
-        style={{ animationDuration: `${speed}s` }}
-      >
-        {items.map((b, i) => (
-          <Link
-            key={`${b.slug}-${i}`}
-            to={`/book/${b.slug}`}
-            className="marquee-item"
-            tabIndex={-1}
-          >
-            <BookCover
-              title={b.title}
-              author={b.author}
-              colorClass={b.coverColor}
-              coverUrl={b.coverUrl}
-              size="sm"
-            />
-            <div className="marquee-item-label">
-              <span className="marquee-item-title">{b.title}</span>
-              <span className="marquee-item-author">{b.author}</span>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 const STEPS = [
   { num: '01', title: 'Upload your manuscript', body: 'Drop a Word doc, RTF, or plain-text file. No special formatting required.' },
@@ -118,10 +83,6 @@ export default function Landing() {
     ? featured
     : allBooks.filter(b => b.genre === activeGenre).slice(0, 8);
 
-  // Split books into two rows for the marquee
-  const row1 = allBooks.filter((_, i) => i % 2 === 0);
-  const row2 = allBooks.filter((_, i) => i % 2 === 1);
-
   return (
     <div className="landing">
 
@@ -129,15 +90,15 @@ export default function Landing() {
       <section className="hero">
         <div className="hero-bg" />
 
-        {/* Centered text block */}
+        {/* Centered text */}
         <div className="hero-center">
           <div className="hero-eyebrow">
             <span className="hero-dot">··</span> indie converters
           </div>
 
           <h1 className="hero-heading">
-            Books that deserve<br />
-            <em>to be found.</em>
+            Books worth finding,<br />
+            <span className="hero-accent">authors worth following.</span>
           </h1>
 
           <p className="hero-sub">
@@ -148,22 +109,29 @@ export default function Landing() {
             <Link to="/browse" className="btn hero-btn-primary">Browse Books</Link>
             <Link to="/upload" className="btn hero-btn-ghost">Start Publishing</Link>
           </div>
-
-          <div className="hero-scroll-hint">
-            <span>·· {allBooks.length || 55} books and counting</span>
-          </div>
         </div>
 
-        {/* Marquee rows */}
-        {allBooks.length > 0 && (
-          <div className="hero-marquee-section">
-            <MarqueeRow books={row1} direction="left"  speed={50} />
-            <MarqueeRow books={row2} direction="right" speed={45} />
+        {/* Book card tiles */}
+        {allBooks.length >= 5 && (
+          <div className="hero-cards">
+            {[
+              { book: allBooks[4], cls: 'hero-card--outer'  },
+              { book: allBooks[1], cls: 'hero-card--inner'  },
+              { book: allBooks[0], cls: 'hero-card--center' },
+              { book: allBooks[2], cls: 'hero-card--inner'  },
+              { book: allBooks[3], cls: 'hero-card--outer'  },
+            ].map(({ book, cls }, i) => (
+              <Link key={i} to={`/book/${book.slug}`} className={`hero-card ${cls}`}>
+                <BookCover
+                  title={book.title}
+                  author={book.author}
+                  colorClass={book.coverColor}
+                  coverUrl={book.coverUrl}
+                />
+              </Link>
+            ))}
           </div>
         )}
-
-        {/* Bottom fade */}
-        <div className="hero-fade-bottom" />
       </section>
 
       {/* ── Stats ── */}
