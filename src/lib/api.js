@@ -37,7 +37,8 @@ export async function fetchBook(slug) {
   const { data, error } = await supabase
     .from('books')
     .select(`
-      id, slug, title, subtitle, description, cover_url, rating, formats, keywords, pub_date,
+      id, slug, title, subtitle, description, cover_url, rating, formats, keywords,
+      pub_year, page_count, isbn_13, language, publisher_name,
       books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
       books_genres ( genres ( slug, label ) ),
       book_retailer_links ( url, retailers ( slug, label ) )
@@ -102,19 +103,34 @@ function normaliseBook(b) {
     || buyLinks[0]
     || null;
 
+  // Collect all authors for co-author display
+  const allAuthors = (b.books_authors || [])
+    .sort((a, z) => (a.position ?? 1) - (z.position ?? 1))
+    .map(e => e.authors)
+    .filter(Boolean);
+
   return {
     id: b.slug,
     slug: b.slug,
     title: b.title,
+    subtitle: b.subtitle || null,
     author: primaryAuthor?.display_name || 'Unknown',
+    authors: allAuthors,
     authorId: primaryAuthor?.slug || '',
     genre: genres[0] || 'nonfiction',
     genres,
     blurb: b.description,
+    keywords: b.keywords || [],
+    formats: b.formats || [],
     coverUrl: b.cover_url || null,
     coverColor: pickCoverColor(b.slug),
     rating: b.rating,
     price: b.price || null,
+    pubYear: b.pub_year || null,
+    pageCount: b.page_count || null,
+    isbn: b.isbn_13 || null,
+    language: b.language || null,
+    publisher: b.publisher_name || null,
     buyLink: primaryLink?.url || '#',
     buyLinks,
   };
