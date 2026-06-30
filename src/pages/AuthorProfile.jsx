@@ -67,7 +67,7 @@ export default function AuthorProfile() {
             {books.map(book => (
               <Link to={`/book/${book.slug}`} key={book.slug} className="author-book-card">
                 <div className="author-book-cover-wrap">
-                  <BookCover title={book.title} author={book.author} colorClass={book.coverColor} />
+                  <BookCover title={book.title} author={book.author} colorClass={book.coverColor} coverUrl={book.coverUrl} />
                 </div>
                 <div className="author-book-info">
                   <span className="card-genre">{book.genre}</span>

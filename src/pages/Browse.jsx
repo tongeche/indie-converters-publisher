@@ -106,7 +106,7 @@ export default function Browse() {
             <div className="book-grid">
               {books.map(book => (
                 <Link to={`/book/${book.slug}`} key={book.slug} className="book-card">
-                  <BookCover title={book.title} author={book.author} colorClass={book.coverColor} />
+                  <BookCover title={book.title} author={book.author} colorClass={book.coverColor} coverUrl={book.coverUrl} />
                   <div className="book-card-meta">
                     <span className="card-genre">{book.genre}</span>
                     <span className="card-title">{book.title}</span>

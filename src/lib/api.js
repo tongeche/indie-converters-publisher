@@ -39,7 +39,8 @@ export async function fetchBook(slug) {
     .select(`
       id, slug, title, subtitle, description, cover_url, rating, formats, keywords, pub_date,
       books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
-      books_genres ( genres ( slug, label ) )
+      books_genres ( genres ( slug, label ) ),
+      book_retailer_links ( url, retailers ( slug, label ) )
     `)
     .eq('slug', slug)
     .eq('is_published', true)
@@ -90,6 +91,17 @@ function normaliseBook(b) {
     ?.sort((a, z) => (a.position ?? 1) - (z.position ?? 1))[0]?.authors;
   const genres = b.books_genres?.map(bg => bg.genres?.slug).filter(Boolean) || [];
 
+  const buyLinks = (b.book_retailer_links || []).map(rl => ({
+    label: rl.retailers?.label || 'Buy',
+    slug: rl.retailers?.slug || '',
+    url: rl.url,
+  }));
+
+  // Prefer Bookshop.org as the primary buy link; fall back to first available
+  const primaryLink = buyLinks.find(l => l.slug === 'bookshop')
+    || buyLinks[0]
+    || null;
+
   return {
     id: b.slug,
     slug: b.slug,
@@ -99,10 +111,12 @@ function normaliseBook(b) {
     genre: genres[0] || 'nonfiction',
     genres,
     blurb: b.description,
+    coverUrl: b.cover_url || null,
     coverColor: pickCoverColor(b.slug),
     rating: b.rating,
-    buyLink: '#',
-    price: null,
+    price: b.price || null,
+    buyLink: primaryLink?.url || '#',
+    buyLinks,
   };
 }
 

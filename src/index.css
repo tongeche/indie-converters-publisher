@@ -135,6 +135,11 @@ img { display: block; max-width: 100%; }
 .cover-sand .cover-rule { background: rgba(27,19,48,0.25); }
 .cover-sand .cover-dot { color: var(--ink); }
 
+/* Photo cover — real image fills the entire cover */
+.book-cover--photo { padding: 0; }
+.book-cover--photo::before { display: none; }
+.book-cover--photo img { border-radius: 2px 6px 6px 2px; }
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

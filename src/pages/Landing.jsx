@@ -101,7 +101,7 @@ export default function Landing() {
           <div className="hero-books">
             {allBooks.slice(0, 3).map((b, i) => (
               <div key={b.slug} className={`hero-book hero-book-${i}`}>
-                <BookCover title={b.title} author={b.author} colorClass={b.coverColor} />
+                <BookCover title={b.title} author={b.author} colorClass={b.coverColor} coverUrl={b.coverUrl} />
               </div>
             ))}
           </div>
@@ -133,7 +133,7 @@ export default function Landing() {
           <div className="books-shelf">
             {(filtered.length ? filtered : featured).map(book => (
               <Link to={`/book/${book.slug}`} key={book.slug} className="shelf-item">
-                <BookCover title={book.title} author={book.author} colorClass={book.coverColor} />
+                <BookCover title={book.title} author={book.author} colorClass={book.coverColor} coverUrl={book.coverUrl} />
                 <div className="shelf-meta">
                   <span className="shelf-genre">{book.genre}</span>
                   <span className="shelf-title">{book.title}</span>

@@ -105,7 +105,8 @@
   color: var(--clay);
 }
 .detail-price-note { font-size: 0.78rem; color: var(--ink-soft); }
-.detail-buy-btn { width: 100%; justify-content: center; max-width: 320px; margin-bottom: 12px; }
+.detail-buy-links { display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin-bottom: 12px; }
+.detail-buy-btn { width: 100%; justify-content: center; max-width: 320px; margin-bottom: 0; }
 .detail-disclaimer { font-size: 0.75rem; color: var(--ink-soft); opacity: 0.7; max-width: 320px; }
 
 /* Related */

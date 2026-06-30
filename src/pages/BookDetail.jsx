@@ -44,7 +44,7 @@ export default function BookDetail() {
       <div className="container detail-layout">
         <div className="detail-cover-col">
           <div className="detail-cover-wrap">
-            <BookCover title={book.title} author={book.author} colorClass={book.coverColor} size="lg" />
+            <BookCover title={book.title} author={book.author} colorClass={book.coverColor} coverUrl={book.coverUrl} size="lg" />
           </div>
           <div className="detail-cover-actions">
             <button
@@ -85,11 +85,21 @@ export default function BookDetail() {
             </div>
           )}
 
-          <a href={book.buyLink} className="btn btn-primary detail-buy-btn" target="_blank" rel="noreferrer">
-            Where to buy →
-          </a>
+          {book.buyLinks && book.buyLinks.length > 0 ? (
+            <div className="detail-buy-links">
+              {book.buyLinks.map(link => (
+                <a key={link.slug} href={link.url} className="btn btn-primary detail-buy-btn" target="_blank" rel="noreferrer">
+                  {link.label} →
+                </a>
+              ))}
+            </div>
+          ) : (
+            <a href={book.buyLink} className="btn btn-primary detail-buy-btn" target="_blank" rel="noreferrer">
+              Where to buy →
+            </a>
+          )}
           <p className="detail-disclaimer">
-            Indie Converters does not sell books directly. The button above links to wherever this author sells their work.
+            Indie Converters does not sell books directly. These links go to where you can find or buy this book.
           </p>
         </div>
       </div>
@@ -102,7 +112,7 @@ export default function BookDetail() {
             <div className="related-grid">
               {related.map(b => (
                 <Link to={`/book/${b.slug}`} key={b.slug} className="book-card">
-                  <BookCover title={b.title} author={b.author} colorClass={b.coverColor} size="sm" />
+                  <BookCover title={b.title} author={b.author} colorClass={b.coverColor} coverUrl={b.coverUrl} size="sm" />
                   <div className="book-card-meta">
                     <span className="card-genre">{b.genre}</span>
                     <span className="card-title">{b.title}</span>
