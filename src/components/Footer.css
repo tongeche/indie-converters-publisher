@@ -21,10 +21,20 @@
   gap: 14px;
 }
 .footer-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 1.1rem;
   font-weight: 400;
+  color: var(--cream);
 }
-.footer-dots { color: var(--ochre); font-weight: 700; margin-right: 4px; }
+.footer-logo-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  display: block;
+  flex-shrink: 0;
+}
 .footer-logo strong { font-weight: 700; }
 
 .footer-brand p {

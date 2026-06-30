@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import logoIndie from '../assets/logo-indie.png';
 import './Nav.css';
 
 const NAV_ITEMS = [
@@ -11,8 +12,8 @@ const NAV_ITEMS = [
 ];
 
 export default function Nav() {
-  const [scrolled, setScrolled]   = useState(false);
-  const [menuOpen, setMenuOpen]   = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const isHome = location.pathname === '/';
 
@@ -30,7 +31,8 @@ export default function Nav() {
     <nav className={`nav ${transparent ? 'nav--transparent' : 'nav--solid'}`}>
       <div className="nav-inner container">
         <Link to="/" className="nav-logo">
-          <span className="nav-logo-dots">··</span>indie<strong>converters</strong>
+          <img src={logoIndie} alt="Indie Converters" className="nav-logo-img" />
+          <span className="nav-logo-text">indie<strong>converters</strong></span>
         </Link>
 
         <button

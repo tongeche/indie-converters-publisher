@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import logoIndie from '../assets/logo-indie.png';
 import './Footer.css';
 
 const COLUMNS = [
@@ -46,7 +47,8 @@ export default function Footer() {
           {/* Brand */}
           <div className="footer-brand">
             <span className="footer-logo">
-              <span className="footer-dots">··</span>indie<strong>converters</strong>
+              <img src={logoIndie} alt="Indie Converters" className="footer-logo-img" />
+              indie<strong>converters</strong>
             </span>
             <p>
               Book discovery, editorial curation, and a proper publishing tool — for readers who love indie voices and authors who deserve better tools.

@@ -21,23 +21,29 @@
 
 /* Logo */
 .nav-logo {
-  font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  margin-right: 40px;
+  text-decoration: none;
+}
+.nav-logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: block;
+  flex-shrink: 0;
+}
+.nav-logo-text {
+  font-size: 1rem;
   font-weight: 400;
   color: var(--cream);
   transition: color 250ms ease;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  margin-right: 40px;
+  line-height: 1;
 }
-.nav--solid .nav-logo { color: var(--ink); }
-.nav-logo-dots {
-  color: var(--ochre);
-  margin-right: 4px;
-  font-weight: 700;
-}
-.nav--transparent .nav-logo-dots { color: var(--ochre); }
-.nav-logo strong { font-weight: 700; }
+.nav--solid .nav-logo-text { color: var(--ink); }
+.nav-logo-text strong { font-weight: 700; }
 
 /* Links */
 .nav-links {
