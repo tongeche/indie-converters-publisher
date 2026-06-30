@@ -1,5 +1,86 @@
 import { supabase } from './supabase';
 
+/* ── Author: fetch own book for editing ── */
+export async function fetchBookForEdit(slug, userId) {
+  const { data, error } = await supabase
+    .from('books')
+    .select(`
+      id, slug, title, subtitle, description, cover_url, formats, keywords,
+      pub_year, page_count, isbn_13, language, publisher_name, price,
+      front_matter, back_matter, is_published,
+      books_genres ( genres ( slug, label ) ),
+      book_retailer_links ( url, retailers ( slug, label ) )
+    `)
+    .eq('slug', slug)
+    .eq('author_user_id', userId)
+    .single();
+  if (error) return null;
+  return data;
+}
+
+/* ── Author: update book metadata ── */
+export async function updateBook(slug, userId, data) {
+  const { error } = await supabase
+    .from('books')
+    .update(data)
+    .eq('slug', slug)
+    .eq('author_user_id', userId);
+  if (error) throw error;
+}
+
+/* ── Author: replace all genres for a book ── */
+export async function updateBookGenres(bookId, genreSlugs) {
+  await supabase.from('books_genres').delete().eq('book_id', bookId);
+  for (const gs of genreSlugs.filter(Boolean)) {
+    const { data: gr } = await supabase
+      .from('genres').select('id').eq('slug', gs).maybeSingle();
+    if (gr) await supabase.from('books_genres').insert({ book_id: bookId, genre_id: gr.id });
+  }
+}
+
+/* ── Author: upsert buy link ── */
+export async function upsertBuyLink(bookId, retailerSlug, url) {
+  if (!url) {
+    // remove existing if URL cleared
+    const { data: ret } = await supabase
+      .from('retailers').select('id').eq('slug', retailerSlug).maybeSingle();
+    if (ret) await supabase.from('book_retailer_links')
+      .delete().eq('book_id', bookId).eq('retailer_id', ret.id);
+    return;
+  }
+  const { data: ret } = await supabase
+    .from('retailers').select('id').eq('slug', retailerSlug).maybeSingle();
+  if (!ret) return;
+  await supabase.from('book_retailer_links')
+    .upsert({ book_id: bookId, retailer_id: ret.id, url }, { onConflict: 'book_id,retailer_id' });
+}
+
+/* ── Reader: toggle save ── */
+export async function toggleSave(bookId, userId) {
+  const { data: existing } = await supabase
+    .from('reader_saves')
+    .select('id')
+    .eq('book_id', bookId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from('reader_saves').delete().eq('id', existing.id);
+    return false;
+  } else {
+    await supabase.from('reader_saves').insert({ book_id: bookId, user_id: userId });
+    return true;
+  }
+}
+
+/* ── Reader: check if book is saved ── */
+export async function checkSaved(bookId, userId) {
+  const { data } = await supabase
+    .from('reader_saves').select('id')
+    .eq('book_id', bookId).eq('user_id', userId).maybeSingle();
+  return Boolean(data);
+}
+
 export async function fetchBooks({ genre, query, sort } = {}) {
   let q = supabase
     .from('books')
@@ -86,6 +167,56 @@ export async function fetchGenres() {
   return data || [];
 }
 
+export async function fetchRelatedBooks(currentSlug, genreSlugs = [], pubYear = null) {
+  if (!genreSlugs.length) return [];
+
+  // Resolve genre slugs → IDs
+  const { data: genreRows } = await supabase
+    .from('genres').select('id').in('slug', genreSlugs);
+  if (!genreRows?.length) return [];
+
+  const genreIds = genreRows.map(g => g.id);
+
+  // Find all books that share at least one genre
+  const { data: links } = await supabase
+    .from('books_genres').select('book_id, genre_id').in('genre_id', genreIds);
+  if (!links?.length) return [];
+
+  // Count genre overlaps per book_id (UUID)
+  const overlapCount = {};
+  for (const { book_id } of links) {
+    overlapCount[book_id] = (overlapCount[book_id] || 0) + 1;
+  }
+
+  const bookIds = Object.keys(overlapCount);
+
+  const { data, error } = await supabase
+    .from('books')
+    .select(`
+      id, slug, title, description, cover_url, rating, formats, keywords, pub_year,
+      books_authors ( position, authors ( slug, display_name ) ),
+      books_genres ( genres ( slug, label ) )
+    `)
+    .eq('is_published', true)
+    .in('id', bookIds)
+    .neq('slug', currentSlug);
+
+  if (error || !data) return [];
+
+  return data
+    .map(b => ({ ...normaliseBook(b), _overlap: overlapCount[b.id] || 0 }))
+    .sort((a, z) => {
+      // Primary: most shared genres first
+      if (z._overlap !== a._overlap) return z._overlap - a._overlap;
+      // Secondary: closest publication year
+      if (pubYear) {
+        return Math.abs((a.pubYear || 0) - pubYear) - Math.abs((z.pubYear || 0) - pubYear);
+      }
+      return 0;
+    })
+    .slice(0, 8);
+}
+
 // Flatten Supabase join shape into the flat shape the UI already expects
 function normaliseBook(b) {
   const primaryAuthor = b.books_authors
@@ -110,6 +241,7 @@ function normaliseBook(b) {
     .filter(Boolean);
 
   return {
+    dbId: b.id,
     id: b.slug,
     slug: b.slug,
     title: b.title,

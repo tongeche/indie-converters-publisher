@@ -28,10 +28,9 @@ export default function Browse() {
     setLoading(true);
     fetchBooks({ genre: activeGenres[0], query, sort })
       .then(data => {
-        // client-side author filter if multiple genres selected
-        let list = data;
+        let list = data.filter(b => b.coverUrl);
         if (activeGenres.length > 1) {
-          list = data.filter(b => activeGenres.every(g => b.genres.includes(g)));
+          list = list.filter(b => activeGenres.every(g => b.genres.includes(g)));
         }
         // client-side author sort
         if (sort === 'author') list = [...list].sort((a, z) => a.author.localeCompare(z.author));

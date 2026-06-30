@@ -1,228 +1,261 @@
 import { useState, useEffect } from 'react';
-import { Link, useParams, Navigate } from 'react-router-dom';
+import { Link, useParams, Navigate, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import BookCover from '../components/BookCover';
-import { fetchBook, fetchAuthorBooks } from '../lib/api';
+import { fetchBook, fetchRelatedBooks, toggleSave, checkSaved } from '../lib/api';
 import './BookDetail.css';
-
-function MetaRow({ label, value }) {
-  if (!value) return null;
-  return (
-    <div className="meta-row">
-      <span className="meta-label">{label}</span>
-      <span className="meta-value">{value}</span>
-    </div>
-  );
-}
 
 function Stars({ rating }) {
   const full  = Math.floor(rating);
   const half  = rating % 1 >= 0.5;
   const empty = 5 - full - (half ? 1 : 0);
   return (
-    <span className="star-row" aria-label={`${rating} out of 5 stars`}>
-      {'★'.repeat(full)}
-      {half ? '½' : ''}
-      {'☆'.repeat(empty)}
-      <span className="star-num">{rating}</span>
+    <span className="bd-stars" aria-label={`${rating} out of 5`}>
+      {'★'.repeat(full)}{half ? '½' : ''}{'☆'.repeat(empty)}
+      <span className="bd-star-num">{rating}</span>
     </span>
   );
 }
 
 export default function BookDetail() {
   const { id } = useParams();
-  const [book, setBook]         = useState(null);
-  const [related, setRelated]   = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [saved, setSaved]       = useState(false);
-  const [sampleOpen, setSampleOpen] = useState(false);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [book,        setBook]       = useState(null);
+  const [related,     setRelated]    = useState([]);
+  const [loading,     setLoading]    = useState(true);
+  const [saved,       setSaved]      = useState(false);
+  const [savePending, setSavePending] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     fetchBook(id).then(b => {
       setBook(b);
-      if (b?.authorId) {
-        fetchAuthorBooks(b.authorId).then(books =>
-          setRelated(books.filter(r => r.slug !== id).slice(0, 4))
-        );
+      if (b) {
+        supabase.rpc('increment_book_view', { book_slug: id });
+        if (b.genres?.length) {
+          fetchRelatedBooks(id, b.genres, b.pubYear).then(setRelated);
+        }
       }
     }).finally(() => setLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    if (!book?.dbId || !user) { setSaved(false); return; }
+    checkSaved(book.dbId, user.id).then(setSaved);
+  }, [book?.dbId, user?.id]);
+
+  async function handleSave() {
+    if (!user) { navigate('/login'); return; }
+    if (savePending) return;
+    setSavePending(true);
+    try {
+      const newState = await toggleSave(book.dbId, user.id);
+      setSaved(newState);
+    } finally {
+      setSavePending(false);
+    }
+  }
+
   if (loading) return (
-    <div className="book-detail">
-      <div className="detail-hero" />
-      <div className="container" style={{ padding: '80px 24px', color: 'var(--ink-soft)' }}>Loading…</div>
+    <div className="bd-page">
+      <div className="bd-hero bd-hero--loading" />
     </div>
   );
   if (!book) return <Navigate to="/browse" replace />;
 
-  const genreLabels = book.genres.join(', ');
-  const formatList  = book.formats.join(' · ');
+  const metaPills = [
+    book.language,
+    book.pubYear,
+    book.pageCount ? `${book.pageCount.toLocaleString()} pages` : null,
+  ].filter(Boolean);
+
+  const genreLabel = book.genres?.map(g =>
+    g.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  ).join(' · ') || book.genre;
 
   return (
-    <div className="book-detail">
-      {/* Breadcrumb strip */}
-      <div className="detail-hero">
-        <div className="container">
-          <nav className="breadcrumb">
-            <Link to="/">Home</Link>
-            <span>·</span>
-            <Link to="/browse">Browse</Link>
-            <span>·</span>
-            <span>{book.title}</span>
-          </nav>
-        </div>
-      </div>
+    <div className="bd-page">
 
-      {/* Main layout */}
-      <div className="container detail-layout">
+      {/* ═══════════════ HERO ═══════════════ */}
+      <section className="bd-hero">
+        <div className="container bd-hero-inner">
 
-        {/* ── Left: cover + actions ── */}
-        <aside className="detail-cover-col">
-          <div className="detail-cover-wrap">
-            <BookCover
-              title={book.title}
-              author={book.author}
-              colorClass={book.coverColor}
-              coverUrl={book.coverUrl}
-              size="lg"
-            />
+          {/* Cover — 3-D mockup */}
+          <div className="bd-cover-wrap">
+            <div className="bd-cover-mockup">
+              {book.coverUrl
+                ? <img src={book.coverUrl} alt={book.title} className="bd-cover-img" />
+                : <BookCover title={book.title} author={book.author} colorClass={book.coverColor} size="lg" />
+              }
+              {/* spine edge */}
+              <div className="bd-cover-spine" />
+            </div>
           </div>
 
-          {/* Buy links */}
-          {book.buyLinks && book.buyLinks.length > 0 ? (
-            <div className="detail-buy-links">
-              {book.buyLinks.map(link => (
-                <a
-                  key={link.slug}
-                  href={link.url}
-                  className="btn btn-primary detail-buy-btn"
-                  target="_blank"
-                  rel="noreferrer"
+          {/* Info column */}
+          <div className="bd-info">
+            {genreLabel && (
+              <Link to={`/browse?genre=${book.genre}`} className="bd-genre-tag">
+                {genreLabel}
+              </Link>
+            )}
+
+            <h1 className="bd-title">{book.title}</h1>
+            {book.subtitle && <p className="bd-subtitle">{book.subtitle}</p>}
+
+            <div className="bd-authors">
+              {book.authors.length > 0
+                ? book.authors.map((a, i) => (
+                    <span key={a.slug}>
+                      {i > 0 && <span className="bd-author-sep"> &amp; </span>}
+                      <Link to={`/author/${a.slug}`} className="bd-author-link">
+                        {a.display_name} <span className="bd-author-arrow">›</span>
+                      </Link>
+                    </span>
+                  ))
+                : <span className="bd-author-link">{book.author}</span>
+              }
+            </div>
+
+            {book.rating && (
+              <div className="bd-rating-row">
+                <Stars rating={book.rating} />
+                <span className="bd-rating-source">Goodreads</span>
+              </div>
+            )}
+
+            {/* Buy card — Apple Books style */}
+            <div className="bd-buy-card">
+              <div className="bd-buy-card-left">
+                <span className="bd-buy-type">Book</span>
+                {metaPills.length > 0 && (
+                  <span className="bd-buy-meta">{metaPills.join(' · ')}</span>
+                )}
+              </div>
+              <div className="bd-buy-card-right">
+                {book.buyLinks && book.buyLinks.length > 0 ? (
+                  book.buyLinks.slice(0, 2).map(link => (
+                    <a
+                      key={link.slug}
+                      href={link.url}
+                      className="bd-buy-btn"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {book.price ? `$${book.price}` : link.label}
+                    </a>
+                  ))
+                ) : (
+                  <a href={book.buyLink} className="bd-buy-btn" target="_blank" rel="noreferrer">
+                    {book.price ? `$${book.price}` : 'Get book'}
+                  </a>
+                )}
+                <button
+                  className={`bd-save-btn ${saved ? 'saved' : ''}`}
+                  onClick={handleSave}
+                  disabled={savePending}
                 >
-                  {link.label} →
-                </a>
+                  {saved ? '♥ Saved' : '♡ Save'}
+                </button>
+              </div>
+            </div>
+
+            <p className="bd-disclaimer">
+              Indie Converters doesn't sell books directly. Links go to where you can buy this title.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════ CONTENT ═══════════════ */}
+      <div className="bd-content">
+        <div className="container bd-content-inner">
+
+          {/* From the Publisher */}
+          {book.blurb && (
+            <section className="bd-publisher">
+              <h2 className="bd-section-title">From the Publisher</h2>
+              <div className="bd-description">
+                {book.blurb.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
+              </div>
+            </section>
+          )}
+
+          {/* Metadata strip */}
+          {metaPills.length > 0 && (
+            <div className="bd-meta-strip">
+              {[
+                book.language    && { label: 'Language',  value: book.language  },
+                book.pubYear     && { label: 'Published', value: book.pubYear   },
+                book.pageCount   && { label: 'Pages',     value: book.pageCount.toLocaleString() },
+                book.publisher   && { label: 'Publisher', value: book.publisher },
+                book.isbn        && { label: 'ISBN-13',   value: book.isbn      },
+              ].filter(Boolean).map(({ label, value }) => (
+                <div key={label} className="bd-meta-cell">
+                  <span className="bd-meta-label">{label}</span>
+                  <span className="bd-meta-value">{value}</span>
+                </div>
               ))}
             </div>
-          ) : (
-            <a href={book.buyLink} className="btn btn-primary detail-buy-btn" target="_blank" rel="noreferrer">
-              Where to buy →
-            </a>
           )}
 
-          <button
-            className={`btn ${saved ? 'btn-primary' : 'btn-outline'} save-btn`}
-            onClick={() => setSaved(s => !s)}
-          >
-            {saved ? '♥ Saved' : '♡ Save for later'}
-          </button>
-
-          <p className="detail-disclaimer">
-            Indie Converters doesn't sell books directly. Links above go to where you can find this title.
-          </p>
-        </aside>
-
-        {/* ── Right: info ── */}
-        <div className="detail-info-col">
-          {/* Genre + title */}
-          <div className="detail-genre eyebrow">{genreLabels || book.genre}</div>
-          <h1 className="detail-title">{book.title}</h1>
-          {book.subtitle && <p className="detail-subtitle">{book.subtitle}</p>}
-
-          {/* Author(s) */}
-          <div className="detail-authors">
-            {book.authors.length > 0 ? book.authors.map((a, i) => (
-              <span key={a.slug}>
-                {i > 0 && <span className="author-sep"> &amp; </span>}
-                <Link to={`/author/${a.slug}`} className="detail-author-link">
-                  {a.display_name}
-                </Link>
-              </span>
-            )) : (
-              <span className="detail-author-link">{book.author}</span>
-            )}
-          </div>
-
-          {/* Rating */}
-          {book.rating && (
-            <div className="detail-rating">
-              <Stars rating={book.rating} />
-              <span className="rating-source">Goodreads</span>
-            </div>
-          )}
-
-          {/* Description */}
-          <div className="detail-description">
-            {(book.blurb || '').split('\n').filter(Boolean).map((para, i) => (
-              <p key={i}>{para}</p>
-            ))}
-          </div>
-
-          {/* Sample */}
-          {book.sample && (
-            <div className="sample-panel">
-              <button className="sample-toggle" onClick={() => setSampleOpen(o => !o)}>
-                <span className="sample-dot">··</span>
-                {sampleOpen ? 'Close sample' : 'Read the first pages'}
-                <span className="sample-arrow">{sampleOpen ? '↑' : '↓'}</span>
-              </button>
-              {sampleOpen && (
-                <div className="sample-content">
-                  {book.sample.map((para, i) => <p key={i}>{para}</p>)}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Subjects / keywords */}
-          {book.keywords.length > 0 && (
-            <div className="detail-subjects">
-              <div className="eyebrow" style={{ marginBottom: 10 }}>Subjects</div>
-              <div className="subject-tags">
+          {/* Subject tags */}
+          {book.keywords?.length > 0 && (
+            <section className="bd-subjects">
+              <h2 className="bd-section-title">Subjects</h2>
+              <div className="bd-subject-tags">
                 {book.keywords.map(k => (
-                  <Link key={k} to={`/browse?q=${encodeURIComponent(k)}`} className="subject-tag">
+                  <Link key={k} to={`/browse?q=${encodeURIComponent(k)}`} className="bd-subject-tag">
                     {k.replace(/-/g, ' ')}
                   </Link>
                 ))}
               </div>
-            </div>
+            </section>
           )}
-
-          {/* Metadata panel */}
-          <div className="detail-meta-panel">
-            <div className="eyebrow" style={{ marginBottom: 12 }}>·· Book details</div>
-            <div className="meta-grid">
-              <MetaRow label="Published"  value={book.pubYear}                         />
-              <MetaRow label="Publisher"  value={book.publisher}                       />
-              <MetaRow label="Pages"      value={book.pageCount ? `${book.pageCount} pages` : null} />
-              <MetaRow label="Language"   value={book.language}                        />
-              <MetaRow label="Formats"    value={formatList || null}                   />
-              <MetaRow label="ISBN"       value={book.isbn}                            />
-            </div>
-          </div>
         </div>
-      </div>
 
-      {/* Related books */}
-      {related.length > 0 && (
-        <section className="more-from-author">
-          <div className="container">
-            <div className="eyebrow">Same author</div>
-            <h2>More from {book.author}</h2>
-            <div className="related-grid">
-              {related.map(b => (
-                <Link to={`/book/${b.slug}`} key={b.slug} className="book-card">
-                  <BookCover title={b.title} author={b.author} colorClass={b.coverColor} coverUrl={b.coverUrl} size="sm" />
-                  <div className="book-card-meta">
-                    <span className="card-genre">{b.genre}</span>
-                    <span className="card-title">{b.title}</span>
+        {/* Related books — genre + year similarity */}
+        {related.length > 0 && (
+          <section className="bd-more">
+            <div className="container">
+              <div className="bd-more-head">
+                <h2 className="bd-section-title bd-more-title">You might also like</h2>
+                {book.genres?.length > 0 && (
+                  <div className="bd-more-genre-tags">
+                    {book.genres.slice(0, 3).map(g => (
+                      <Link
+                        key={g}
+                        to={`/browse?genre=${g}`}
+                        className="bd-more-genre-chip"
+                      >
+                        {g.replace(/-/g, ' ')}
+                      </Link>
+                    ))}
                   </div>
-                </Link>
-              ))}
+                )}
+              </div>
             </div>
-          </div>
-        </section>
-      )}
+            <div className="bd-more-scroll-wrap">
+              <div className="bd-more-scroll">
+                {related.filter(b => b.coverUrl).map(b => (
+                  <Link to={`/book/${b.slug}`} key={b.slug} className="bd-related-card">
+                    <div className="bd-related-cover">
+                      {b.coverUrl
+                        ? <img src={b.coverUrl} alt={b.title} />
+                        : <BookCover title={b.title} author={b.author} colorClass={b.coverColor} size="sm" />
+                      }
+                    </div>
+                    <span className="bd-related-title">{b.title}</span>
+                    {b.price && <span className="bd-related-price">${b.price}</span>}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

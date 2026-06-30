@@ -64,7 +64,7 @@ export default function AuthorProfile() {
           <div className="eyebrow">Books</div>
           <h2>{author.display_name}'s work</h2>
           <div className="author-book-grid">
-            {books.map(book => (
+            {books.filter(b => b.coverUrl).map(book => (
               <Link to={`/book/${book.slug}`} key={book.slug} className="author-book-card">
                 <div className="author-book-cover-wrap">
                   <BookCover title={book.title} author={book.author} colorClass={book.coverColor} coverUrl={book.coverUrl} />

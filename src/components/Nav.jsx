@@ -1,21 +1,25 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import logoIndie from '../assets/logo-indie.png';
+import { useAuth } from '../context/AuthContext';
 import './Nav.css';
 
 const NAV_ITEMS = [
   { to: '/browse',  label: 'Books'   },
-  { to: '/moods',   label: 'Moods'   },
   { to: '/authors', label: 'Authors' },
-  { to: '/news',    label: 'News'    },
+  { to: '/news',    label: 'Journal' },
   { to: '/publish', label: 'Publish' },
 ];
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const location = useLocation();
-  const isHome = location.pathname === '/';
+  const location  = useLocation();
+  const { user, signOut } = useAuth();
+  const isHome    = location.pathname === '/';
+
+  const name     = user?.user_metadata?.full_name || user?.email?.split('@')[0] || '';
+  const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 40);
@@ -56,9 +60,20 @@ export default function Nav() {
               {label}
             </Link>
           ))}
-          <Link to="/upload" className="btn btn-primary btn-sm nav-cta">
-            Start Publishing
-          </Link>
+          {user ? (
+            <div className="nav-user-group">
+              <Link to="/dashboard" className="nav-link">Dashboard</Link>
+              <div className="nav-avatar" title={name}>{initials}</div>
+              <button className="nav-signout" onClick={() => signOut()}>Sign out</button>
+            </div>
+          ) : (
+            <>
+              <Link to="/login" className="nav-link nav-signin">Sign in</Link>
+              <Link to="/signup" className="btn btn-primary btn-sm nav-cta">
+                Start Publishing
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </nav>

@@ -1,27 +1,53 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import publishBannerImg from '../assets/publish CTA banner.png';
 import './Publish.css';
 
 const STEPS = [
   {
     num: '01',
     title: 'Upload your manuscript',
-    detail: 'We accept .docx, .odt, .rtf, and plain .txt. No special styles or templates required — Pandoc handles the conversion from whatever state your file is in.',
+    detail: 'Drop in a .docx, .odt, .rtf, or .txt file. No templates, no special styles — we handle whatever state it\'s in.',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 22h12M16 18V8m0 0-4 4m4-4 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M6 26a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V10l-6-6H8a2 2 0 0 0-2 2v20Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
   },
   {
     num: '02',
     title: 'Automated conversion',
-    detail: "Pandoc converts your manuscript into a standards-compliant EPUB3 and a print-ready PDF. This takes a few minutes. You'll get a notification when it's ready.",
+    detail: 'Pandoc converts your file into a standards-compliant EPUB3 and print-ready PDF in minutes.',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 4v4M16 24v4M4 16h4M24 16h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M8.34 8.34l2.83 2.83M20.83 20.83l2.83 2.83M8.34 23.66l2.83-2.83M20.83 11.17l2.83-2.83" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        <circle cx="16" cy="16" r="4" stroke="currentColor" strokeWidth="2"/>
+      </svg>
+    ),
   },
   {
     num: '03',
     title: 'Preview and add details',
-    detail: 'Read through your formatted book in the browser, then add a title, blurb, genre, price, and pick a cover palette. A live cover preview updates as you type.',
+    detail: 'Read through your formatted book in the browser, add a title, blurb, genre, and cover. A live preview updates as you type.',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 16s5-9 14-9 14 9 14 9-5 9-14 9S2 16 2 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx="16" cy="16" r="3.5" stroke="currentColor" strokeWidth="2"/>
+      </svg>
+    ),
   },
   {
     num: '04',
-    title: 'Published on Indie Converters',
-    detail: 'Your book gets its own permanent page here. Readers can browse and find it. You get a link to point them to wherever you already sell — your own site, Gumroad, Payhip, wherever.',
+    title: 'Published',
+    detail: 'Your book gets its own permanent page. Readers can find it here; you get a link to point them wherever you sell.',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 3C8.82 3 3 8.82 3 16s5.82 13 13 13 13-5.82 13-13S23.18 3 16 3Z" stroke="currentColor" strokeWidth="2"/>
+        <path d="M3 16h26M16 3c-3.5 4-5.5 8.5-5.5 13S12.5 25 16 29c3.5-4 5.5-8.5 5.5-13S19.5 7 16 3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
   },
 ];
 
@@ -59,31 +85,58 @@ export default function Publish() {
     <div className="publish-page">
       {/* Hero */}
       <section className="publish-hero">
-        <div className="container publish-hero-inner">
-          <div className="publish-hero-text">
-            <div className="eyebrow" style={{ color: 'var(--ochre)' }}>For authors</div>
-            <h1>Publish without compromise.</h1>
-            <p>
-              Upload your manuscript. Get a proper EPUB and print file. List your book here, keep every other right you have. No exclusivity clause. No cart on this site. No surprise fees.
-            </p>
-            <Link to="/upload" className="btn btn-ghost">Upload a manuscript →</Link>
-          </div>
+        <img src={publishBannerImg} alt="" className="publish-hero-img" />
+        <div className="publish-hero-overlay" />
+        <div className="container publish-hero-content">
+          <h1>Publish without<br />compromise.</h1>
+          <p>
+            Upload your manuscript. Get a proper EPUB and print file. List your book here, keep every other right you have. No exclusivity clause. No cart on this site. No surprise fees.
+          </p>
+          <Link to="/upload" className="btn publish-hero-btn">Upload a manuscript →</Link>
         </div>
       </section>
 
       {/* Process */}
       <section className="section process">
         <div className="container">
-          <div className="eyebrow">The process</div>
-          <h2>How it works</h2>
-          <div className="process-steps">
+          <div className="process-header">
+            <h2>How it works</h2>
+            <p className="process-subtitle">
+              Upload a manuscript. Get a proper book file. List it here — no middlemen, no fees, no rights grab.
+            </p>
+          </div>
+
+          <div className="process-flow">
             {STEPS.map((s, i) => (
-              <div key={i} className="process-step">
-                <div className="process-step-header">
-                  <div className="process-num"><span className="process-dot">··</span>{s.num}</div>
-                  <h3>{s.title}</h3>
+              <div key={i} className="process-flow-item">
+                <div className="process-card">
+                  <div className="process-card-icon">{s.icon}</div>
+                  <div className="process-card-body">
+                    <span className="process-card-num">{s.num}</span>
+                    <h3 className="process-card-title">{s.title}</h3>
+                    <p className="process-card-detail">{s.detail}</p>
+                  </div>
                 </div>
-                <p>{s.detail}</p>
+                {i < STEPS.length - 1 && (
+                  <div className="process-connector" aria-hidden="true">
+                    <svg width="64" height="32" viewBox="0 0 64 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d={i % 2 === 0
+                          ? 'M2 28 Q32 4 62 28'
+                          : 'M2 4 Q32 28 62 4'}
+                        stroke="#C9BDF5"
+                        strokeWidth="1.5"
+                        strokeDasharray="4 3"
+                        fill="none"
+                      />
+                      {i % 2 === 0 ? (
+                        <polyline points="56,22 62,28 56,32" fill="none" stroke="#C9BDF5" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+                      ) : (
+                        <polyline points="56,8 62,4 56,0" fill="none" stroke="#C9BDF5" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+                      )}
+                    </svg>
+                  </div>
+                )}
               </div>
             ))}
           </div>
