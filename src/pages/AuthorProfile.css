@@ -1,0 +1,96 @@
+.author-profile { padding-bottom: 80px; }
+
+.author-hero {
+  background: linear-gradient(135deg, var(--clay-dark), var(--clay));
+  padding: 100px 0 48px;
+  color: var(--cream);
+}
+.author-hero-inner {
+  display: flex;
+  align-items: flex-end;
+  gap: 32px;
+}
+.author-avatar {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--cream);
+  flex-shrink: 0;
+}
+.author-meta { display: flex; flex-direction: column; gap: 8px; }
+.author-meta h1 { font-size: clamp(1.8rem, 4vw, 2.8rem); color: var(--cream); }
+.author-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: rgba(252,251,255,0.75);
+}
+.author-stats strong { color: var(--cream); }
+.stat-sep { opacity: 0.4; }
+.follow-btn { width: fit-content; margin-top: 4px; }
+
+.author-body {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 60px;
+  padding-top: 48px;
+  align-items: start;
+}
+.author-bio-col { display: flex; flex-direction: column; gap: 16px; }
+.author-bio {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  line-height: 1.75;
+}
+.author-social { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.social-link {
+  font-size: 0.85rem;
+  color: var(--clay);
+  transition: color 180ms ease;
+}
+.social-link:hover { color: var(--clay-dark); text-decoration: underline; }
+
+.author-books-col { display: flex; flex-direction: column; gap: 12px; }
+.author-books-col h2 { font-size: 1.5rem; margin-bottom: 16px; }
+.author-book-grid { display: flex; flex-direction: column; gap: 28px; }
+.author-book-card {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 24px;
+  padding: 20px;
+  background: var(--parchment-dim);
+  border-radius: 8px;
+  border: 1px solid var(--sand);
+  transition: box-shadow 200ms ease;
+}
+.author-book-card:hover { box-shadow: 0 4px 20px rgba(68,28,178,0.12); }
+.author-book-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+.author-book-info h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.author-book-blurb { font-size: 0.875rem; color: var(--ink-soft); line-height: 1.6; }
+.card-genre { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ochre); }
+.card-price { font-size: 0.85rem; font-weight: 600; color: var(--clay); margin-top: auto; }
+
+@media (max-width: 768px) {
+  .author-hero-inner { flex-direction: column; align-items: flex-start; }
+  .author-body { grid-template-columns: 1fr; }
+  .author-book-card { grid-template-columns: 90px 1fr; }
+}
