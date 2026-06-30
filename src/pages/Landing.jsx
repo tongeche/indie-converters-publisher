@@ -97,8 +97,7 @@ export default function Landing() {
           </div>
 
           <h1 className="hero-heading">
-            Books worth finding,<br />
-            <span className="hero-accent">authors worth following.</span>
+            Books worth finding.
           </h1>
 
           <p className="hero-sub">
