@@ -1,18 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
-import { getBook, getAuthorBooks } from '../lib/data';
+import { fetchBook, fetchAuthorBooks } from '../lib/api';
 import './BookDetail.css';
 
 export default function BookDetail() {
   const { id } = useParams();
-  const book = getBook(id);
+  const [book, setBook] = useState(null);
+  const [related, setRelated] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
   const [sampleOpen, setSampleOpen] = useState(false);
 
-  if (!book) return <Navigate to="/browse" replace />;
+  useEffect(() => {
+    setLoading(true);
+    fetchBook(id).then(b => {
+      setBook(b);
+      if (b?.authorId) {
+        fetchAuthorBooks(b.authorId).then(books =>
+          setRelated(books.filter(r => r.slug !== id))
+        );
+      }
+    }).finally(() => setLoading(false));
+  }, [id]);
 
-  const related = getAuthorBooks(book.authorId).filter(b => b.id !== book.id);
+  if (loading) return <div className="book-detail"><div className="detail-hero" /><div className="container" style={{padding:'80px 24px',color:'var(--ink-soft)'}}>Loading…</div></div>;
+  if (!book) return <Navigate to="/browse" replace />;
 
   return (
     <div className="book-detail">
@@ -49,6 +62,11 @@ export default function BookDetail() {
           <Link to={`/author/${book.authorId}`} className="detail-author-link">
             by {book.author}
           </Link>
+          {book.rating && (
+            <div style={{ marginBottom: 16, color: 'var(--ochre)', fontWeight: 600 }}>
+              ★ {book.rating} on Goodreads
+            </div>
+          )}
 
           <p className="detail-blurb">{book.blurb}</p>
 
@@ -67,15 +85,9 @@ export default function BookDetail() {
             </div>
           )}
 
-          <div className="detail-price-row">
-            <span className="detail-price">${book.price?.toFixed(2)}</span>
-            <span className="detail-price-note">Set by the author · sold elsewhere</span>
-          </div>
-
           <a href={book.buyLink} className="btn btn-primary detail-buy-btn" target="_blank" rel="noreferrer">
             Where to buy →
           </a>
-
           <p className="detail-disclaimer">
             Indie Converters does not sell books directly. The button above links to wherever this author sells their work.
           </p>
@@ -89,7 +101,7 @@ export default function BookDetail() {
             <h2>More from {book.author}</h2>
             <div className="related-grid">
               {related.map(b => (
-                <Link to={`/book/${b.id}`} key={b.id} className="book-card">
+                <Link to={`/book/${b.slug}`} key={b.slug} className="book-card">
                   <BookCover title={b.title} author={b.author} colorClass={b.coverColor} size="sm" />
                   <div className="book-card-meta">
                     <span className="card-genre">{b.genre}</span>

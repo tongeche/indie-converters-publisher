@@ -1,38 +1,48 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import BookCover from '../components/BookCover';
-import { BOOKS, GENRES } from '../lib/data';
+import { fetchBooks, fetchGenres } from '../lib/api';
 import './Browse.css';
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest' },
   { value: 'title', label: 'Title A–Z' },
-  { value: 'author', label: 'Author A–Z' },
 ];
 
 export default function Browse() {
   const [searchParams] = useSearchParams();
   const initialGenre = searchParams.get('genre') || '';
+
   const [query, setQuery] = useState('');
-  const [genres, setGenres] = useState(initialGenre ? [initialGenre] : []);
+  const [activeGenres, setActiveGenres] = useState(initialGenre ? [initialGenre] : []);
   const [sort, setSort] = useState('newest');
+  const [books, setBooks] = useState([]);
+  const [genres, setGenres] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchGenres().then(setGenres);
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchBooks({ genre: activeGenres[0], query, sort })
+      .then(data => {
+        // client-side author filter if multiple genres selected
+        let list = data;
+        if (activeGenres.length > 1) {
+          list = data.filter(b => activeGenres.every(g => b.genres.includes(g)));
+        }
+        // client-side author sort
+        if (sort === 'author') list = [...list].sort((a, z) => a.author.localeCompare(z.author));
+        setBooks(list);
+      })
+      .finally(() => setLoading(false));
+  }, [query, activeGenres, sort]);
 
   function toggleGenre(g) {
-    setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
+    setActiveGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   }
-
-  const results = useMemo(() => {
-    let list = [...BOOKS];
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      list = list.filter(b => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
-    }
-    if (genres.length) list = list.filter(b => genres.includes(b.genre));
-    if (sort === 'title') list.sort((a, b) => a.title.localeCompare(b.title));
-    else if (sort === 'author') list.sort((a, b) => a.author.localeCompare(b.author));
-    else list.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
-    return list;
-  }, [query, genres, sort]);
 
   return (
     <div className="browse">
@@ -40,7 +50,7 @@ export default function Browse() {
         <div className="container">
           <div className="eyebrow">Catalog</div>
           <h1>Browse all books</h1>
-          <p>{BOOKS.length} titles from independent authors — no exclusivity, no subscription.</p>
+          <p>Independent authors — no exclusivity, no subscription.</p>
         </div>
       </div>
 
@@ -48,19 +58,19 @@ export default function Browse() {
         <aside className="browse-sidebar">
           <div className="sidebar-section">
             <h3>Genre</h3>
-            {GENRES.map(g => (
-              <label key={g} className="sidebar-check">
+            {genres.map(g => (
+              <label key={g.slug} className="sidebar-check">
                 <input
                   type="checkbox"
-                  checked={genres.includes(g)}
-                  onChange={() => toggleGenre(g)}
+                  checked={activeGenres.includes(g.slug)}
+                  onChange={() => toggleGenre(g.slug)}
                 />
-                <span>{g.charAt(0).toUpperCase() + g.slice(1)}</span>
+                <span>{g.label}</span>
               </label>
             ))}
           </div>
-          {(genres.length > 0 || query) && (
-            <button className="clear-btn" onClick={() => { setGenres([]); setQuery(''); }}>
+          {(activeGenres.length > 0 || query) && (
+            <button className="clear-btn" onClick={() => { setActiveGenres([]); setQuery(''); }}>
               Clear filters
             </button>
           )}
@@ -84,24 +94,24 @@ export default function Browse() {
           </div>
 
           <div className="results-meta">
-            {results.length} {results.length === 1 ? 'book' : 'books'}
-            {(genres.length > 0 || query) && <span> · filtered</span>}
+            {loading ? 'Loading…' : `${books.length} ${books.length === 1 ? 'book' : 'books'}`}
+            {(activeGenres.length > 0 || query) && !loading && <span> · filtered</span>}
           </div>
 
-          {results.length === 0 ? (
+          {!loading && books.length === 0 ? (
             <div className="no-results">
-              <p>No books match your search. <button className="link-btn" onClick={() => { setGenres([]); setQuery(''); }}>Clear filters</button></p>
+              <p>No books match. <button className="link-btn" onClick={() => { setActiveGenres([]); setQuery(''); }}>Clear filters</button></p>
             </div>
           ) : (
             <div className="book-grid">
-              {results.map(book => (
-                <Link to={`/book/${book.id}`} key={book.id} className="book-card">
+              {books.map(book => (
+                <Link to={`/book/${book.slug}`} key={book.slug} className="book-card">
                   <BookCover title={book.title} author={book.author} colorClass={book.coverColor} />
                   <div className="book-card-meta">
                     <span className="card-genre">{book.genre}</span>
                     <span className="card-title">{book.title}</span>
                     <span className="card-author">{book.author}</span>
-                    <span className="card-price">${book.price.toFixed(2)}</span>
+                    {book.rating && <span className="card-price">★ {book.rating}</span>}
                   </div>
                 </Link>
               ))}

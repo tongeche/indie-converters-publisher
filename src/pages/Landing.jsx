@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import BookCover from '../components/BookCover';
-import { BOOKS, GENRES } from '../lib/data';
+import { fetchBooks, fetchGenres } from '../lib/api';
 import './Landing.css';
 
-const FEATURED = BOOKS.slice(0, 5);
 const STATS = [
   { label: 'Manuscripts Converted', end: 2847 },
   { label: 'Authors Publishing', end: 412 },
@@ -48,9 +47,15 @@ const STEPS = [
 export default function Landing() {
   const [activeGenre, setActiveGenre] = useState('all');
   const [statsVisible, setStatsVisible] = useState(false);
+  const [allBooks, setAllBooks] = useState([]);
+  const [genres, setGenres] = useState([]);
   const statsRef = useRef(null);
   const stepsRef = useRef(null);
-  const [activeStep, setActiveStep] = useState(null);
+
+  useEffect(() => {
+    fetchBooks().then(setAllBooks);
+    fetchGenres().then(setGenres);
+  }, []);
 
   useEffect(() => {
     const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setStatsVisible(true); }, { threshold: 0.3 });
@@ -70,7 +75,8 @@ export default function Landing() {
     return () => obs.disconnect();
   }, []);
 
-  const filtered = activeGenre === 'all' ? FEATURED : FEATURED.filter(b => b.genre === activeGenre);
+  const featured = allBooks.slice(0, 5);
+  const filtered = activeGenre === 'all' ? featured : allBooks.filter(b => b.genre === activeGenre).slice(0, 5);
 
   return (
     <div className="landing">
@@ -93,8 +99,8 @@ export default function Landing() {
             </div>
           </div>
           <div className="hero-books">
-            {BOOKS.slice(0, 3).map((b, i) => (
-              <div key={b.id} className={`hero-book hero-book-${i}`}>
+            {allBooks.slice(0, 3).map((b, i) => (
+              <div key={b.slug} className={`hero-book hero-book-${i}`}>
                 <BookCover title={b.title} author={b.author} colorClass={b.coverColor} />
               </div>
             ))}
@@ -118,15 +124,15 @@ export default function Landing() {
           </div>
           <div className="genre-chips">
             <button className={`chip ${activeGenre === 'all' ? 'active' : ''}`} onClick={() => setActiveGenre('all')}>All</button>
-            {GENRES.map(g => (
-              <button key={g} className={`chip ${activeGenre === g ? 'active' : ''}`} onClick={() => setActiveGenre(g)}>
-                {g.charAt(0).toUpperCase() + g.slice(1)}
+            {genres.map(g => (
+              <button key={g.slug} className={`chip ${activeGenre === g.slug ? 'active' : ''}`} onClick={() => setActiveGenre(g.slug)}>
+                {g.label}
               </button>
             ))}
           </div>
           <div className="books-shelf">
-            {(filtered.length ? filtered : FEATURED).map(book => (
-              <Link to={`/book/${book.id}`} key={book.id} className="shelf-item">
+            {(filtered.length ? filtered : featured).map(book => (
+              <Link to={`/book/${book.slug}`} key={book.slug} className="shelf-item">
                 <BookCover title={book.title} author={book.author} colorClass={book.coverColor} />
                 <div className="shelf-meta">
                   <span className="shelf-genre">{book.genre}</span>
