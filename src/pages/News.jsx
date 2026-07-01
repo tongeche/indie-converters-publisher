@@ -1,178 +1,220 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchBlogs } from '../lib/api';
+import blogHero from '../assets/blog-page-hero.png';
 import './News.css';
-
-const SERIES = [
-  {
-    num: '01',
-    freq: 'Every Monday',
-    title: 'Indie Author World Roundup',
-    desc: 'New releases, small press announcements, award longlists, and what\'s worth paying attention to in independent publishing this week.',
-    accent: '#8266E0',
-  },
-  {
-    num: '02',
-    freq: 'Every Friday',
-    title: 'Weekend Book Radar',
-    desc: 'Timely books, author interviews, film and TV adaptations, and the reads we\'re personally tracking before Monday comes back around.',
-    accent: '#5BA8C4',
-  },
-  {
-    num: '03',
-    freq: 'Author Spotlight',
-    title: 'Author Corner',
-    desc: 'A deep-dive profile — one author, their career moments, what shaped their work, and what they\'re making next.',
-    accent: '#C4846A',
-  },
-  {
-    num: '04',
-    freq: 'Seasonal',
-    title: 'Awards & Lists',
-    desc: 'Longlist coverage, shortlist reactions, and the prizes that actually surface books worth reading beyond the bestseller charts.',
-    accent: '#6FC496',
-  },
-];
 
 function formatDate(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-export default function News() {
-  const [email, setEmail]       = useState('');
-  const [subState, setSubState] = useState('idle');
-  const [posts, setPosts]       = useState([]);
-  const [loading, setLoading]   = useState(true);
+function readingTime(excerpt) {
+  if (!excerpt) return null;
+  const words = excerpt.trim().split(/\s+/).length * 10;
+  return Math.max(3, Math.round(words / 200));
+}
+
+function PostCardLarge({ post }) {
+  return (
+    <Link to={`/blog/${post.slug}`} className="blist-card blist-card--large">
+      <div className="blist-card-img-wrap">
+        {post.hero_image_url
+          ? <img src={post.hero_image_url} alt={post.title} className="blist-card-img" />
+          : <div className="blist-card-img-ph" />
+        }
+        <span className="blist-card-pillar">{post.pillar}</span>
+      </div>
+      <div className="blist-card-body">
+        <h2 className="blist-card-title">{post.title}</h2>
+        {post.excerpt && <p className="blist-card-excerpt">{post.excerpt}</p>}
+        <div className="blist-card-meta">
+          <span className="blist-card-date">{formatDate(post.published_at)}</span>
+          {readingTime(post.excerpt) && (
+            <span className="blist-card-time">{readingTime(post.excerpt)} min read</span>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function PostCardSmall({ post }) {
+  return (
+    <Link to={`/blog/${post.slug}`} className="blist-card blist-card--small">
+      <div className="blist-card-img-wrap">
+        {post.hero_image_url
+          ? <img src={post.hero_image_url} alt={post.title} className="blist-card-img" />
+          : <div className="blist-card-img-ph" />
+        }
+        <span className="blist-card-pillar">{post.pillar}</span>
+      </div>
+      <div className="blist-card-body">
+        <h3 className="blist-card-title">{post.title}</h3>
+        <div className="blist-card-meta">
+          <span className="blist-card-date">{formatDate(post.published_at)}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function SidebarPost({ post }) {
+  return (
+    <Link to={`/blog/${post.slug}`} className="blist-side-post">
+      <div className="blist-side-thumb">
+        {post.hero_image_url
+          ? <img src={post.hero_image_url} alt={post.title} />
+          : <div className="blist-side-thumb-ph" />
+        }
+      </div>
+      <div className="blist-side-info">
+        <span className="blist-side-date">{formatDate(post.published_at)}</span>
+        <p className="blist-side-title">{post.title}</p>
+      </div>
+    </Link>
+  );
+}
+
+export default function Blog() {
+  const [posts, setPosts]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery]     = useState('');
 
   useEffect(() => {
-    fetchBlogs({ limit: 6 }).then(data => { setPosts(data); setLoading(false); });
+    fetchBlogs({ limit: 20 }).then(data => { setPosts(data); setLoading(false); });
   }, []);
 
-  function handleSubscribe(e) {
-    e.preventDefault();
-    if (!email) return;
-    setSubState('sent');
-  }
+  const filtered = useMemo(() => {
+    if (!query.trim()) return posts;
+    const q = query.toLowerCase();
+    return posts.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      p.pillar?.toLowerCase().includes(q) ||
+      p.excerpt?.toLowerCase().includes(q) ||
+      p.primary_keyword?.toLowerCase().includes(q)
+    );
+  }, [posts, query]);
+
+  const [featured, ...rest] = filtered;
+  const sidebar = posts.slice(0, 3);
+  const latest  = posts.slice(0, 4);
 
   return (
-    <div className="journal-page">
+    <div className="blist-page">
 
       {/* ── Hero ── */}
-      <section className="journal-hero">
-        <div className="container journal-hero-inner">
-          <div className="journal-hero-left">
-            <p className="journal-kicker">The Indie Converters</p>
-            <h1 className="journal-heading">Journal</h1>
-            <p className="journal-sub">
-              Weekly roundups, author spotlights, award coverage, and the books worth your attention — not the ones with the biggest marketing budget.
-            </p>
-            <Link to="/browse" className="btn journal-hero-btn">Browse books →</Link>
-          </div>
-
-          <div className="journal-hero-right">
-            <div className="journal-issue-badge">
-              <span className="journal-issue-label">Latest issue</span>
-              <span className="journal-issue-value">
-                {posts[0] ? formatDate(posts[0].published_at) : 'Coming soon'}
-              </span>
+      <section className="blist-hero" style={{ backgroundImage: `url(${blogHero})` }}>
+        <div className="container blist-hero-inner">
+          <p className="blist-hero-eyebrow">Blog</p>
+          <h1 className="blist-hero-heading">Stories, guides &amp; news.</h1>
+          <p className="blist-hero-sub">
+            Publishing advice, author interviews, EPUB guides and what's worth reading
+            in the world of independent books.
+          </p>
+          <div className="blist-search-row">
+            <div className="blist-search-wrap">
+              <svg className="blist-search-icon" viewBox="0 0 20 20" fill="none">
+                <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.6"/>
+                <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              </svg>
+              <input
+                type="text"
+                className="blist-search-input"
+                placeholder="Search posts…"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+              />
             </div>
+            {query && (
+              <button className="blist-search-clear" onClick={() => setQuery('')}>Clear</button>
+            )}
           </div>
         </div>
       </section>
 
-      {/* ── Latest posts ── */}
-      {(loading || posts.length > 0) && (
-        <section className="journal-posts">
-          <div className="container">
-            <p className="journal-section-label">Latest from the journal</p>
+      {/* ── Content ── */}
+      <div className="container blist-layout">
 
-            {loading ? (
-              <div className="journal-posts-grid">
-                {[1, 2].map(n => <div key={n} className="jpost-card jpost-card--skeleton" />)}
+        {/* Main feed */}
+        <main className="blist-main">
+          {loading ? (
+            <div className="blist-skeletons">
+              <div className="blist-skeleton blist-skeleton--lg" />
+              <div className="blist-skeleton-row">
+                <div className="blist-skeleton" />
+                <div className="blist-skeleton" />
               </div>
-            ) : (
-              <div className="journal-posts-grid">
-                {posts.map((post, i) => (
-                  <Link
-                    key={post.id}
-                    to={`/news/${post.slug}`}
-                    className={`jpost-card${i === 0 ? ' jpost-card--feature' : ''}`}
-                  >
-                    <div className="jpost-card-inner">
-                      <span className="jpost-pillar">{post.pillar}</span>
-                      <h2 className="jpost-title">{post.title}</h2>
-                      {post.excerpt && <p className="jpost-excerpt">{post.excerpt}</p>}
-                      <div className="jpost-footer">
-                        <span className="jpost-type">{post.type === 'news' ? 'News' : 'Blog'}</span>
-                        <span className="jpost-date">{formatDate(post.published_at)}</span>
-                      </div>
-                    </div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="blist-empty">
+              <p>No posts match "<strong>{query}</strong>".</p>
+              <button className="btn btn-primary" onClick={() => setQuery('')}>Clear search</button>
+            </div>
+          ) : (
+            <>
+              {featured && <PostCardLarge post={featured} />}
+              {rest.length > 0 && (
+                <div className="blist-grid">
+                  {rest.map(p => <PostCardSmall key={p.id} post={p} />)}
+                </div>
+              )}
+            </>
+          )}
+        </main>
+
+        {/* Sidebar */}
+        <aside className="blist-sidebar">
+          {sidebar.length > 0 && (
+            <div className="blist-side-section">
+              <p className="blist-side-label">Featured</p>
+              <div className="blist-side-list">
+                {sidebar.map(p => <SidebarPost key={p.id} post={p} />)}
+              </div>
+            </div>
+          )}
+
+          {latest.length > 0 && (
+            <div className="blist-side-section">
+              <p className="blist-side-label">Latest</p>
+              <div className="blist-side-list">
+                {latest.map(p => (
+                  <Link key={p.id} to={`/blog/${p.slug}`} className="blist-latest-row">
+                    <span className="blist-latest-date">{formatDate(p.published_at)}</span>
+                    <span className="blist-latest-title">{p.title}</span>
                   </Link>
                 ))}
               </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ── Series ── */}
-      <section className="journal-series">
-        <div className="container">
-          <p className="journal-section-label">What's inside</p>
-
-          <div className="journal-series-list">
-            {SERIES.map(s => (
-              <div key={s.num} className="journal-series-row" style={{ '--accent': s.accent }}>
-                <div className="journal-series-num">{s.num}</div>
-
-                <div className="journal-series-meta">
-                  <span className="journal-series-freq">{s.freq}</span>
-                  <h2 className="journal-series-title">{s.title}</h2>
-                </div>
-
-                <p className="journal-series-desc">{s.desc}</p>
-
-                <div className="journal-series-dot" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Subscribe ── */}
-      <section className="journal-subscribe">
-        <div className="container journal-subscribe-inner">
-          <div className="journal-subscribe-text">
-            <h2>Get it in your inbox.</h2>
-            <p>
-              Join our newsletter for a short, carefully written note about books worth reading.
-            </p>
-          </div>
-
-          {subState === 'sent' ? (
-            <div className="journal-subscribe-done">
-              <span className="journal-check">··</span>
-              You're on the list. We'll write when we're ready.
             </div>
-          ) : (
-            <form className="journal-subscribe-form" onSubmit={handleSubscribe}>
-              <input
-                type="email"
-                className="journal-email-input"
-                placeholder="your@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-              />
-              <button type="submit" className="btn btn-primary journal-subscribe-btn">
-                Notify me
-              </button>
-            </form>
           )}
-        </div>
-      </section>
+
+          <div className="blist-side-section blist-subscribe-box">
+            <p className="blist-side-label">Newsletter</p>
+            <p className="blist-subscribe-text">Get new posts in your inbox — no noise, just good reading.</p>
+            <SubscribeForm />
+          </div>
+        </aside>
+      </div>
 
     </div>
+  );
+}
+
+function SubscribeForm() {
+  const [email, setEmail] = useState('');
+  const [sent, setSent]   = useState(false);
+  if (sent) return <p className="blist-subscribe-done">You're on the list.</p>;
+  return (
+    <form className="blist-subscribe-form" onSubmit={e => { e.preventDefault(); if (email) setSent(true); }}>
+      <input
+        type="email"
+        placeholder="your@email.com"
+        value={email}
+        onChange={e => setEmail(e.target.value)}
+        className="blist-subscribe-input"
+        required
+      />
+      <button type="submit" className="btn btn-primary blist-subscribe-btn">Subscribe</button>
+    </form>
   );
 }

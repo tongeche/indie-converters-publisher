@@ -109,8 +109,8 @@ export default function Moods() {
     if (!displayed) { setPicks([]); return; }
     let cancelled = false;
     setPicksLoading(true);
-    fetchBooks({ genre: displayed.genre })
-      .then(books => {
+    fetchBooks({ genres: [displayed.genre], limit: 12 })
+      .then(({ books }) => {
         if (cancelled) return;
         setPicks(books.filter(b => b.coverUrl).slice(0, 4));
         setPicksLoading(false);

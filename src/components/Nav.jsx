@@ -1,19 +1,70 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import logoIndie from '../assets/logo-indie.png';
 import { useAuth } from '../context/AuthContext';
 import './Nav.css';
 
-const NAV_ITEMS = [
-  { to: '/browse',  label: 'Books'   },
-  { to: '/authors', label: 'Authors' },
-  { to: '/news',    label: 'Journal' },
-  { to: '/publish', label: 'Publish' },
+/* ── Inline SVG icons ── */
+const IconBooks    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>;
+const IconGrid     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>;
+const IconPen      = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
+const IconNews     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>;
+const IconHelp     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>;
+const IconBrief    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>;
+const IconUserOk   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>;
+const IconStar     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+const IconSearch   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
+const IconLearn    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>;
+const Chevron      = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" width="11" height="11" className="nav-chevron"><path d="M4 6l4 4 4-4"/></svg>;
+
+/* ── Nav config ── */
+const NAV = [
+  {
+    label: 'Collections',
+    dropdown: [
+      { to: '/browse',              label: 'Indie Books',  desc: 'Hand-picked titles from independent authors', Icon: IconBooks },
+      { to: '/browse?genre=fiction',label: 'Fiction',      desc: 'Novels, short stories and literary fiction',  Icon: IconPen   },
+      { to: '/browse?genre=nonfiction', label: 'Non-Fiction', desc: 'Guides, essays and narrative nonfiction',  Icon: IconNews  },
+      { to: '/browse',              label: 'All Books',    desc: 'Browse the full catalogue',                   Icon: IconGrid  },
+    ],
+  },
+  {
+    label: 'Community',
+    dropdown: [
+      { to: '/authors', label: 'Authors',     desc: 'Discover the indie authors behind the books', Icon: IconUserOk },
+      { to: '/blog',    label: 'Blog',        desc: 'Stories, guides and publishing advice',       Icon: IconPen    },
+      { to: '/blog',    label: 'News',        desc: "What's new in indie publishing",              Icon: IconNews   },
+      { to: '/help',    label: 'Help Center', desc: 'Quick answers and how-tos',                   Icon: IconHelp   },
+    ],
+  },
+  {
+    label: 'Hire Freelancer',
+    dropdown: [
+      { to: '/hire/post',      label: 'Post a Brief',        desc: 'Tell us what you need — we match you with the right talent', Icon: IconBrief   },
+      { to: '/hire/browse',    label: 'Browse Freelancers',  desc: 'Find ghostwriters, editors and cover designers',             Icon: IconSearch  },
+      { to: '/hire/packages',  label: 'Explore Packages',    desc: 'Fixed-price services you can book in minutes',               Icon: IconStar    },
+    ],
+    footer: { label: 'Learn how hiring works →', to: '/hire' },
+  },
+  {
+    label: 'Get Hired',
+    dropdown: [
+      { to: '/get-hired/projects', label: 'Browse Projects', desc: 'Find editing, writing and design briefs from authors',   Icon: IconSearch  },
+      { to: '/get-hired/profile',  label: 'Create Profile',  desc: 'Showcase your work and get discovered by indie authors', Icon: IconUserOk  },
+      { to: '/get-hired/services', label: 'Offer a Service', desc: 'Let authors book your skills directly',                  Icon: IconBrief   },
+    ],
+    footer: { label: 'Learn how getting hired works →', to: '/get-hired' },
+  },
+  { to: '/publish',    label: 'Publish'         },
 ];
 
 export default function Nav() {
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled,        setScrolled]        = useState(false);
+  const [menuOpen,        setMenuOpen]        = useState(false);
+  const [mobileExpanded,  setMobileExpanded]  = useState({});
+  const [openDropdown,    setOpenDropdown]    = useState(null);
+  const closeTimer = useRef(null);
+
   const location  = useLocation();
   const { user, signOut } = useAuth();
   const isHome    = location.pathname === '/';
@@ -27,9 +78,26 @@ export default function Nav() {
     return () => window.removeEventListener('scroll', handler);
   }, []);
 
-  useEffect(() => { setMenuOpen(false); }, [location]);
+  useEffect(() => { setMenuOpen(false); setMobileExpanded({}); setOpenDropdown(null); }, [location]);
 
   const transparent = isHome && !scrolled;
+
+  /* Keep dropdown open while mouse travels from trigger → panel */
+  function openMenu(label) {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpenDropdown(label);
+  }
+  function scheduleClose() {
+    closeTimer.current = setTimeout(() => setOpenDropdown(null), 180);
+  }
+
+  function toggleMobile(label) {
+    setMobileExpanded(prev => ({ ...prev, [label]: !prev[label] }));
+  }
+
+  function isDropdownActive(item) {
+    return item.dropdown?.some(sub => location.pathname.startsWith(sub.to));
+  }
 
   return (
     <nav className={`nav ${transparent ? 'nav--transparent' : 'nav--solid'}`}>
@@ -51,18 +119,84 @@ export default function Nav() {
         </button>
 
         <div className={`nav-links ${menuOpen ? 'open' : ''}`}>
-          {NAV_ITEMS.map(({ to, label }) => (
-            <Link
-              key={to}
-              to={to}
-              className={`nav-link${location.pathname.startsWith(to) ? ' nav-link--active' : ''}`}
+          {NAV.map(item => item.dropdown ? (
+            /* ── Dropdown item ── */
+            <div
+              key={item.label}
+              className={`nav-dropdown-group${openDropdown === item.label ? ' is-open' : ''}`}
+              onMouseEnter={() => openMenu(item.label)}
+              onMouseLeave={scheduleClose}
             >
-              {label}
+              {/* Desktop trigger */}
+              <button className={`nav-link nav-dropdown-trigger${isDropdownActive(item) ? ' nav-link--active' : ''}`}>
+                {item.label} <Chevron />
+              </button>
+
+              {/* Desktop dropdown panel — stays alive while hovered */}
+              <div
+                className="nav-dropdown"
+                onMouseEnter={() => openMenu(item.label)}
+                onMouseLeave={scheduleClose}
+              >
+                {item.dropdown.map(({ to, label, desc, Icon }) => (
+                  <Link key={label} to={to} className="nav-dropdown-item">
+                    <div className="nav-dropdown-icon"><Icon /></div>
+                    <div className="nav-dropdown-text">
+                      <span className="nav-dropdown-label">{label}</span>
+                      <span className="nav-dropdown-desc">{desc}</span>
+                    </div>
+                  </Link>
+                ))}
+                {item.footer && (
+                  <>
+                    <div className="nav-dropdown-sep" />
+                    <Link to={item.footer.to} className="nav-dropdown-footer">
+                      <IconLearn /> {item.footer.label}
+                    </Link>
+                  </>
+                )}
+              </div>
+
+              {/* Mobile: click-toggled inline list */}
+              <button
+                className={`nav-link nav-mobile-trigger${isDropdownActive(item) ? ' nav-link--active' : ''}`}
+                onClick={() => toggleMobile(item.label)}
+              >
+                {item.label}
+                <Chevron />
+              </button>
+              {mobileExpanded[item.label] && (
+                <div className="nav-mobile-sub">
+                  {item.dropdown.map(({ to, label }) => (
+                    <Link key={label} to={to} className="nav-link nav-mobile-sub-link">{label}</Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── Direct link ── */
+            <Link
+              key={item.to}
+              to={item.to}
+              className={`nav-link${location.pathname.startsWith(item.to) ? ' nav-link--active' : ''}`}
+            >
+              {item.label}
             </Link>
           ))}
+
           {user ? (
             <div className="nav-user-group">
               <Link to="/dashboard" className="nav-link">Dashboard</Link>
+              <Link
+                to="/saved"
+                className="nav-saved-btn"
+                title="Saved books"
+                aria-label="Saved books"
+              >
+                <svg viewBox="0 0 24 24" fill={location.pathname === '/saved' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                </svg>
+              </Link>
               <div className="nav-avatar" title={name}>{initials}</div>
               <button className="nav-signout" onClick={() => signOut()}>Sign out</button>
             </div>

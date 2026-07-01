@@ -28,8 +28,19 @@
 }
 
 .bd-cover-mockup {
+  --rx: 0deg;
+  --ry: 0deg;
+  --rx-v: 0;
+  --ry-v: 0;
+  --gx: 50%;
+  --gy: 50%;
+  --g-op: 0;
+  --sc: 1;
   position: relative;
   width: 200px;
+  transform: perspective(750px) rotateX(var(--rx)) rotateY(var(--ry)) scale(var(--sc));
+  will-change: transform;
+  cursor: default;
 }
 
 .bd-cover-img {
@@ -39,9 +50,9 @@
   border-radius: 10px;
   display: block;
   box-shadow:
-    -6px 0  12px rgba(0,0,0,0.35),
-    0   8px 16px rgba(0,0,0,0.3),
-    0  32px 80px rgba(0,0,0,0.55);
+    calc(var(--ry-v) * -3px) calc(var(--rx-v) * 2px) 60px rgba(0,0,0,0.65),
+    calc(var(--ry-v) * -1px) calc(var(--rx-v) * 1px) 20px rgba(0,0,0,0.3),
+    0 24px 80px rgba(0,0,0,0.5);
 }
 
 /* BookCover component fill */
@@ -50,9 +61,8 @@
   height: 300px !important;
   border-radius: 10px !important;
   box-shadow:
-    -6px 0  12px rgba(0,0,0,0.35),
-    0   8px 16px rgba(0,0,0,0.3),
-    0  32px 80px rgba(0,0,0,0.55) !important;
+    calc(var(--ry-v) * -3px) calc(var(--rx-v) * 2px) 60px rgba(0,0,0,0.65),
+    0 24px 80px rgba(0,0,0,0.5) !important;
 }
 
 /* Left spine edge — thin dark strip */
@@ -63,6 +73,24 @@
   background: linear-gradient(to right, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.08) 60%, transparent 100%);
   border-radius: 10px 0 0 10px;
   pointer-events: none;
+  z-index: 1;
+}
+
+/* Glare — light sweep that follows mouse */
+.bd-cover-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 3;
+  background: radial-gradient(
+    circle at var(--gx) var(--gy),
+    rgba(255,255,255,0.28) 0%,
+    transparent 62%
+  );
+  opacity: var(--g-op);
+  transition: opacity 120ms ease;
+  mix-blend-mode: overlay;
 }
 
 /* ── Info column ── */
@@ -175,50 +203,104 @@
   color: rgba(255,255,255,0.45);
 }
 
-.bd-buy-card-right {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: stretch;
+/* ── Actions: Buy + Save side by side ── */
+.bd-actions {
   flex-shrink: 0;
 }
 
+.bd-actions-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Buy button (toggles dropdown) */
+.bd-buy-wrap {
+  position: relative;
+}
+
 .bd-buy-btn {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: #ffffff;
   color: #1c1c1e;
+  border: none;
   border-radius: 100px;
-  padding: 9px 22px;
+  padding: 10px 20px;
   font-size: 0.85rem;
   font-weight: 700;
-  text-align: center;
-  text-decoration: none;
   white-space: nowrap;
-  transition: opacity 150ms ease;
+  cursor: pointer;
+  transition: opacity 150ms ease, background 150ms ease;
+  font-family: inherit;
 }
-.bd-buy-btn:hover { opacity: 0.9; }
+.bd-buy-btn:hover  { opacity: 0.9; }
+.bd-buy-btn.active { background: #f0f0f5; }
 
+.bd-chevron {
+  transition: transform 200ms ease;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.bd-chevron.open { transform: rotate(180deg); }
+
+/* Buy dropdown panel */
+.bd-buy-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 200px;
+  background: rgba(30, 30, 36, 0.96);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 6px;
+  z-index: 50;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  animation: bd-dropdown-in 140ms ease;
+}
+
+@keyframes bd-dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.bd-buy-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 9px;
+  text-decoration: none;
+  transition: background 120ms;
+}
+.bd-buy-option:hover { background: rgba(255,255,255,0.08); }
+
+.bd-buy-option-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+}
+.bd-buy-option svg { color: rgba(255,255,255,0.4); flex-shrink: 0; }
+
+/* Save button */
 .bd-save-btn {
   background: rgba(255,255,255,0.12);
   border: 1px solid rgba(255,255,255,0.18);
   border-radius: 100px;
   color: rgba(255,255,255,0.7);
-  padding: 7px 18px;
+  padding: 9px 18px;
   font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
   white-space: nowrap;
+  font-family: inherit;
 }
-.bd-save-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.bd-save-btn:hover  { background: rgba(255,255,255,0.18); color: #fff; }
 .bd-save-btn.saved  { background: rgba(167,139,250,0.2); border-color: rgba(167,139,250,0.4); color: #a78bfa; }
-
-.bd-disclaimer {
-  font-size: 0.7rem;
-  color: rgba(255,255,255,0.25);
-  line-height: 1.5;
-  max-width: 420px;
-}
 
 /* ═══ CONTENT (white section) ════════════════════════════════ */
 .bd-content {
@@ -435,7 +517,7 @@
   .bd-cover-mockup .book-cover { width: 160px !important; height: 240px !important; }
   .bd-title { font-size: 1.6rem; }
   .bd-buy-card { flex-direction: column; align-items: stretch; }
-  .bd-buy-card-right { flex-direction: row; }
+  .bd-actions-row { flex-direction: row; }
   .bd-content-inner { padding-top: 32px; }
   .bd-meta-strip { border-radius: 10px; }
   .bd-meta-cell { min-width: 100px; padding: 12px 14px; }

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
-import { fetchBooks, fetchGenres } from '../lib/api';
+import { fetchBooks, fetchBlogs } from '../lib/api';
 import mainHeroImg    from '../assets/main-hero.png';
 import browseHeroImg  from '../assets/browse-hero.png';
-import publishBannerImg from '../assets/publish CTA banner.png';
+import publishBannerImg    from '../assets/publish CTA banner.png';
+import hireFreelancerImg  from '../assets/hire-freelancer.png';
 import imgAche   from '../assets/moods/Ache.png';
 import imgDrift  from '../assets/moods/Drift.png';
 import imgHaunt  from '../assets/moods/haunt.png';
@@ -16,35 +17,22 @@ import './Landing.css';
 
 const HERO_DOTS = Array.from({ length: 56 }, (_, index) => index);
 
-const JOURNAL_CARDS = [
-  {
-    type: 'feature',
-    tag: 'Author Spotlight',
-    title: 'Writing between shifts: how one nurse wrote a debut novel on her phone',
-    excerpt: 'She wrote in parking lots, on lunch breaks, in the dark. Now her debut is shortlisted for the Debut Prize.',
-    author: 'IC Journal', time: '8 min read',
-    bg: 'linear-gradient(145deg, #1B1330 0%, #2E1180 55%, #441CB2 100%)',
-  },
-  {
-    type: 'quote',
-    quote: 'The most subversive thing a writer can do is refuse to be discovered on someone else\'s terms.',
-    attr: '— IC Journal, Vol. 1',
-  },
-  {
-    type: 'standard',
-    tag: 'Weekly Roundup',
-    title: 'The books your algorithm will never surface',
-    excerpt: 'Small presses, backlist gems, and why the best reading year of your life starts with a name you\'ve never heard.',
-    time: '5 min read',
-  },
-  {
-    type: 'standard',
-    tag: 'Publishing',
-    title: 'What your ISBN actually means — and why most authors get it wrong',
-    excerpt: 'A plain-language guide to the number on the back of every book, and what happens if you skip it.',
-    time: '4 min read',
-  },
-];
+const FEATURE_FALLBACK_BG = 'linear-gradient(145deg, #1B1330 0%, #2E1180 55%, #441CB2 100%)';
+
+function pillarLabel(pillar) {
+  if (!pillar) return 'Blog';
+  return pillar.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function truncate(str, n) {
+  if (!str) return '';
+  return str.length > n ? str.slice(0, n).trimEnd() + '…' : str;
+}
 
 function TiltCard({ children, className, style }) {
   const ref = useRef(null);
@@ -153,19 +141,22 @@ const MOODS = [
 
 export default function Landing() {
   const navigate = useNavigate();
-  const [activeGenre, setActiveGenre]   = useState('all');
-  const [allBooks, setAllBooks]         = useState([]);
-  const [genres, setGenres]             = useState([]);
+  const [allBooks, setAllBooks] = useState([]);
   const [moodActive,      setMoodActive]      = useState(null);
   const [moodDisplayed,   setMoodDisplayed]   = useState(null);
   const [moodHeadingFade, setMoodHeadingFade] = useState(false);
+  const [blogs,           setBlogs]           = useState([]);
   const heroRef = useRef(null);
   const jtRef   = useRef(null);
   const moodTimerRef = useRef(null);
 
   useEffect(() => {
-    fetchBooks().then(setAllBooks);
-    fetchGenres().then(setGenres);
+    fetchBooks({ limit: 48 }).then(({ books }) => setAllBooks(books));
+    fetchBlogs({ limit: 5 }).then(results => {
+      const feature = results.find(b => b.content_id === 'BN-001');
+      const rest    = results.filter(b => b.content_id !== 'BN-001').slice(0, 3);
+      setBlogs(feature ? [feature, ...rest] : results.slice(0, 4));
+    });
   }, []);
 
   useEffect(() => {
@@ -281,7 +272,7 @@ export default function Landing() {
     );
     cards.forEach(c => obs.observe(c));
     return () => obs.disconnect();
-  }, []);
+  }, [blogs]);
 
   const withCovers = allBooks.filter(b => b.coverUrl);
   const featured = withCovers.slice(0, 5);
@@ -335,8 +326,17 @@ export default function Landing() {
       {/* ── Featured Books ── */}
       <section className="section featured">
         <div className="container">
-          <div className="section-header">
-            <div className="eyebrow">Featured work</div>
+          <div className="section-header featured-header">
+            <div>
+              <div className="eyebrow">Featured work</div>
+              <h2>Hand-picked indie titles</h2>
+            </div>
+            <Link to="/browse" className="featured-see-all">
+              Browse all books
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+                <path d="M3 8h10M9 4l4 4-4 4" />
+              </svg>
+            </Link>
           </div>
           <div className="books-shelf">
             {featured.map(book => (
@@ -349,6 +349,9 @@ export default function Landing() {
                 </div>
               </Link>
             ))}
+          </div>
+          <div className="featured-browse-row">
+            <Link to="/browse" className="btn featured-browse-btn">View all books →</Link>
           </div>
         </div>
       </section>
@@ -394,17 +397,28 @@ export default function Landing() {
       <section className="section mood-shelf">
         <div className="container">
           <div className="mood-shelf-hero">
-            <div className="eyebrow" style={{ color: 'var(--ochre)' }}>Book Moods</div>
-            <h2 className={`mood-lheading ${moodHeadingFade ? 'mood-lheading--fade' : ''}`}>
-              {moodDisplayed ? (
-                <>Books that make you{' '}
-                  <em style={{ color: moodDisplayed.accent }}>{moodDisplayed.verb.toLowerCase()}.</em>
-                </>
-              ) : (
-                <>Find your next read<br />by <em>feeling.</em></>
-              )}
-            </h2>
-            <p className="mood-lsub">Pick a feeling. We'll point you to the right shelf.</p>
+            <div className="mood-shelf-hero-left">
+              <div className="eyebrow" style={{ color: 'var(--ochre)' }}>Book Moods</div>
+              <h2 className={`mood-lheading ${moodHeadingFade ? 'mood-lheading--fade' : ''}`}>
+                {moodDisplayed ? (
+                  <>Books that make you{' '}
+                    <em style={{ color: moodDisplayed.accent }}>{moodDisplayed.verb.toLowerCase()}.</em>
+                  </>
+                ) : (
+                  <>Find your next read<br />by <em>feeling.</em></>
+                )}
+              </h2>
+              <p className="mood-lsub">Pick a feeling. We'll point you to the right shelf.</p>
+            </div>
+            <button
+              className="btn mood-surprise-btn"
+              onClick={() => {
+                const GENRES = ['literary-fiction', 'science-fiction', 'horror', 'thriller', 'nonfiction', 'fiction'];
+                navigate(`/browse?genre=${GENRES[Math.floor(Math.random() * GENRES.length)]}`);
+              }}
+            >
+              Surprise me →
+            </button>
           </div>
           <div className="mood-shelf-grid">
             {MOODS.map(m => (
@@ -431,46 +445,6 @@ export default function Landing() {
               </Link>
             ))}
           </div>
-          <div className="mood-shelf-cta">
-            <div>
-              <h3 className="mood-shelf-cta-heading">Can't decide?</h3>
-              <p className="mood-shelf-cta-sub">Let us pick a shelf for you.</p>
-            </div>
-            <button
-              className="btn mood-shelf-cta-btn"
-              onClick={() => {
-                const GENRES = ['literary-fiction', 'science-fiction', 'horror', 'thriller', 'nonfiction', 'fiction'];
-                navigate(`/browse?genre=${GENRES[Math.floor(Math.random() * GENRES.length)]}`);
-              }}
-            >
-              Surprise me →
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Testimonials ── */}
-      <section className="section testimonials">
-        <div className="container">
-          <div className="section-header">
-            <div className="eyebrow">From our authors</div>
-            <h2>What they say</h2>
-          </div>
-          <div className="testimonials-grid">
-            {[
-              { quote: "I uploaded a Word doc on a Tuesday afternoon and had a real EPUB by the time I made dinner. I've been trying to get that out of draft2digital for two years.", author: 'Inés Calder', title: 'Author, The Long Marsh' },
-              { quote: "The cover-preview step in the wizard is lovely. It's the first time I felt like my book looked like a book before it was published.", author: 'Marcus Obi', title: 'Author, Iron Latitudes' },
-              { quote: "No contract to sign. No 90-day exclusive window. I list it here and sell it from my own site. Simple.", author: 'Claire Fenn', title: 'Author, Depth Sounding' },
-            ].map(t => (
-              <blockquote key={t.author} className="testimonial-card">
-                <p>"{t.quote}"</p>
-                <footer>
-                  <strong>{t.author}</strong>
-                  <span>{t.title}</span>
-                </footer>
-              </blockquote>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -486,54 +460,97 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Journal teaser ── */}
-      <section className="section journal-teaser">
-        <div className="container">
-          <div className="jt-header">
-            <div>
-              <div className="eyebrow">From the Journal</div>
-              <h2 className="jt-heading">Stories about stories.</h2>
-            </div>
-            <Link to="/news" className="jt-see-all">Read the journal →</Link>
+      {/* ── Hire a Freelancer ── */}
+      <section className="hire-section">
+        <div className="hire-card">
+
+          <div className="hire-content">
+            <span className="eyebrow hire-eyebrow">Hire a Freelancer</span>
+            <h2 className="hire-heading">Need help with your book?</h2>
+            <p className="hire-sub">From cover design to ghostwriting — find skilled professionals who understand indie publishing.</p>
+            <ul className="hire-services">
+              {['Ghostwriting', 'Developmental Editing', 'Cover Design', 'EPUB Formatting'].map(s => (
+                <li key={s}>
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"><path d="M3 8l3 3 7-7"/></svg>
+                  {s}
+                </li>
+              ))}
+            </ul>
+            <Link to="/hire" className="btn hire-btn">Find a Freelancer →</Link>
           </div>
-          <div className="jt-grid" ref={jtRef}>
 
-            {/* Feature card */}
-            <TiltCard className="jcard jcard--feature">
-              <div className="jcard-bg" style={{ background: JOURNAL_CARDS[0].bg }} />
-              <div className="jcard-overlay" />
-              <div className="jcard-body">
-                <span className="jcard-tag">{JOURNAL_CARDS[0].tag}</span>
-                <h3 className="jcard-title">{JOURNAL_CARDS[0].title}</h3>
-                <p className="jcard-excerpt">{JOURNAL_CARDS[0].excerpt}</p>
-                <div className="jcard-meta">
-                  <span>{JOURNAL_CARDS[0].author}</span>
-                  <span className="jcard-dot">·</span>
-                  <span>{JOURNAL_CARDS[0].time}</span>
-                </div>
-              </div>
-            </TiltCard>
+          <div className="hire-image-panel" style={{ backgroundImage: `url(${hireFreelancerImg})` }} />
 
-            {/* Quote card — spans 2 rows */}
-            <TiltCard className="jcard jcard--quote">
-              <span className="jcard-quotemark">"</span>
-              <blockquote className="jcard-quote-text">{JOURNAL_CARDS[1].quote}</blockquote>
-              <cite className="jcard-quote-attr">{JOURNAL_CARDS[1].attr}</cite>
-            </TiltCard>
-
-            {/* Standard cards */}
-            {JOURNAL_CARDS.slice(2).map(c => (
-              <TiltCard key={c.title} className="jcard jcard--std">
-                <span className="jcard-tag jcard-tag--ink">{c.tag}</span>
-                <h3 className="jcard-title jcard-title--ink">{c.title}</h3>
-                <p className="jcard-excerpt jcard-excerpt--ink">{c.excerpt}</p>
-                <span className="jcard-time">{c.time}</span>
-              </TiltCard>
-            ))}
-
-          </div>
         </div>
       </section>
+
+      {/* ── Journal teaser ── */}
+      {blogs.length > 0 && (
+        <section className="section journal-teaser">
+          <div className="container">
+            <div className="jt-header">
+              <div>
+                <div className="eyebrow">From the Blog</div>
+                <h2 className="jt-heading">Stories about stories.</h2>
+              </div>
+              <Link to="/blog" className="jt-see-all">Read the blog →</Link>
+            </div>
+            <div className="jt-grid" ref={jtRef}>
+
+              {/* Feature card — latest post */}
+              {blogs[0] && (
+                <Link to={`/blog/${blogs[0].slug}`} className="jcard-link">
+                  <TiltCard className="jcard jcard--feature">
+                    <div
+                      className="jcard-bg"
+                      style={
+                        blogs[0].hero_image_url
+                          ? { backgroundImage: `url(${blogs[0].hero_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center top' }
+                          : { background: FEATURE_FALLBACK_BG }
+                      }
+                    />
+                    <div className="jcard-overlay" />
+                    <div className="jcard-body">
+                      <span className="jcard-tag">{pillarLabel(blogs[0].pillar)}</span>
+                      <h3 className="jcard-title">{blogs[0].title}</h3>
+                      <p className="jcard-excerpt">{truncate(blogs[0].excerpt, 130)}</p>
+                      <div className="jcard-meta">
+                        <span>IC Journal</span>
+                        <span className="jcard-dot">·</span>
+                        <span>{fmtDate(blogs[0].published_at)}</span>
+                      </div>
+                    </div>
+                  </TiltCard>
+                </Link>
+              )}
+
+              {/* Quote card — second post excerpt as pull quote */}
+              {blogs[1] && (
+                <Link to={`/blog/${blogs[1].slug}`} className="jcard-link">
+                  <TiltCard className="jcard jcard--quote">
+                    <span className="jcard-quotemark">"</span>
+                    <blockquote className="jcard-quote-text">{truncate(blogs[1].excerpt, 150)}</blockquote>
+                    <cite className="jcard-quote-attr">— {blogs[1].title}</cite>
+                  </TiltCard>
+                </Link>
+              )}
+
+              {/* Standard cards — remaining posts */}
+              {blogs.slice(2).map(b => (
+                <Link to={`/blog/${b.slug}`} key={b.slug} className="jcard-link">
+                  <TiltCard className="jcard jcard--std">
+                    <span className="jcard-tag jcard-tag--ink">{pillarLabel(b.pillar)}</span>
+                    <h3 className="jcard-title jcard-title--ink">{b.title}</h3>
+                    <p className="jcard-excerpt jcard-excerpt--ink">{truncate(b.excerpt, 110)}</p>
+                    <span className="jcard-time">{fmtDate(b.published_at)}</span>
+                  </TiltCard>
+                </Link>
+              ))}
+
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

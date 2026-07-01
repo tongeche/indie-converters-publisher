@@ -43,6 +43,16 @@
   line-height: 1.65;
 }
 
+.footer-address {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-style: normal;
+  font-size: 0.78rem;
+  color: rgba(252,251,255,0.3);
+  line-height: 1.6;
+}
+
 .footer-tagline {
   display: flex;
   flex-wrap: wrap;

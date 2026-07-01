@@ -56,62 +56,140 @@ export async function upsertBuyLink(bookId, retailerSlug, url) {
 }
 
 /* ── Reader: toggle save ── */
+export async function fetchSavedBooks(userId) {
+  const { data, error } = await supabase
+    .from('reader_saves')
+    .select(`
+      created_at,
+      books!inner (
+        id, slug, title, description, cover_url, rating, formats, keywords,
+        pub_year, page_count, isbn_13, language, publisher_name,
+        books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
+        books_genres ( genres ( slug, label ) ),
+        book_retailer_links ( url, retailers ( slug, label ) )
+      )
+    `)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) { console.error('[fetchSavedBooks]', error); return []; }
+  return (data || []).map(row => normaliseBook(row.books)).filter(Boolean);
+}
+
 export async function toggleSave(bookId, userId) {
-  const { data: existing } = await supabase
+  const { data: existing, error: checkErr } = await supabase
     .from('reader_saves')
     .select('id')
     .eq('book_id', bookId)
     .eq('user_id', userId)
     .maybeSingle();
 
+  if (checkErr) {
+    console.error('[toggleSave] check error:', checkErr);
+    throw checkErr;
+  }
+
   if (existing) {
-    await supabase.from('reader_saves').delete().eq('id', existing.id);
+    const { error: delErr } = await supabase
+      .from('reader_saves').delete().eq('id', existing.id);
+    if (delErr) { console.error('[toggleSave] delete error:', delErr); throw delErr; }
     return false;
   } else {
-    await supabase.from('reader_saves').insert({ book_id: bookId, user_id: userId });
+    const { error: insErr } = await supabase
+      .from('reader_saves').insert({ book_id: bookId, user_id: userId });
+    if (insErr) { console.error('[toggleSave] insert error:', insErr); throw insErr; }
     return true;
   }
 }
 
 /* ── Reader: check if book is saved ── */
 export async function checkSaved(bookId, userId) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('reader_saves').select('id')
     .eq('book_id', bookId).eq('user_id', userId).maybeSingle();
+  if (error) console.error('[checkSaved] error:', error);
   return Boolean(data);
 }
 
-export async function fetchBooks({ genre, query, sort } = {}) {
+export async function fetchBooks({ genres = [], query, sort = 'newest', formats = [], language, limit = 24, offset = 0 } = {}) {
+  const SELECT = `
+    id, slug, title, description, cover_url, rating, formats, keywords, pub_year, price, language,
+    books_authors ( position, authors ( slug, display_name ) ),
+    books_genres ( genres ( slug, label ) )
+  `;
+
+  function buildBase() {
+    let q = supabase.from('books').select(SELECT).eq('is_published', true);
+    if (formats.length > 0) q = q.contains('formats', formats);
+    if (language)           q = q.eq('language', language);
+    if (sort === 'title')   q = q.order('title');
+    else                    q = q.order('created_at', { ascending: false });
+    return q;
+  }
+
+  // ── Text search: FTS on book metadata + parallel author name search ──
+  if (query?.trim()) {
+    const safe = query.trim();
+
+    const [ftsRes, authorRes] = await Promise.all([
+      (() => {
+        const q = safe.length >= 3
+          ? buildBase().textSearch('search_tsv', safe, { type: 'websearch', config: 'english' })
+          : buildBase().ilike('title', `%${safe}%`);
+        return q;
+      })(),
+      (async () => {
+        const { data: authors } = await supabase
+          .from('authors').select('id').ilike('display_name', `%${safe}%`);
+        if (!authors?.length) return { data: [] };
+        const { data: ba } = await supabase
+          .from('books_authors').select('book_id')
+          .in('author_id', authors.map(a => a.id));
+        if (!ba?.length) return { data: [] };
+        return buildBase().in('id', ba.map(r => r.book_id));
+      })(),
+    ]);
+
+    const seen = new Set();
+    const merged = [];
+    for (const b of [...(ftsRes.data || []), ...(authorRes.data || [])]) {
+      if (!seen.has(b.id)) { seen.add(b.id); merged.push(b); }
+    }
+
+    let books = merged.map(normaliseBook);
+    if (genres.length > 0) books = books.filter(b => genres.every(g => b.genres.includes(g)));
+
+    return { books: books.slice(offset, offset + limit), total: books.length };
+  }
+
+  // ── No text query: server-side filters + pagination ──────────────
   let q = supabase
     .from('books')
-    .select(`
-      id, slug, title, description, cover_url, rating, formats, keywords, pub_date,
-      books_authors ( position, authors ( slug, display_name ) ),
-      books_genres ( genres ( slug, label ) )
-    `)
+    .select(SELECT, { count: 'exact' })
     .eq('is_published', true);
+  if (formats.length > 0) q = q.contains('formats', formats);
+  if (language)           q = q.eq('language', language);
+  if (sort === 'title')   q = q.order('title');
+  else                    q = q.order('created_at', { ascending: false });
 
-  if (genre) {
-    const { data: genreRow } = await supabase
-      .from('genres').select('id').eq('slug', genre).single();
-    if (genreRow) {
-      const { data: bookIds } = await supabase
-        .from('books_genres').select('book_id').eq('genre_id', genreRow.id);
-      if (bookIds?.length) q = q.in('id', bookIds.map(r => r.book_id));
+  if (genres.length > 0) {
+    const { data: gr } = await supabase
+      .from('genres').select('id').eq('slug', genres[0]).maybeSingle();
+    if (gr) {
+      const { data: bids } = await supabase
+        .from('books_genres').select('book_id').eq('genre_id', gr.id);
+      if (!bids?.length) return { books: [], total: 0 };
+      q = q.in('id', bids.map(r => r.book_id));
     }
   }
 
-  if (query) {
-    q = q.or(`title.ilike.%${query}%`);
-  }
-
-  if (sort === 'title') q = q.order('title');
-  else if (sort === 'newest') q = q.order('created_at', { ascending: false });
-  else q = q.order('created_at', { ascending: false });
-
-  const { data, error } = await q;
+  q = q.range(offset, offset + limit - 1);
+  const { data, error, count } = await q;
   if (error) throw error;
-  return (data || []).map(normaliseBook);
+
+  let books = (data || []).map(normaliseBook);
+  if (genres.length > 1) books = books.filter(b => genres.every(g => b.genres.includes(g)));
+
+  return { books, total: count ?? 0 };
 }
 
 export async function fetchBook(slug) {
@@ -134,7 +212,10 @@ export async function fetchBook(slug) {
 export async function fetchAuthor(slug) {
   const { data, error } = await supabase
     .from('authors')
-    .select('id, slug, display_name, short_bio, long_bio, website_url, photo_url')
+    .select(`
+      id, slug, display_name, short_bio, long_bio, website_url, goodreads_url,
+      photo_url, bio_source, bio_source_url, bio_attribution, bio_updated_at
+    `)
     .eq('slug', slug)
     .single();
   if (error) return null;
@@ -278,7 +359,7 @@ function pickCoverColor(slug) {
 export async function fetchBlogs({ limit = 12, type = null } = {}) {
   let q = supabase
     .from('blogs')
-    .select('id, content_id, type, slug, title, pillar, excerpt, published_at, primary_keyword, secondary_keywords')
+    .select('id, content_id, type, slug, title, pillar, excerpt, hero_image_url, published_at, primary_keyword, secondary_keywords')
     .eq('status', 'published')
     .order('published_at', { ascending: false })
     .limit(limit);

@@ -51,7 +51,17 @@
   color: var(--ink-soft);
   line-height: 1.75;
 }
-.author-social { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.author-bio-source {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.author-bio-source a {
+  color: var(--clay);
+  font-weight: 600;
+}
+.author-bio-source a:hover { color: var(--clay-dark); text-decoration: underline; }
+.author-social { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .social-link {
   font-size: 0.85rem;
   color: var(--clay);

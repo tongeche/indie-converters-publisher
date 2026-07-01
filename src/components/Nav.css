@@ -113,6 +113,155 @@
 .nav--solid .nav-signout:hover { color: var(--ink); border-color: var(--ink-soft); }
 .nav-signin { margin-left: 8px; }
 
+/* ── Saved-books heart shortcut ── */
+.nav-saved-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: rgba(252,251,255,0.55);
+  text-decoration: none;
+  transition: color 150ms ease, background 150ms ease;
+}
+.nav-saved-btn:hover { color: var(--cream); background: rgba(255,255,255,0.08); }
+.nav--solid .nav-saved-btn { color: var(--ink-soft); }
+.nav--solid .nav-saved-btn:hover { color: var(--clay); background: rgba(68,28,178,0.07); }
+
+/* ── Dropdown groups ── */
+.nav-dropdown-group {
+  position: relative;
+}
+
+/* Desktop trigger (button styled as a nav-link) */
+.nav-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: inherit;
+}
+
+/* Mobile trigger — hidden on desktop, shown on mobile */
+.nav-mobile-trigger { display: none; }
+
+/* Chevron rotation when open */
+.nav-chevron {
+  flex-shrink: 0;
+  transition: transform 200ms ease;
+}
+.nav-dropdown-group.is-open .nav-dropdown-trigger .nav-chevron {
+  transform: rotate(180deg);
+}
+
+/* The floating panel */
+.nav-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(27, 19, 48, 0.14), 0 0 0 1px rgba(27, 19, 48, 0.05);
+  padding: 8px;
+  min-width: 300px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 180ms ease, transform 180ms ease, visibility 0s 180ms;
+  z-index: 200;
+}
+
+/* Show when .is-open — JS controlled so mouse can travel to panel */
+.nav-dropdown-group.is-open .nav-dropdown {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+/* Each row in the panel */
+.nav-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 120ms;
+}
+.nav-dropdown-item:hover { background: var(--cream); }
+
+/* Icon square */
+.nav-dropdown-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--sand);
+  color: var(--clay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Text block */
+.nav-dropdown-text { display: flex; flex-direction: column; gap: 2px; }
+.nav-dropdown-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.nav-dropdown-desc {
+  font-size: 0.75rem;
+  color: var(--ink-soft, #5a5270);
+  line-height: 1.4;
+}
+
+/* Separator + footer link (e.g. "Learn how hiring works →") */
+.nav-dropdown-sep {
+  height: 1px;
+  background: var(--sand);
+  margin: 6px 4px;
+}
+
+.nav-dropdown-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ink-soft, #5a5270);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: color 140ms, background 140ms;
+}
+.nav-dropdown-footer:hover {
+  color: var(--clay);
+  background: var(--cream);
+}
+
+/* ── Mobile inline expansion ── */
+.nav-mobile-sub {
+  display: flex;
+  flex-direction: column;
+  padding-left: 16px;
+  gap: 2px;
+  border-left: 2px solid var(--sand);
+  margin: 4px 0 8px 12px;
+}
+.nav-mobile-sub-link {
+  font-size: 0.85rem !important;
+  padding: 8px 10px !important;
+  color: var(--ink-soft) !important;
+}
+
 /* Burger */
 .nav-burger {
   display: none;
@@ -156,4 +305,10 @@
   .nav-link { color: var(--ink-soft); width: 100%; padding: 10px 12px; }
   .nav-link--active { color: var(--clay) !important; background: var(--parchment-dim); }
   .nav-cta { margin-left: 0; margin-top: 8px; width: 100%; justify-content: center; }
+
+  /* On mobile: hide desktop trigger + panel, show mobile trigger */
+  .nav-dropdown-trigger { display: none; }
+  .nav-dropdown          { display: none; }
+  .nav-mobile-trigger    { display: inline-flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
+  .nav-dropdown-group    { width: 100%; display: flex; flex-direction: column; }
 }

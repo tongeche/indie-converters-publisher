@@ -22,6 +22,12 @@ export default function AuthorProfile() {
   if (!author) return <Navigate to="/browse" replace />;
 
   const initials = author.display_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const bio = author.long_bio || author.short_bio;
+  const bioSourceLabel = author.bio_source || 'Bio source';
+  const authorLinks = [
+    author.website_url && { href: author.website_url, label: 'Website' },
+    author.goodreads_url && { href: author.goodreads_url, label: 'Goodreads' },
+  ].filter(Boolean);
 
   return (
     <div className="author-profile">
@@ -52,10 +58,22 @@ export default function AuthorProfile() {
       <div className="container author-body">
         <div className="author-bio-col">
           <div className="eyebrow">About</div>
-          <p className="author-bio">{author.short_bio || author.long_bio}</p>
-          {author.website_url && (
+          {bio && <p className="author-bio">{bio}</p>}
+          {(author.bio_source_url || author.bio_attribution) && (
+            <p className="author-bio-source">
+              {author.bio_source_url
+                ? <a href={author.bio_source_url} target="_blank" rel="noreferrer">{bioSourceLabel}</a>
+                : bioSourceLabel}
+              {author.bio_attribution ? ` · ${author.bio_attribution}` : ''}
+            </p>
+          )}
+          {authorLinks.length > 0 && (
             <div className="author-social">
-              <a href={author.website_url} className="social-link" target="_blank" rel="noreferrer">Website</a>
+              {authorLinks.map(link => (
+                <a key={link.href} href={link.href} className="social-link" target="_blank" rel="noreferrer">
+                  {link.label}
+                </a>
+              ))}
             </div>
           )}
         </div>

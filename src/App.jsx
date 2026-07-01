@@ -9,7 +9,7 @@ import BookDetail from './pages/BookDetail';
 import AuthorProfile from './pages/AuthorProfile';
 import Authors from './pages/Authors';
 import Moods from './pages/Moods';
-import News from './pages/News';
+import Blog from './pages/News';
 import Publish from './pages/Publish';
 import UploadWizard from './pages/UploadWizard';
 import Login from './pages/Login';
@@ -17,6 +17,11 @@ import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import EditBook from './pages/EditBook';
 import BlogPost from './pages/BlogPost';
+import Hire from './pages/Hire';
+import GetHired from './pages/GetHired';
+import HelpCenter from './pages/HelpCenter';
+import SavedBooks from './pages/SavedBooks';
+import ComingSoon from './pages/ComingSoon';
 
 export default function App() {
   return (
@@ -30,7 +35,10 @@ export default function App() {
           <Route path="/author/:id" element={<AuthorProfile />} />
           <Route path="/authors"    element={<Authors />}      />
           <Route path="/moods"      element={<Moods />}        />
-          <Route path="/news"       element={<News />}         />
+          <Route path="/blog"       element={<Blog />}         />
+          <Route path="/blog/:slug" element={<BlogPost />}     />
+          {/* legacy redirects */}
+          <Route path="/news"       element={<Blog />}         />
           <Route path="/news/:slug" element={<BlogPost />}     />
           <Route path="/publish"    element={<Publish />}      />
           <Route path="/login"      element={<Login />}        />
@@ -44,7 +52,16 @@ export default function App() {
           <Route path="/dashboard/edit/:slug" element={
             <ProtectedRoute><EditBook /></ProtectedRoute>
           } />
-          <Route path="*"           element={<Browse />}       />
+          <Route path="/saved" element={
+            <ProtectedRoute><SavedBooks /></ProtectedRoute>
+          } />
+          <Route path="/hire"                element={<Hire />}        />
+          <Route path="/hire/*"              element={<ComingSoon />}  />
+          <Route path="/get-hired"           element={<GetHired />}    />
+          <Route path="/get-hired/*"         element={<ComingSoon />}  />
+          <Route path="/help"                element={<HelpCenter />}  />
+          <Route path="/help/*"              element={<ComingSoon />}  />
+          <Route path="*"                    element={<Browse />}      />
         </Routes>
         <Footer />
       </AuthProvider>

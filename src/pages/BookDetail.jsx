@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useParams, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -18,6 +18,29 @@ function Stars({ rating }) {
   );
 }
 
+/* Extract dominant color from an <img> element via canvas */
+function extractColor(imgEl) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = 12; c.height = 18;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(imgEl, 0, 0, 12, 18);
+    const d = ctx.getImageData(0, 0, 12, 18).data;
+    let r = 0, g = 0, b = 0, n = d.length / 4;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i+1]; b += d[i+2]; }
+    return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
+  } catch {
+    return null;
+  }
+}
+
+function heroGradient(c) {
+  if (!c) return { background: 'linear-gradient(175deg,#3a3a3c 0%,#1c1c1e 100%)' };
+  const t = `rgb(${Math.round(c.r*.38)},${Math.round(c.g*.38)},${Math.round(c.b*.38)})`;
+  const b = `rgb(${Math.round(c.r*.18)},${Math.round(c.g*.18)},${Math.round(c.b*.18)})`;
+  return { background: `linear-gradient(175deg, ${t} 0%, ${b} 100%)` };
+}
+
 export default function BookDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -27,16 +50,19 @@ export default function BookDetail() {
   const [loading,     setLoading]    = useState(true);
   const [saved,       setSaved]      = useState(false);
   const [savePending, setSavePending] = useState(false);
+  const [heroColor,   setHeroColor]  = useState(null);
+  const [buyOpen,     setBuyOpen]    = useState(false);
+  const buyRef = useRef(null);
 
   useEffect(() => {
     setLoading(true);
+    setHeroColor(null);
+    setBuyOpen(false);
     fetchBook(id).then(b => {
       setBook(b);
       if (b) {
         supabase.rpc('increment_book_view', { book_slug: id });
-        if (b.genres?.length) {
-          fetchRelatedBooks(id, b.genres, b.pubYear).then(setRelated);
-        }
+        if (b.genres?.length) fetchRelatedBooks(id, b.genres, b.pubYear).then(setRelated);
       }
     }).finally(() => setLoading(false));
   }, [id]);
@@ -46,13 +72,59 @@ export default function BookDetail() {
     checkSaved(book.dbId, user.id).then(setSaved);
   }, [book?.dbId, user?.id]);
 
+  /* Close buy dropdown on outside click */
+  useEffect(() => {
+    if (!buyOpen) return;
+    function handler(e) {
+      if (buyRef.current && !buyRef.current.contains(e.target)) setBuyOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [buyOpen]);
+
+  const handleCoverLoad = useCallback((e) => {
+    const color = extractColor(e.currentTarget);
+    if (color) setHeroColor(color);
+  }, []);
+
+  function handleTiltMove(e) {
+    const el = e.currentTarget;
+    const { left, top, width, height } = el.getBoundingClientRect();
+    const x = (e.clientX - left) / width;
+    const y = (e.clientY - top) / height;
+    const ry =  (x - 0.5) * 24;
+    const rx = -(y - 0.5) * 18;
+    el.style.transition = 'transform 60ms linear, box-shadow 60ms linear';
+    el.style.setProperty('--rx',   `${rx}deg`);
+    el.style.setProperty('--ry',   `${ry}deg`);
+    el.style.setProperty('--rx-v', rx);
+    el.style.setProperty('--ry-v', ry);
+    el.style.setProperty('--gx',   `${x * 100}%`);
+    el.style.setProperty('--gy',   `${y * 100}%`);
+    el.style.setProperty('--g-op', 1);
+    el.style.setProperty('--sc',   1.04);
+  }
+
+  function handleTiltLeave(e) {
+    const el = e.currentTarget;
+    el.style.transition = 'transform 550ms cubic-bezier(0.2,0,0.2,1), box-shadow 550ms cubic-bezier(0.2,0,0.2,1)';
+    el.style.setProperty('--rx',   '0deg');
+    el.style.setProperty('--ry',   '0deg');
+    el.style.setProperty('--rx-v', 0);
+    el.style.setProperty('--ry-v', 0);
+    el.style.setProperty('--g-op', 0);
+    el.style.setProperty('--sc',   1);
+  }
+
   async function handleSave() {
-    if (!user) { navigate('/login'); return; }
+    if (!user) { navigate('/login', { state: { from: `/book/${book.id}` } }); return; }
     if (savePending) return;
     setSavePending(true);
     try {
       const newState = await toggleSave(book.dbId, user.id);
       setSaved(newState);
+    } catch (err) {
+      console.error('[handleSave] failed:', err?.message ?? err);
     } finally {
       setSavePending(false);
     }
@@ -75,22 +147,36 @@ export default function BookDetail() {
     g.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   ).join(' · ') || book.genre;
 
+  const buyLinks = book.buyLinks?.length > 0
+    ? book.buyLinks
+    : book.buyLink ? [{ label: 'Get book', url: book.buyLink }] : [];
+
   return (
     <div className="bd-page">
 
       {/* ═══════════════ HERO ═══════════════ */}
-      <section className="bd-hero">
+      <section className="bd-hero" style={heroGradient(heroColor)}>
         <div className="container bd-hero-inner">
 
-          {/* Cover — 3-D mockup */}
+          {/* Cover */}
           <div className="bd-cover-wrap">
-            <div className="bd-cover-mockup">
+            <div
+              className="bd-cover-mockup"
+              onMouseMove={handleTiltMove}
+              onMouseLeave={handleTiltLeave}
+            >
               {book.coverUrl
-                ? <img src={book.coverUrl} alt={book.title} className="bd-cover-img" />
+                ? <img
+                    src={book.coverUrl}
+                    alt={book.title}
+                    className="bd-cover-img"
+                    crossOrigin="anonymous"
+                    onLoad={handleCoverLoad}
+                  />
                 : <BookCover title={book.title} author={book.author} colorClass={book.coverColor} size="lg" />
               }
-              {/* spine edge */}
               <div className="bd-cover-spine" />
+              <div className="bd-cover-glare" />
             </div>
           </div>
 
@@ -126,7 +212,7 @@ export default function BookDetail() {
               </div>
             )}
 
-            {/* Buy card — Apple Books style */}
+            {/* Buy card */}
             <div className="bd-buy-card">
               <div className="bd-buy-card-left">
                 <span className="bd-buy-type">Book</span>
@@ -134,37 +220,53 @@ export default function BookDetail() {
                   <span className="bd-buy-meta">{metaPills.join(' · ')}</span>
                 )}
               </div>
-              <div className="bd-buy-card-right">
-                {book.buyLinks && book.buyLinks.length > 0 ? (
-                  book.buyLinks.slice(0, 2).map(link => (
-                    <a
-                      key={link.slug}
-                      href={link.url}
-                      className="bd-buy-btn"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {book.price ? `$${book.price}` : link.label}
-                    </a>
-                  ))
-                ) : (
-                  <a href={book.buyLink} className="bd-buy-btn" target="_blank" rel="noreferrer">
-                    {book.price ? `$${book.price}` : 'Get book'}
-                  </a>
-                )}
-                <button
-                  className={`bd-save-btn ${saved ? 'saved' : ''}`}
-                  onClick={handleSave}
-                  disabled={savePending}
-                >
-                  {saved ? '♥ Saved' : '♡ Save'}
-                </button>
+
+              {/* Actions row */}
+              <div className="bd-actions" ref={buyRef}>
+                <div className="bd-actions-row">
+                  {/* Buy button */}
+                  {buyLinks.length > 0 && (
+                    <div className="bd-buy-wrap">
+                      <button
+                        className={`bd-buy-btn${buyOpen ? ' active' : ''}`}
+                        onClick={() => setBuyOpen(o => !o)}
+                      >
+                        {book.price ? `Buy · $${book.price}` : 'Buy'}
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12" className={`bd-chevron${buyOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
+                      </button>
+
+                      {/* Dropdown */}
+                      {buyOpen && (
+                        <div className="bd-buy-dropdown">
+                          {buyLinks.map(link => (
+                            <a
+                              key={link.slug ?? link.label}
+                              href={link.url}
+                              className="bd-buy-option"
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={() => setBuyOpen(false)}
+                            >
+                              <span className="bd-buy-option-label">{link.label}</span>
+                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Save button */}
+                  <button
+                    className={`bd-save-btn ${saved ? 'saved' : ''}`}
+                    onClick={handleSave}
+                    disabled={savePending}
+                  >
+                    {saved ? '♥ Saved' : '♡ Save'}
+                  </button>
+                </div>
               </div>
             </div>
-
-            <p className="bd-disclaimer">
-              Indie Converters doesn't sell books directly. Links go to where you can buy this title.
-            </p>
           </div>
         </div>
       </section>
@@ -173,7 +275,6 @@ export default function BookDetail() {
       <div className="bd-content">
         <div className="container bd-content-inner">
 
-          {/* From the Publisher */}
           {book.blurb && (
             <section className="bd-publisher">
               <h2 className="bd-section-title">From the Publisher</h2>
@@ -183,15 +284,14 @@ export default function BookDetail() {
             </section>
           )}
 
-          {/* Metadata strip */}
           {metaPills.length > 0 && (
             <div className="bd-meta-strip">
               {[
-                book.language    && { label: 'Language',  value: book.language  },
-                book.pubYear     && { label: 'Published', value: book.pubYear   },
-                book.pageCount   && { label: 'Pages',     value: book.pageCount.toLocaleString() },
-                book.publisher   && { label: 'Publisher', value: book.publisher },
-                book.isbn        && { label: 'ISBN-13',   value: book.isbn      },
+                book.language  && { label: 'Language',  value: book.language  },
+                book.pubYear   && { label: 'Published', value: book.pubYear   },
+                book.pageCount && { label: 'Pages',     value: book.pageCount.toLocaleString() },
+                book.publisher && { label: 'Publisher', value: book.publisher },
+                book.isbn      && { label: 'ISBN-13',   value: book.isbn      },
               ].filter(Boolean).map(({ label, value }) => (
                 <div key={label} className="bd-meta-cell">
                   <span className="bd-meta-label">{label}</span>
@@ -201,7 +301,6 @@ export default function BookDetail() {
             </div>
           )}
 
-          {/* Subject tags */}
           {book.keywords?.length > 0 && (
             <section className="bd-subjects">
               <h2 className="bd-section-title">Subjects</h2>
@@ -216,7 +315,6 @@ export default function BookDetail() {
           )}
         </div>
 
-        {/* Related books — genre + year similarity */}
         {related.length > 0 && (
           <section className="bd-more">
             <div className="container">
@@ -225,11 +323,7 @@ export default function BookDetail() {
                 {book.genres?.length > 0 && (
                   <div className="bd-more-genre-tags">
                     {book.genres.slice(0, 3).map(g => (
-                      <Link
-                        key={g}
-                        to={`/browse?genre=${g}`}
-                        className="bd-more-genre-chip"
-                      >
+                      <Link key={g} to={`/browse?genre=${g}`} className="bd-more-genre-chip">
                         {g.replace(/-/g, ' ')}
                       </Link>
                     ))}
