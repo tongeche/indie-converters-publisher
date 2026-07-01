@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { fetchBlogs } from '../lib/api';
 import './News.css';
 
 const SERIES = [
@@ -33,9 +34,20 @@ const SERIES = [
   },
 ];
 
+function formatDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export default function News() {
-  const [email, setEmail]     = useState('');
-  const [subState, setSubState] = useState('idle'); // idle | sent
+  const [email, setEmail]       = useState('');
+  const [subState, setSubState] = useState('idle');
+  const [posts, setPosts]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    fetchBlogs({ limit: 6 }).then(data => { setPosts(data); setLoading(false); });
+  }, []);
 
   function handleSubscribe(e) {
     e.preventDefault();
@@ -60,12 +72,49 @@ export default function News() {
 
           <div className="journal-hero-right">
             <div className="journal-issue-badge">
-              <span className="journal-issue-label">First issue</span>
-              <span className="journal-issue-value">Coming soon</span>
+              <span className="journal-issue-label">Latest issue</span>
+              <span className="journal-issue-value">
+                {posts[0] ? formatDate(posts[0].published_at) : 'Coming soon'}
+              </span>
             </div>
           </div>
         </div>
       </section>
+
+      {/* ── Latest posts ── */}
+      {(loading || posts.length > 0) && (
+        <section className="journal-posts">
+          <div className="container">
+            <p className="journal-section-label">Latest from the journal</p>
+
+            {loading ? (
+              <div className="journal-posts-grid">
+                {[1, 2].map(n => <div key={n} className="jpost-card jpost-card--skeleton" />)}
+              </div>
+            ) : (
+              <div className="journal-posts-grid">
+                {posts.map((post, i) => (
+                  <Link
+                    key={post.id}
+                    to={`/news/${post.slug}`}
+                    className={`jpost-card${i === 0 ? ' jpost-card--feature' : ''}`}
+                  >
+                    <div className="jpost-card-inner">
+                      <span className="jpost-pillar">{post.pillar}</span>
+                      <h2 className="jpost-title">{post.title}</h2>
+                      {post.excerpt && <p className="jpost-excerpt">{post.excerpt}</p>}
+                      <div className="jpost-footer">
+                        <span className="jpost-type">{post.type === 'news' ? 'News' : 'Blog'}</span>
+                        <span className="jpost-date">{formatDate(post.published_at)}</span>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── Series ── */}
       <section className="journal-series">
@@ -73,7 +122,7 @@ export default function News() {
           <p className="journal-section-label">What's inside</p>
 
           <div className="journal-series-list">
-            {SERIES.map((s, i) => (
+            {SERIES.map(s => (
               <div key={s.num} className="journal-series-row" style={{ '--accent': s.accent }}>
                 <div className="journal-series-num">{s.num}</div>
 

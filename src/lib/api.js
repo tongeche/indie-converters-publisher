@@ -273,3 +273,29 @@ function pickCoverColor(slug) {
   const hash = Array.from(slug || '').reduce((a, c) => a + c.charCodeAt(0), 0);
   return COVER_CYCLE[hash % COVER_CYCLE.length];
 }
+
+/* ── Blogs ── */
+export async function fetchBlogs({ limit = 12, type = null } = {}) {
+  let q = supabase
+    .from('blogs')
+    .select('id, content_id, type, slug, title, pillar, excerpt, published_at, primary_keyword, secondary_keywords')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false })
+    .limit(limit);
+  if (type) q = q.eq('type', type);
+  const { data, error } = await q;
+  if (error) return [];
+  return data;
+}
+
+export async function fetchBlogBySlug(slug) {
+  const { data, error } = await supabase
+    .from('blogs')
+    .select('*')
+    .eq('slug', slug)
+    .eq('status', 'published')
+    .single();
+  if (error) return null;
+  supabase.rpc('increment_blog_view', { blog_slug: slug });
+  return data;
+}

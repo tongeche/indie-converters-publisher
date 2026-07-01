@@ -16,6 +16,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import EditBook from './pages/EditBook';
+import BlogPost from './pages/BlogPost';
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/authors"    element={<Authors />}      />
           <Route path="/moods"      element={<Moods />}        />
           <Route path="/news"       element={<News />}         />
+          <Route path="/news/:slug" element={<BlogPost />}     />
           <Route path="/publish"    element={<Publish />}      />
           <Route path="/login"      element={<Login />}        />
           <Route path="/signup"     element={<Signup />}       />
