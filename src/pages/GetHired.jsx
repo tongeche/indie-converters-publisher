@@ -175,21 +175,6 @@ export default function GetHired() {
         </div>
       </section>
 
-      {/* ── CTA banner ── */}
-      <section className="gh-cta">
-        <div className="container gh-cta-inner">
-          <h2 className="gh-cta-h2">
-            Ready to work on books you <em>actually care about</em>?
-          </h2>
-          <div className="gh-cta-actions">
-            <Link to="/get-hired/profile" className="btn btn-ghost">Create Profile</Link>
-            <Link to="/get-hired/services" className="btn" style={{ background: '#fff', color: 'var(--clay)', fontWeight: 700 }}>
-              Offer a Service
-            </Link>
-          </div>
-        </div>
-      </section>
-
     </div>
   );
 }

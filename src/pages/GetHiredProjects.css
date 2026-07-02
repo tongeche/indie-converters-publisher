@@ -1,0 +1,45 @@
+/* ══════════════════════════════════════
+   GET HIRED — OPEN PROJECTS
+   (reuses .gh-project-* card styles from GetHired.css)
+   ══════════════════════════════════════ */
+
+.gh-projects-header {
+  padding: 140px 0 24px;
+}
+
+.gh-project-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+.gh-project-filter-chip {
+  padding: 8px 16px;
+  border: 1.5px solid var(--sand);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms, color 150ms, background 150ms;
+}
+
+.gh-project-filter-chip:hover { border-color: var(--ochre); }
+
+.gh-project-filter-chip.is-active {
+  border-color: var(--clay);
+  background: var(--sand);
+  color: var(--clay);
+}
+
+.gh-projects-empty {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  padding: 40px 0 96px;
+}
+
+.gh-projects-grid {
+  padding-bottom: 96px;
+}

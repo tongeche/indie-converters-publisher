@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import mammoth from 'mammoth/mammoth.browser';
-import BookCover from '../components/BookCover';
+import { validateManuscript, analyseHtml, analyseTxt } from '../lib/manuscriptValidator';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import './UploadWizard.css';
@@ -108,6 +108,34 @@ const AUDIENCES = [
   { value: 'children',    label: 'Children',     sub: 'Under 8' },
 ];
 const FORMATS = ['eBook','Paperback','Hardcover','Audiobook'];
+
+const COVER_PALETTES = [
+  { id: 'violet', name: 'Indie Violet', bg: '#4C20C7', bg2: '#8E69E8', ink: '#F9F5FF', muted: '#D9CBFF', accent: '#E6C65A', soft: '#1A0E3F' },
+  { id: 'ink', name: 'Literary Ink', bg: '#151121', bg2: '#33284C', ink: '#FFF8EA', muted: '#C9BDD6', accent: '#B88C3D', soft: '#070510' },
+  { id: 'sage', name: 'Quiet Sage', bg: '#213D36', bg2: '#CBD8BE', ink: '#FFF9EC', muted: '#DDE5D2', accent: '#E2B866', soft: '#152820' },
+  { id: 'press', name: 'Warm Press', bg: '#7A3C32', bg2: '#E5B169', ink: '#FFF8EA', muted: '#F4DABE', accent: '#281815', soft: '#4D251E' },
+  { id: 'blue', name: 'Deep Blue', bg: '#0D2D4D', bg2: '#49A6B2', ink: '#F5FBFF', muted: '#CBE7EE', accent: '#E9C25F', soft: '#07192C' },
+];
+
+const COVER_TEMPLATES = [
+  { id: 'editorial', name: 'Editorial', short: 'Ed', note: 'Serif frame', sample: 'Fiction / Memoir' },
+  { id: 'bold', name: 'Bold Type', short: 'Bt', note: 'Big title', sample: 'Nonfiction / Business' },
+  { id: 'divider', name: 'Split Field', short: 'Sf', note: 'Two-tone', sample: 'Essays / Guides' },
+  { id: 'archive', name: 'Archive', short: 'Ar', note: 'Formal linework', sample: 'History / Research' },
+  { id: 'window', name: 'Soft Window', short: 'Sw', note: 'Image-friendly', sample: 'Romance / Poetry' },
+];
+
+const COVER_ART_PLACEMENTS = [
+  { id: 'window', label: 'Window' },
+  { id: 'band', label: 'Band' },
+  { id: 'full', label: 'Full bleed' },
+];
+
+const COVER_DEVICE_PREVIEWS = [
+  { id: 'desktop', label: 'Desktop' },
+  { id: 'tablet', label: 'Tablet' },
+  { id: 'phone', label: 'Phone' },
+];
 
 const GENRE_KEYWORDS = {
   fiction:          ['coming-of-age', 'family saga', 'identity', 'loss', 'redemption', 'diaspora', 'debut novel', 'contemporary', 'character-driven'],
@@ -231,6 +259,256 @@ function formatTimeAgo(ts) {
   return `${Math.round(hrs / 24)} day${Math.round(hrs / 24) > 1 ? 's' : ''} ago`;
 }
 
+function coverPalette(id) {
+  return COVER_PALETTES.find(p => p.id === id) || COVER_PALETTES[0];
+}
+
+function coverTemplate(id) {
+  return COVER_TEMPLATES.find(t => t.id === id) || COVER_TEMPLATES[0];
+}
+
+function escapeXml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function wrapSvgText(value, maxChars, maxLines) {
+  const words = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const lines = [];
+  let line = '';
+
+  words.forEach(word => {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length <= maxChars) {
+      line = next;
+      return;
+    }
+    if (line) lines.push(line);
+    line = word;
+  });
+
+  if (line) lines.push(line);
+  if (lines.length <= maxLines) return lines;
+  const trimmed = lines.slice(0, maxLines);
+  trimmed[maxLines - 1] = `${trimmed[maxLines - 1].replace(/\s+\S+$/, '') || trimmed[maxLines - 1]}...`;
+  return trimmed;
+}
+
+function svgTextBlock(lines, x, y, options = {}) {
+  const {
+    fill = '#ffffff',
+    size = 120,
+    weight = 700,
+    family = 'Georgia, serif',
+    lineHeight = 1.1,
+    anchor = 'start',
+    letterSpacing = 0,
+    transform = '',
+  } = options;
+
+  return lines.map((line, i) => (
+    `<text x="${x}" y="${y + (i * size * lineHeight)}" fill="${fill}" font-size="${size}" font-weight="${weight}" font-family="${family}" text-anchor="${anchor}" letter-spacing="${letterSpacing}"${transform ? ` transform="${transform}"` : ''}>${escapeXml(line)}</text>`
+  )).join('');
+}
+
+function svgArtLayer(artDataUrl, placement = 'window', palette) {
+  if (!artDataUrl) return '';
+  const href = escapeXml(artDataUrl);
+
+  if (placement === 'full') {
+    return `
+      <image href="${href}" x="0" y="0" width="1600" height="2560" preserveAspectRatio="xMidYMid slice" opacity="0.58" />
+      <rect width="1600" height="2560" fill="${palette.bg}" opacity="0.42" />
+      <rect width="1600" height="2560" fill="url(#softGlow)" opacity="0.45" />
+    `;
+  }
+
+  if (placement === 'band') {
+    return `
+      <image href="${href}" x="0" y="0" width="1600" height="900" preserveAspectRatio="xMidYMid slice" opacity="0.9" />
+      <rect x="0" y="0" width="1600" height="900" fill="${palette.soft}" opacity="0.28" />
+      <rect x="0" y="860" width="1600" height="120" fill="${palette.bg}" opacity="0.78" />
+    `;
+  }
+
+  return `
+    <image href="${href}" x="680" y="330" width="760" height="1020" preserveAspectRatio="xMidYMid slice" opacity="0.92" />
+    <rect x="680" y="330" width="760" height="1020" fill="${palette.soft}" opacity="0.18" />
+    <rect x="680" y="330" width="760" height="1020" fill="none" stroke="${palette.ink}" stroke-width="4" opacity="0.26" />
+  `;
+}
+
+function buildTemplateCoverSvg({ title, subtitle, author, genreLabel, templateId, paletteId, artDataUrl, artPlacement }) {
+  const palette = coverPalette(paletteId);
+  const template = coverTemplate(templateId);
+  const safeTitle = title?.trim() || 'Your Book Title';
+  const safeAuthor = (author?.trim() || 'Author Name').toUpperCase();
+  const kicker = (genreLabel || template.sample || 'Indie Book').toUpperCase();
+  const titleLines = wrapSvgText(safeTitle, template.id === 'bold' ? 11 : 15, template.id === 'bold' ? 5 : 4);
+  const subtitleLines = wrapSvgText(subtitle || '', 26, 2);
+  const titleSize = template.id === 'bold' ? 210 : 150;
+  const titleY = template.id === 'bold' ? 760 : 1330;
+  const titleBlock = svgTextBlock(titleLines, 170, titleY, {
+    fill: palette.ink,
+    size: titleSize,
+    weight: 800,
+    family: 'Georgia, serif',
+    lineHeight: template.id === 'bold' ? 0.92 : 1.02,
+  });
+  const subtitleBlock = subtitleLines.length
+    ? svgTextBlock(subtitleLines, 170, titleY + (titleLines.length * titleSize * (template.id === 'bold' ? 0.92 : 1.02)) + 96, {
+        fill: palette.muted,
+        size: 62,
+        weight: 400,
+        family: 'Arial, sans-serif',
+        lineHeight: 1.25,
+      })
+    : '';
+  const authorText = `<text x="170" y="2320" fill="${palette.ink}" font-size="54" font-weight="700" font-family="Arial, sans-serif" letter-spacing="12">${escapeXml(safeAuthor)}</text>`;
+  const kickerText = `<text x="170" y="330" fill="${palette.accent}" font-size="42" font-weight="700" font-family="Arial, sans-serif" letter-spacing="10">${escapeXml(kicker)}</text>`;
+
+  const defs = `
+    <defs>
+      <linearGradient id="coverBg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="${palette.bg}" />
+        <stop offset="100%" stop-color="${palette.bg2}" />
+      </linearGradient>
+      <radialGradient id="softGlow" cx="72%" cy="32%" r="62%">
+        <stop offset="0%" stop-color="${palette.bg2}" stop-opacity="0.95" />
+        <stop offset="100%" stop-color="${palette.bg}" stop-opacity="0" />
+      </radialGradient>
+    </defs>`;
+
+  const common = `
+    <rect width="1600" height="2560" fill="url(#coverBg)" />
+    <rect x="0" y="0" width="90" height="2560" fill="${palette.soft}" opacity="0.45" />
+    <circle cx="1250" cy="520" r="620" fill="url(#softGlow)" opacity="0.55" />
+    ${svgArtLayer(artDataUrl, artPlacement, palette)}
+  `;
+
+  if (template.id === 'bold') {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2560" viewBox="0 0 1600 2560">${defs}
+      ${common}
+      <path d="M90 380 L1600 120 L1600 0 L90 0 Z" fill="${palette.soft}" opacity="0.42" />
+      <rect x="170" y="440" width="1180" height="18" fill="${palette.accent}" />
+      ${kickerText}
+      ${titleBlock}
+      ${subtitleBlock}
+      <rect x="170" y="2200" width="900" height="3" fill="${palette.ink}" opacity="0.45" />
+      ${authorText}
+    </svg>`;
+  }
+
+  if (template.id === 'divider') {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2560" viewBox="0 0 1600 2560">${defs}
+      <rect width="1600" height="1390" fill="${palette.bg}" />
+      <rect y="1390" width="1600" height="1170" fill="${palette.bg2}" />
+      <rect x="0" y="0" width="90" height="2560" fill="${palette.soft}" opacity="0.45" />
+      ${svgArtLayer(artDataUrl, artPlacement, palette)}
+      <rect x="170" y="300" width="180" height="8" fill="${palette.accent}" />
+      ${kickerText}
+      ${titleBlock}
+      ${subtitleBlock}
+      <rect x="170" y="2200" width="900" height="3" fill="${palette.ink}" opacity="0.45" />
+      ${authorText}
+    </svg>`;
+  }
+
+  if (template.id === 'archive') {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2560" viewBox="0 0 1600 2560">${defs}
+      ${common}
+      <rect x="170" y="250" width="1180" height="2060" rx="8" fill="none" stroke="${palette.ink}" stroke-width="5" opacity="0.42" />
+      <rect x="270" y="350" width="980" height="1860" rx="6" fill="none" stroke="${palette.ink}" stroke-width="2" opacity="0.22" />
+      <circle cx="760" cy="630" r="110" fill="none" stroke="${palette.accent}" stroke-width="8" opacity="0.78" />
+      <text x="760" y="650" fill="${palette.accent}" font-size="58" font-weight="800" font-family="Arial, sans-serif" text-anchor="middle">.in</text>
+      <text x="170" y="1030" fill="${palette.accent}" font-size="42" font-weight="700" font-family="Arial, sans-serif" letter-spacing="10">${escapeXml(kicker)}</text>
+      ${svgTextBlock(titleLines, 170, 1240, { fill: palette.ink, size: 150, weight: 800, family: 'Georgia, serif', lineHeight: 1.02 })}
+      ${subtitleBlock}
+      <rect x="170" y="2200" width="900" height="3" fill="${palette.ink}" opacity="0.45" />
+      ${authorText}
+    </svg>`;
+  }
+
+  if (template.id === 'window') {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2560" viewBox="0 0 1600 2560">${defs}
+      ${common}
+      <path d="M575 375 C920 210 1295 430 1390 790 C1525 1305 1085 1570 1290 2160 L375 2160 C210 1640 380 1290 255 920 C160 640 315 500 575 375 Z" fill="${palette.ink}" opacity="0.12" />
+      <circle cx="1280" cy="430" r="16" fill="${palette.accent}" opacity="0.9" />
+      <circle cx="1350" cy="430" r="16" fill="${palette.accent}" opacity="0.55" />
+      <circle cx="1420" cy="430" r="16" fill="${palette.accent}" opacity="0.35" />
+      ${kickerText}
+      ${titleBlock}
+      ${subtitleBlock}
+      <rect x="170" y="2200" width="900" height="3" fill="${palette.ink}" opacity="0.45" />
+      ${authorText}
+    </svg>`;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2560" viewBox="0 0 1600 2560">${defs}
+    ${common}
+    <rect x="170" y="280" width="1180" height="1980" rx="6" fill="none" stroke="${palette.ink}" stroke-width="5" opacity="0.34" />
+    <text x="1300" y="340" fill="${palette.accent}" font-size="54" font-weight="800" font-family="Arial, sans-serif" text-anchor="middle">.in</text>
+    ${kickerText}
+    ${titleBlock}
+    ${subtitleBlock}
+    <rect x="170" y="2200" width="900" height="3" fill="${palette.ink}" opacity="0.45" />
+    ${authorText}
+  </svg>`;
+}
+
+function CoverTemplatePreview({ title, subtitle, author, genreLabel, templateId, paletteId, artPreview, artPlacement, small = false }) {
+  const palette = coverPalette(paletteId);
+  const template = coverTemplate(templateId);
+  const displayTitle = title?.trim() || 'Your Book Title';
+  const displayAuthor = author?.trim() || 'Author Name';
+
+  return (
+    <div
+      className={`wz-template-cover wz-template-cover--${template.id} ${artPreview ? 'wz-template-cover--has-art' : ''} ${artPreview ? `wz-template-cover--art-${artPlacement || 'window'}` : ''} ${small ? 'wz-template-cover--small' : ''}`}
+      style={{
+        '--cover-bg': palette.bg,
+        '--cover-bg2': palette.bg2,
+        '--cover-ink': palette.ink,
+        '--cover-muted': palette.muted,
+        '--cover-accent': palette.accent,
+        '--cover-soft': palette.soft,
+      }}
+    >
+      {artPreview && <span className="wz-template-art" style={{ backgroundImage: `url(${artPreview})` }} />}
+      <span className="wz-template-mark">.in</span>
+      <span className="wz-template-kicker">{genreLabel || template.sample}</span>
+      <h3>{displayTitle}</h3>
+      {subtitle?.trim() && <p className="wz-template-subtitle">{subtitle}</p>}
+      <span className="wz-template-rule" />
+      <span className="wz-template-author">{displayAuthor}</span>
+    </div>
+  );
+}
+
+function CoverPreviewArt({ coverPreview, title, subtitle, author, genreLabel, templateId, paletteId, artPreview, artPlacement }) {
+  if (coverPreview) {
+    return <img src={coverPreview} alt="Cover" className="wz-cover-preview-img" />;
+  }
+
+  return (
+    <CoverTemplatePreview
+      title={title || 'Your Book Title'}
+      subtitle={subtitle}
+      author={author}
+      genreLabel={genreLabel}
+      templateId={templateId}
+      paletteId={paletteId}
+      artPreview={artPreview}
+      artPlacement={artPlacement}
+    />
+  );
+}
+
 function buildTocEntries(headings, fmPageOffset = 2) {
   let cumulativeWords = 0;
   return headings
@@ -297,8 +575,10 @@ export default function UploadWizard() {
   const [msPage,       setMsPage]       = useState(0);
   const [msSpread,     setMsSpread]     = useState(false);
   const [msLoading,    setMsLoading]    = useState(false);
+  const [coverPreviewDevice, setCoverPreviewDevice] = useState('desktop');
   const fileRef  = useRef(null);
   const coverRef = useRef(null);
+  const coverArtRef = useRef(null);
 
   // Restore saved progress from localStorage on first load
   const [savedProgress, setSavedProgress] = useState(() => {
@@ -327,6 +607,8 @@ export default function UploadWizard() {
     manuscriptFile: null, manuscriptPath: '', formats: ['eBook'],
     pTheme: 'light', pFont: 'fraunces', pSize: 'md', pSpacing: 'normal',
     coverFile: null, coverPreview: '', coverColor: 'cover-clay',
+    coverMode: 'template', coverTemplate: 'editorial', coverPalette: 'violet',
+    coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '', coverArtPlacement: 'window',
     price: '', isFree: false, buyUrl: '', buyPlatform: 'own',
     bookStyle: 'romance',
     distributionChannels: ['amazon', 'apple', 'bn', 'kobo', 'google-play', 'scribd'],
@@ -370,121 +652,6 @@ export default function UploadWizard() {
   }
 
   // ── Layout analysis ───────────────────────────────────────────
-  function validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize }) {
-    const issues = [];
-    const est = Math.max(1, Math.round(wordCount / 250));
-
-    if (fileSize > 50 * 1024 * 1024) {
-      issues.push({ type: 'file-too-large', severity: 'error',
-        message: `File is ${(fileSize / 1024 / 1024).toFixed(0)} MB — publishers cap manuscripts at 50 MB. Remove embedded images or reduce their resolution in Word before re-uploading.` });
-    }
-    if (wordCount > 0 && wordCount < 300) {
-      issues.push({ type: 'critically-short', severity: 'error',
-        message: `Only ${wordCount.toLocaleString()} words detected — far too short for any publishing platform. Verify you uploaded the correct file. Most platforms require a minimum of 2,500 words.` });
-    } else if (wordCount >= 300 && wordCount < 1000) {
-      issues.push({ type: 'very-short', severity: 'warning',
-        message: `${wordCount.toLocaleString()} words (~${est} pages). Amazon KDP has removed titles under 2,500 words. This may be fine for poetry or micro-essays, but expect restrictions on most retailers.` });
-    } else if (wordCount >= 1000 && wordCount < 2500) {
-      issues.push({ type: 'short-content', severity: 'info',
-        message: `${wordCount.toLocaleString()} words (~${est} pages). Under 2,500 words is "short content" on KDP and Draft2Digital — valid for novellas and short stories, but distribution to some retailers may be limited.` });
-    }
-    if (wordCount > 200000) {
-      issues.push({ type: 'very-long', severity: 'info',
-        message: `${wordCount.toLocaleString()} words (~${est} pages). KDP's print limit is 828 pages for a 5×8" book. Consider splitting into volumes if your page count approaches that limit.` });
-    }
-    if (headings.length === 0) {
-      issues.push({ type: 'no-headings', severity: 'error',
-        message: 'No chapter headings found — your EPUB will have no Table of Contents, which fails EPUBCheck and is rejected by KDP, Draft2Digital, Apple Books, and Kobo. Fix: In Word → select each chapter title → Home → Styles → "Heading 1". In Google Docs → Format → Paragraph styles → "Heading 1".' });
-    } else if (headings.length === 1) {
-      issues.push({ type: 'single-heading', severity: 'warning',
-        message: 'Only one heading found — readers cannot jump between chapters and your TOC will have a single entry. Apply "Heading 1" to each chapter title in your word processor.' });
-    }
-    if (headings.length > 0 && headings[0].level > 1) {
-      issues.push({ type: 'wrong-heading-start', severity: 'warning',
-        message: `Document starts with a Heading ${headings[0].level} — most EPUB converters expect the top level to be Heading 1. Change your chapter title style to "Heading 1" in Word or Google Docs.` });
-    }
-    if (headings.length > 0) {
-      const allCaps = headings.filter(h => h.text.length > 3 && h.text === h.text.toUpperCase() && /[A-Z]/.test(h.text));
-      if (allCaps.length >= Math.round(headings.length * 0.75)) {
-        issues.push({ type: 'all-caps-headings', severity: 'info',
-          message: 'Most headings are in ALL CAPS — EPUB converters render these literally, so your TOC will appear shouting. Use normal casing and apply an uppercase text transform via character styles in your word processor.' });
-      }
-    }
-    const emptyChapters = headings.filter(h => h.words === 0);
-    if (emptyChapters.length > 0) {
-      const names = emptyChapters.slice(0, 3).map(h => `"${h.text}"`).join(', ');
-      const more  = emptyChapters.length > 3 ? ` +${emptyChapters.length - 3} more` : '';
-      issues.push({ type: 'empty-chapters', severity: 'warning',
-        message: `${emptyChapters.length} heading${emptyChapters.length > 1 ? 's' : ''} with no body text: ${names}${more}. EPUBCheck flags empty sections as validation errors — add content or remove the heading.` });
-    }
-    if (headings.length > 2) {
-      const short = headings.filter(h => h.words > 0 && h.words < 100);
-      if (short.length > 0) {
-        const names = short.slice(0, 3).map(h => `"${h.text}" (${h.words}w)`).join(', ');
-        const more  = short.length > 3 ? ` +${short.length - 3} more` : '';
-        issues.push({ type: 'short-chapters', severity: 'info',
-          message: `${short.length} chapter${short.length > 1 ? 's' : ''} under 100 words: ${names}${more}. Very short chapters are fine for prologues and epilogues — verify this is intentional.` });
-      }
-    }
-    if (maxBlankRun >= 5) {
-      issues.push({ type: 'excessive-blanks', severity: 'warning',
-        message: `${maxBlankRun} consecutive blank lines detected. EPUB readers collapse them into a single line break, and EPUBCheck may flag them. Use a scene break marker (*** or —) instead of stacking blank lines.` });
-    }
-    const order = { error: 0, warning: 1, info: 2 };
-    return issues.sort((a, b) => order[a.severity] - order[b.severity]);
-  }
-
-  function analyseHtml(html, fileSize) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const headings = [];
-    let headingIdx = -1, maxBlankRun = 0, blankRun = 0;
-    for (const el of [...doc.body.children]) {
-      const tag = el.tagName;
-      if (/^H[1-4]$/.test(tag)) {
-        headings.push({ level: parseInt(tag[1]), text: el.textContent.trim(), index: headings.length, words: 0 });
-        headingIdx = headings.length - 1; blankRun = 0;
-      } else if (tag === 'P' && !el.textContent.trim()) {
-        blankRun++; if (blankRun > maxBlankRun) maxBlankRun = blankRun;
-      } else {
-        blankRun = 0;
-        if (headingIdx >= 0) {
-          const t = el.textContent.trim();
-          if (t) headings[headingIdx].words += t.split(/\s+/).filter(Boolean).length;
-        }
-      }
-    }
-    const wordCount      = doc.body.textContent.trim().split(/\s+/).filter(Boolean).length;
-    const paragraphCount = doc.querySelectorAll('p').length;
-    const estimatedPages = Math.max(1, Math.round(wordCount / 250));
-    return { headings, wordCount, paragraphCount, estimatedPages, issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize }) };
-  }
-
-  function analyseTxt(text, fileSize) {
-    const lines = text.split('\n');
-    const headings = [];
-    let headingIdx = -1, maxBlankRun = 0, blankRun = 0;
-    lines.forEach((line, i) => {
-      const t = line.trim();
-      if (!t) { blankRun++; if (blankRun > maxBlankRun) maxBlankRun = blankRun; return; }
-      blankRun = 0;
-      if (t.length <= 80) {
-        const prevEmpty = i === 0 || !lines[i - 1]?.trim();
-        const nextEmpty = i >= lines.length - 1 || !lines[i + 1]?.trim();
-        if (prevEmpty && nextEmpty && t.length > 2) {
-          const isAllCaps = t === t.toUpperCase() && /[A-Z]/.test(t);
-          headings.push({ level: isAllCaps ? 1 : 2, text: t, index: headings.length, words: 0 });
-          headingIdx = headings.length - 1; return;
-        }
-      }
-      if (headingIdx >= 0) headings[headingIdx].words += t.split(/\s+/).filter(Boolean).length;
-    });
-    const wordCount      = text.trim().split(/\s+/).filter(Boolean).length;
-    const paragraphCount = text.split(/\n{2,}/).filter(Boolean).length;
-    const estimatedPages = Math.max(1, Math.round(wordCount / 250));
-    return { headings, wordCount, paragraphCount, estimatedPages, issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize }) };
-  }
-
   function applyStyle(style) {
     setFd(p => ({ ...p, bookStyle: style.id, pTheme: style.theme, pFont: style.font, pSize: style.size, pSpacing: style.spacing }));
     setMsPage(0); setMsSpread(false);
@@ -540,13 +707,16 @@ export default function UploadWizard() {
     if (!fd.title && !fd.manuscriptPath) return;
     try {
       localStorage.setItem('ic_wizard_progress', JSON.stringify({
-        fd: { ...fd, coverFile: null, manuscriptFile: null, coverPreview: '' },
+        fd: { ...fd, coverFile: null, manuscriptFile: null, coverPreview: '', coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '' },
         step,
         savedAt: Date.now(),
       }));
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
+
+  const primaryGenreLabel = genres.find(g => g.slug === fd.genre)?.label || '';
+  const selectedTemplate = coverTemplate(fd.coverTemplate);
 
   // ── Validation ────────────────────────────────────────────────
   function validate(s) {
@@ -604,7 +774,61 @@ export default function UploadWizard() {
     up('manuscriptPath', path);
   }
 
-  function handleCover(file) { up('coverFile', file); up('coverPreview', URL.createObjectURL(file)); }
+  function chooseCoverMode(mode) {
+    setStepError('');
+    setFd(p => mode === 'template'
+      ? { ...p, coverMode: 'template', coverFile: null, coverPreview: '' }
+      : { ...p, coverMode: 'upload' }
+    );
+  }
+
+  function handleCover(file) {
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setStepError('Cover must be a JPG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setStepError(`Cover is ${(file.size / 1024 / 1024).toFixed(1)} MB. Please upload an image under 5 MB.`);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setFd(p => ({ ...p, coverMode: 'upload', coverFile: file, coverPreview: previewUrl }));
+    setStepError('');
+  }
+
+  function handleCoverArt(file) {
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setStepError('Artwork must be a JPG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setStepError(`Artwork is ${(file.size / 1024 / 1024).toFixed(1)} MB. Please use an image under 3 MB.`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFd(p => ({
+        ...p,
+        coverMode: 'template',
+        coverArtFile: file,
+        coverArtPreview: reader.result,
+        coverArtDataUrl: reader.result,
+      }));
+      setStepError('');
+    };
+    reader.onerror = () => setStepError('Could not read that artwork image. Try another file.');
+    reader.readAsDataURL(file);
+  }
+
+  function clearCoverArt() {
+    setFd(p => ({ ...p, coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '' }));
+    setStepError('');
+  }
 
   function buildMatter(items, state) {
     return items
@@ -621,17 +845,45 @@ export default function UploadWizard() {
       });
   }
 
+  async function uploadCoverAsset({ optional = false } = {}) {
+    const fail = (error) => {
+      if (optional) return null;
+      throw new Error(`Cover: ${error.message}`);
+    };
+
+    if (fd.coverFile) {
+      const cleanName = fd.coverFile.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+      const path = `${user.id}/${Date.now()}-${cleanName}`;
+      const options = fd.coverFile.type ? { contentType: fd.coverFile.type } : undefined;
+      const { error } = await supabase.storage.from('covers').upload(path, fd.coverFile, options);
+      if (error) return fail(error);
+      return supabase.storage.from('covers').getPublicUrl(path).data.publicUrl;
+    }
+
+    const svg = buildTemplateCoverSvg({
+      title: fd.title,
+      subtitle: fd.subtitle,
+      author: authorName,
+      genreLabel: primaryGenreLabel,
+      templateId: fd.coverTemplate,
+      paletteId: fd.coverPalette,
+      artDataUrl: fd.coverArtDataUrl,
+      artPlacement: fd.coverArtPlacement,
+    });
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const base = slugify(fd.title || 'cover') || 'cover';
+    const path = `${user.id}/${Date.now()}-${base}-${fd.coverTemplate || 'template'}.svg`;
+    const { error } = await supabase.storage.from('covers').upload(path, blob, { contentType: 'image/svg+xml' });
+    if (error) return fail(error);
+    return supabase.storage.from('covers').getPublicUrl(path).data.publicUrl;
+  }
+
   // ── Save as Draft ─────────────────────────────────────────────
   async function handleSaveDraft() {
     if (!fd.title.trim()) { setStepError('Add a book title before saving.'); return; }
     setSavingDraft(true);
     try {
-      let coverUrl = null;
-      if (fd.coverFile) {
-        const cp = `${user.id}/${Date.now()}-${fd.coverFile.name}`;
-        const { error: ce } = await supabase.storage.from('covers').upload(cp, fd.coverFile);
-        if (!ce) coverUrl = supabase.storage.from('covers').getPublicUrl(cp).data.publicUrl;
-      }
+      const coverUrl = await uploadCoverAsset({ optional: true });
       const bookData = {
         title: fd.title, subtitle: fd.subtitle || null, description: fd.description || null,
         cover_url: coverUrl, formats: fd.formats, keywords: fd.keywords,
@@ -661,13 +913,7 @@ export default function UploadWizard() {
   async function handlePublish(publishNow = true) {
     setPublishError(''); setPublishing(true);
     try {
-      let coverUrl = null;
-      if (fd.coverFile) {
-        const cp = `${user.id}/${Date.now()}-${fd.coverFile.name}`;
-        const { error: ce } = await supabase.storage.from('covers').upload(cp, fd.coverFile);
-        if (ce) throw new Error(`Cover: ${ce.message}`);
-        coverUrl = supabase.storage.from('covers').getPublicUrl(cp).data.publicUrl;
-      }
+      const coverUrl = await uploadCoverAsset();
       let { data: author } = await supabase.from('authors').select('id,slug').eq('user_id', user.id).maybeSingle();
       if (!author) {
         const { data: a, error: ae } = await supabase.from('authors')
@@ -754,7 +1000,16 @@ export default function UploadWizard() {
           <div className="wz-done-cover">
             {fd.coverPreview
               ? <img src={fd.coverPreview} alt={fd.title} />
-              : <BookCover title={fd.title} author={authorName} colorClass={fd.coverColor} size="lg" />}
+              : <CoverTemplatePreview
+                  title={fd.title}
+                  subtitle={fd.subtitle}
+                  author={authorName}
+                  genreLabel={primaryGenreLabel}
+                  templateId={fd.coverTemplate}
+                  paletteId={fd.coverPalette}
+                  artPreview={fd.coverArtPreview}
+                  artPlacement={fd.coverArtPlacement}
+                />}
           </div>
           <div className="wz-done-text">
             {savedAsDraft ? (
@@ -1320,52 +1575,257 @@ export default function UploadWizard() {
           {step === 5 && (
             <div className="wz-step">
               <h2>Cover & Pricing</h2>
-              <p className="wz-sub">Upload a cover image and set your price. We send readers directly to wherever you sell.</p>
+              <p className="wz-sub">Create a clean starter cover from your book details, or upload a finished cover if you already have one.</p>
+
+              <div className="wz-cover-mode-tabs" role="tablist" aria-label="Cover source">
+                <button
+                  type="button"
+                  className={fd.coverMode !== 'upload' ? 'active' : ''}
+                  aria-selected={fd.coverMode !== 'upload'}
+                  onClick={() => chooseCoverMode('template')}
+                >
+                  Create from template
+                </button>
+                <button
+                  type="button"
+                  className={fd.coverMode === 'upload' ? 'active' : ''}
+                  aria-selected={fd.coverMode === 'upload'}
+                  onClick={() => chooseCoverMode('upload')}
+                >
+                  Upload cover
+                </button>
+              </div>
 
               <div className="wz-cover-layout">
                 <div className="wz-cover-left">
-                  {!fd.coverPreview ? (
-                    <div className="wz-dropzone" onClick={() => coverRef.current?.click()}
-                      onDragOver={e => e.preventDefault()}
-                      onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleCover(f); }}>
-                      <input ref={coverRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
-                        onChange={e => { if (e.target.files[0]) handleCover(e.target.files[0]); }} />
-                      <div className="wz-dropzone-icon">+</div>
-                      <p className="wz-dropzone-label">Upload cover image</p>
-                      <p className="wz-dropzone-sub">JPG, PNG or WebP · max 5 MB</p>
-                      <p className="wz-dropzone-hint">Recommended: 1,600 × 2,560 px (portrait 5:8)</p>
-                    </div>
-                  ) : (
-                    <div className="wz-cover-uploaded">
-                      <img src={fd.coverPreview} alt="Cover" />
-                      <div>
-                        <span className="wz-file-name">{fd.coverFile?.name}</span>
-                        <button type="button" className="wz-text-link" onClick={() => { up('coverFile', null); up('coverPreview', ''); }}>Remove and choose again</button>
+                  {fd.coverMode === 'upload' ? (
+                    !fd.coverPreview ? (
+                      <div className="wz-dropzone" onClick={() => coverRef.current?.click()}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleCover(f); }}>
+                        <input ref={coverRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
+                          onChange={e => { if (e.target.files[0]) handleCover(e.target.files[0]); }} />
+                        <div className="wz-dropzone-icon">+</div>
+                        <p className="wz-dropzone-label">Upload cover image</p>
+                        <p className="wz-dropzone-sub">JPG, PNG or WebP - max 5 MB</p>
+                        <p className="wz-dropzone-hint">Recommended: 1,600 x 2,560 px (portrait 5:8)</p>
                       </div>
-                    </div>
-                  )}
-                  {!fd.coverPreview && (
-                    <div className="wz-field" style={{ marginTop: 24 }}>
-                      <label>Fallback colour palette <span className="opt">used if no image provided</span></label>
-                      <div className="wz-swatches">
-                        {[
-                          { cls: 'cover-clay', bg: 'var(--clay)' }, { cls: 'cover-clay-dark', bg: 'var(--clay-dark)' },
-                          { cls: 'cover-ochre', bg: 'var(--ochre)' }, { cls: 'cover-ink', bg: 'var(--ink)' },
-                          { cls: 'cover-sand', bg: 'var(--sand)', border: true },
-                        ].map(c => (
-                          <button key={c.cls} type="button" className={`wz-swatch ${fd.coverColor === c.cls ? 'selected' : ''}`}
-                            style={{ background: c.bg }} onClick={() => up('coverColor', c.cls)} />
+                    ) : (
+                      <div className="wz-cover-uploaded">
+                        <img src={fd.coverPreview} alt="Cover" />
+                        <div>
+                          <span className="wz-file-name">{fd.coverFile?.name}</span>
+                          <button
+                            type="button"
+                            className="wz-text-link"
+                            onClick={() => setFd(p => ({ ...p, coverMode: 'template', coverFile: null, coverPreview: '' }))}
+                          >
+                            Remove and use template
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="wz-template-builder">
+                      <div className="wz-template-section-head">
+                        <div>
+                          <span>Template</span>
+                          <small>{selectedTemplate.name} - {selectedTemplate.note}</small>
+                        </div>
+                        <button type="button" className="wz-text-link" onClick={() => chooseCoverMode('upload')}>
+                          Upload finished cover
+                        </button>
+                      </div>
+
+                      <div className="wz-template-grid">
+                        {COVER_TEMPLATES.map(t => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            className={`wz-template-card ${fd.coverTemplate === t.id ? 'selected' : ''}`}
+                            onClick={() => up('coverTemplate', t.id)}
+                          >
+                            <span className="wz-template-token">{t.short}</span>
+                            <span>
+                              <span className="wz-template-card-name">{t.name}</span>
+                              <span className="wz-template-card-note">{t.note}</span>
+                            </span>
+                          </button>
                         ))}
                       </div>
+
+                      <div className="wz-template-section-head wz-template-section-head--spaced">
+                        <div>
+                          <span>Palette</span>
+                          <small>{coverPalette(fd.coverPalette).name}</small>
+                        </div>
+                      </div>
+
+                      <div className="wz-palette-row">
+                        {COVER_PALETTES.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={`wz-palette-chip ${fd.coverPalette === p.id ? 'selected' : ''}`}
+                            onClick={() => up('coverPalette', p.id)}
+                          >
+                            <span className="wz-palette-swatch" style={{ background: `linear-gradient(135deg, ${p.bg}, ${p.bg2})` }} />
+                            <span>{p.name}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="wz-template-section-head wz-template-section-head--spaced">
+                        <div>
+                          <span>Artwork / photo</span>
+                          <small>{fd.coverArtFile?.name || 'Optional image inside the template'}</small>
+                        </div>
+                        {fd.coverArtPreview && (
+                          <button type="button" className="wz-text-link" onClick={clearCoverArt}>Remove</button>
+                        )}
+                      </div>
+
+                      <div
+                        className={`wz-art-drop ${fd.coverArtPreview ? 'has-image' : ''}`}
+                        onClick={() => coverArtRef.current?.click()}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleCoverArt(f); }}
+                      >
+                        <input ref={coverArtRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
+                          onChange={e => { if (e.target.files[0]) handleCoverArt(e.target.files[0]); }} />
+                        {fd.coverArtPreview ? (
+                          <>
+                            <img src={fd.coverArtPreview} alt="Cover artwork" />
+                            <span>Replace artwork</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="wz-art-plus">+</span>
+                            <span>Add artwork/photo</span>
+                          </>
+                        )}
+                      </div>
+
+                      {fd.coverArtPreview && (
+                        <div className="wz-art-placement" aria-label="Artwork placement">
+                          {COVER_ART_PLACEMENTS.map(option => (
+                            <button
+                              key={option.id}
+                              type="button"
+                              className={fd.coverArtPlacement === option.id ? 'selected' : ''}
+                              onClick={() => up('coverArtPlacement', option.id)}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
                 <div className="wz-cover-right">
-                  <span className="wz-preview-label">Preview</span>
-                  {fd.coverPreview
-                    ? <img src={fd.coverPreview} alt="Cover" className="wz-cover-preview-img" />
-                    : <BookCover title={fd.title || 'Your Book Title'} author={authorName} colorClass={fd.coverColor} size="lg" />
-                  }
+                  <div className="wz-cover-preview-head">
+                    <span className="wz-preview-label">Preview</span>
+                    <div className="wz-device-tabs" aria-label="Preview device">
+                      {COVER_DEVICE_PREVIEWS.map(device => (
+                        <button
+                          key={device.id}
+                          type="button"
+                          className={coverPreviewDevice === device.id ? 'selected' : ''}
+                          onClick={() => setCoverPreviewDevice(device.id)}
+                        >
+                          {device.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className={`wz-device-preview wz-device-preview--${coverPreviewDevice}`}>
+                    <div className="wz-device-frame">
+                      <div className="wz-device-chrome">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div className="wz-device-content">
+                        {coverPreviewDevice === 'desktop' && (
+                          <div className="wz-device-desktop-layout">
+                            <div className="wz-device-cover-slot">
+                              <CoverPreviewArt
+                                coverPreview={fd.coverPreview}
+                                title={fd.title}
+                                subtitle={fd.subtitle}
+                                author={authorName}
+                                genreLabel={primaryGenreLabel}
+                                templateId={fd.coverTemplate}
+                                paletteId={fd.coverPalette}
+                                artPreview={fd.coverArtPreview}
+                                artPlacement={fd.coverArtPlacement}
+                              />
+                            </div>
+                            <div className="wz-device-copy">
+                              <strong>{fd.title || 'Your Book Title'}</strong>
+                              <span>{authorName}</span>
+                              <i />
+                              <i />
+                              <b />
+                            </div>
+                          </div>
+                        )}
+
+                        {coverPreviewDevice === 'tablet' && (
+                          <div className="wz-device-tablet-layout">
+                            <div className="wz-device-cover-slot">
+                              <CoverPreviewArt
+                                coverPreview={fd.coverPreview}
+                                title={fd.title}
+                                subtitle={fd.subtitle}
+                                author={authorName}
+                                genreLabel={primaryGenreLabel}
+                                templateId={fd.coverTemplate}
+                                paletteId={fd.coverPalette}
+                                artPreview={fd.coverArtPreview}
+                                artPlacement={fd.coverArtPlacement}
+                              />
+                            </div>
+                            <div className="wz-device-copy">
+                              <strong>{fd.title || 'Your Book Title'}</strong>
+                              <span>{primaryGenreLabel || 'Book preview'}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {coverPreviewDevice === 'phone' && (
+                          <div className="wz-device-phone-layout">
+                            <div className="wz-device-cover-slot">
+                              <CoverPreviewArt
+                                coverPreview={fd.coverPreview}
+                                title={fd.title}
+                                subtitle={fd.subtitle}
+                                author={authorName}
+                                genreLabel={primaryGenreLabel}
+                                templateId={fd.coverTemplate}
+                                paletteId={fd.coverPalette}
+                                artPreview={fd.coverArtPreview}
+                                artPlacement={fd.coverArtPlacement}
+                              />
+                            </div>
+                            <div className="wz-device-copy">
+                              <strong>{fd.title || 'Your Book Title'}</strong>
+                              <span>{authorName}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {!fd.coverPreview && (
+                    <div className="wz-template-preview-meta">
+                      <strong>{selectedTemplate.name}</strong>
+                      <span>{selectedTemplate.note}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1676,7 +2136,7 @@ export default function UploadWizard() {
                     ['Formats', fd.formats.join(', ') || '—'],
                   ]},
                   { title: 'Cover & Pricing', to: 5, rows: [
-                    ['Cover',     fd.coverFile?.name || 'None — colour palette used'],
+                    ['Cover',     fd.coverFile?.name || `${selectedTemplate.name} template${fd.coverArtPreview ? ' + artwork' : ''}`],
                     ['Price',     fd.isFree ? 'Free' : (fd.price ? `$${fd.price}` : '—')],
                     ['Buy link',  fd.buyUrl || '—'],
                     ['Platform',  fd.buyPlatform !== 'own' ? fd.buyPlatform : 'Own website'],

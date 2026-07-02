@@ -52,7 +52,9 @@ export default function BookDetail() {
   const [savePending, setSavePending] = useState(false);
   const [heroColor,   setHeroColor]  = useState(null);
   const [buyOpen,     setBuyOpen]    = useState(false);
-  const buyRef = useRef(null);
+  const [menuOpen,    setMenuOpen]   = useState(false);
+  const [copied,      setCopied]     = useState(false);
+  const actionsRef = useRef(null);
 
   useEffect(() => {
     setLoading(true);
@@ -72,15 +74,18 @@ export default function BookDetail() {
     checkSaved(book.dbId, user.id).then(setSaved);
   }, [book?.dbId, user?.id]);
 
-  /* Close buy dropdown on outside click */
+  /* Close dropdowns on outside click */
   useEffect(() => {
-    if (!buyOpen) return;
+    if (!buyOpen && !menuOpen) return;
     function handler(e) {
-      if (buyRef.current && !buyRef.current.contains(e.target)) setBuyOpen(false);
+      if (actionsRef.current && !actionsRef.current.contains(e.target)) {
+        setBuyOpen(false);
+        setMenuOpen(false);
+      }
     }
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [buyOpen]);
+  }, [buyOpen, menuOpen]);
 
   const handleCoverLoad = useCallback((e) => {
     const color = extractColor(e.currentTarget);
@@ -130,6 +135,23 @@ export default function BookDetail() {
     }
   }
 
+  async function handleShare() {
+    const shareData = {
+      title: book.title,
+      text: `${book.title} by ${book.author} — on Indie Converters`,
+      url: window.location.href,
+    };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch (e) { /* user cancelled */ }
+    } else {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {}
+    }
+  }
+
   if (loading) return (
     <div className="bd-page">
       <div className="bd-hero bd-hero--loading" />
@@ -156,6 +178,46 @@ export default function BookDetail() {
 
       {/* ═══════════════ HERO ═══════════════ */}
       <section className="bd-hero" style={heroGradient(heroColor)}>
+
+        {/* Mobile-only top-right action buttons: + (save) and ··· (more/share) */}
+        <div className="bd-hero-actions">
+          {/* + Save */}
+          <button
+            className={`bd-hero-action-btn${saved ? ' bd-hero-action-btn--saved' : ''}`}
+            onClick={handleSave}
+            disabled={savePending}
+            aria-label={saved ? 'Saved' : 'Save'}
+          >
+            {saved
+              ? <svg viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><path d="M10 17s-7-4.35-7-9a5 5 0 0 1 7-4.58A5 5 0 0 1 17 8c0 4.65-7 9-7 9z"/></svg>
+              : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" width="20" height="20"><path d="M10 4v12M4 10h12"/></svg>
+            }
+          </button>
+
+          {/* ··· More (opens share + other options) */}
+          <div className="bd-menu-wrap">
+            <button
+              className={`bd-hero-action-btn${menuOpen ? ' bd-hero-action-btn--active' : ''}`}
+              onClick={() => setMenuOpen(o => !o)}
+              aria-label="More options"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                <circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/>
+              </svg>
+            </button>
+            {menuOpen && (
+              <div className="bd-menu-dropdown">
+                <button className="bd-menu-item" onClick={() => { handleShare(); setMenuOpen(false); }}>
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+                    <path d="M10 3v10M6 7l4-4 4 4"/><path d="M4 13v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/>
+                  </svg>
+                  <span>{copied ? 'Link copied!' : 'Share'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="container bd-hero-inner">
 
           {/* Cover */}
@@ -222,20 +284,19 @@ export default function BookDetail() {
               </div>
 
               {/* Actions row */}
-              <div className="bd-actions" ref={buyRef}>
+              <div className="bd-actions" ref={actionsRef}>
                 <div className="bd-actions-row">
-                  {/* Buy button */}
+                  {/* Get it button */}
                   {buyLinks.length > 0 && (
                     <div className="bd-buy-wrap">
                       <button
                         className={`bd-buy-btn${buyOpen ? ' active' : ''}`}
-                        onClick={() => setBuyOpen(o => !o)}
+                        onClick={() => { setBuyOpen(o => !o); setMenuOpen(false); }}
                       >
-                        {book.price ? `Buy · $${book.price}` : 'Buy'}
+                        {book.price ? `Get it · $${book.price}` : 'Get it'}
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12" className={`bd-chevron${buyOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
                       </button>
 
-                      {/* Dropdown */}
                       {buyOpen && (
                         <div className="bd-buy-dropdown">
                           {buyLinks.map(link => (
@@ -256,14 +317,40 @@ export default function BookDetail() {
                     </div>
                   )}
 
-                  {/* Save button */}
-                  <button
-                    className={`bd-save-btn ${saved ? 'saved' : ''}`}
-                    onClick={handleSave}
-                    disabled={savePending}
-                  >
-                    {saved ? '♥ Saved' : '♡ Save'}
-                  </button>
+                  {/* ··· more menu: Save + Share — desktop only, hidden on mobile */}
+                  <div className="bd-menu-wrap bd-menu-wrap--desktop">
+                    <button
+                      className={`bd-menu-btn${menuOpen ? ' active' : ''}`}
+                      onClick={() => { setMenuOpen(o => !o); setBuyOpen(false); }}
+                      aria-label="More options"
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                        <circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/>
+                      </svg>
+                    </button>
+
+                    {menuOpen && (
+                      <div className="bd-menu-dropdown">
+                        <button
+                          className={`bd-menu-item${saved ? ' bd-menu-item--saved' : ''}`}
+                          onClick={() => { handleSave(); setMenuOpen(false); }}
+                          disabled={savePending}
+                        >
+                          <svg viewBox="0 0 20 20" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+                            <path d="M10 17s-7-4.35-7-9a5 5 0 0 1 7-4.58A5 5 0 0 1 17 8c0 4.65-7 9-7 9z"/>
+                          </svg>
+                          <span>{saved ? 'Saved' : 'Save'}</span>
+                        </button>
+
+                        <button className="bd-menu-item" onClick={() => { handleShare(); setMenuOpen(false); }}>
+                          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+                            <path d="M10 3v10M6 7l4-4 4 4"/><path d="M4 13v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/>
+                          </svg>
+                          <span>{copied ? 'Link copied!' : 'Share'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

@@ -140,6 +140,12 @@ img { display: block; max-width: 100%; }
 .book-cover--photo::before { display: none; }
 .book-cover--photo img { border-radius: 2px 6px 6px 2px; }
 
+/* ── Mobile section padding ── */
+@media (max-width: 640px) {
+  .section { padding: 52px 0; }
+  .container { padding: 0 16px; }
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

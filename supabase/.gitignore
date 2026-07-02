@@ -6,3 +6,6 @@
 .env.keys
 .env.local
 .env.*.local
+
+#prompts
+indie-converters-prompt.md 

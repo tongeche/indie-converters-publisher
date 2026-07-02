@@ -327,51 +327,6 @@
   color: var(--ink-soft);
 }
 
-/* ── CTA banner ── */
-.gh-cta {
-  background: var(--ink);
-  padding: 80px 0;
-  position: relative;
-  overflow: hidden;
-}
-
-.gh-cta::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse 50% 80% at 30% 50%, rgba(68,28,178,0.4) 0%, transparent 70%);
-  pointer-events: none;
-}
-
-.gh-cta-inner {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 40px;
-}
-
-.gh-cta-h2 {
-  font-family: 'Fraunces', serif;
-  font-size: clamp(1.6rem, 2.8vw, 2.4rem);
-  font-weight: 700;
-  color: #fff;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  max-width: 520px;
-}
-
-.gh-cta-h2 em {
-  font-style: italic;
-  color: var(--ochre);
-}
-
-.gh-cta-actions {
-  display: flex;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
 /* ── Responsive ── */
 @media (max-width: 900px) {
   .gh-hero-inner { grid-template-columns: 1fr; gap: 48px; }
@@ -379,7 +334,6 @@
   .gh-steps::before { display: none; }
   .gh-stats-inner { grid-template-columns: repeat(2, 1fr); }
   .gh-projects-grid { grid-template-columns: 1fr; }
-  .gh-cta-inner { flex-direction: column; align-items: flex-start; }
 }
 
 @media (max-width: 600px) {

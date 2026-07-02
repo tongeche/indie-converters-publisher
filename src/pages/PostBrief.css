@@ -1,0 +1,191 @@
+/* ══════════════════════════════════════
+   POST A BRIEF
+   ══════════════════════════════════════ */
+
+.pb-page {
+  min-height: 100vh;
+  background: var(--cream);
+}
+
+.pb-header {
+  padding: 140px 0 32px;
+}
+
+.pb-eyebrow {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  margin-bottom: 14px;
+}
+
+.pb-h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+}
+
+.pb-sub {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  max-width: 520px;
+}
+
+.pb-body {
+  padding-bottom: 96px;
+}
+
+.pb-form {
+  max-width: 640px;
+  background: #fff;
+  border: 1px solid var(--sand);
+  border-radius: 20px;
+  padding: 36px;
+}
+
+/* ── Fields ── */
+.pb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 22px;
+  flex: 1;
+}
+.pb-field:last-child { margin-bottom: 0; }
+
+.pb-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.pb-field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pb-req { color: var(--clay); margin-left: 2px; }
+.pb-opt { color: var(--ink-soft); font-weight: 400; margin-left: 2px; font-size: 0.75rem; }
+
+.pb-field input,
+.pb-field textarea {
+  padding: 10px 14px;
+  border: 1.5px solid var(--sand);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  color: var(--ink);
+  background: #fff;
+  outline: none;
+  transition: border-color 150ms;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.pb-field input:focus,
+.pb-field textarea:focus { border-color: var(--clay); }
+
+.pb-field textarea { resize: vertical; line-height: 1.6; }
+
+.pb-error {
+  font-size: 0.76rem;
+  color: #c0392b;
+}
+
+.pb-submit-error {
+  font-size: 0.85rem;
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid rgba(192, 57, 43, 0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+}
+
+/* ── Service type chips ── */
+.pb-service-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.pb-service-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--sand);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms, color 150ms, background 150ms;
+}
+
+.pb-service-chip:hover { border-color: var(--ochre); }
+
+.pb-service-chip.is-active {
+  border-color: var(--clay);
+  background: var(--sand);
+  color: var(--clay);
+}
+
+/* ── Actions ── */
+.pb-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* ── Done state ── */
+.pb-done {
+  padding: 160px 24px 120px;
+  max-width: 480px;
+  margin: 0 auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pb-done-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--sand);
+  color: var(--clay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.pb-done-h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+
+.pb-done-sub {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin-bottom: 28px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .pb-form { padding: 24px; border-radius: 16px; }
+  .pb-row { flex-direction: column; gap: 0; }
+  .pb-service-grid { grid-template-columns: repeat(2, 1fr); }
+}

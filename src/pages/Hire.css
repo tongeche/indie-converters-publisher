@@ -318,47 +318,12 @@
   gap: 4px;
 }
 
-/* ── CTA banner ── */
-.hire-cta {
-  background: var(--clay);
-  padding: 80px 0;
-}
-
-.hire-cta-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 40px;
-}
-
-.hire-cta-h2 {
-  font-family: 'Fraunces', serif;
-  font-size: clamp(1.6rem, 2.8vw, 2.4rem);
-  font-weight: 700;
-  color: #fff;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  max-width: 560px;
-}
-
-.hire-cta-h2 em {
-  font-style: italic;
-  color: var(--sand);
-}
-
-.hire-cta-actions {
-  display: flex;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
 /* ── Responsive ── */
 @media (max-width: 900px) {
   .hire-hero-inner { grid-template-columns: 1fr; gap: 48px; }
   .hire-steps { grid-template-columns: repeat(2, 1fr); }
   .hire-steps::before { display: none; }
   .hire-cats-grid { grid-template-columns: 1fr; }
-  .hire-cta-inner { flex-direction: column; align-items: flex-start; }
 }
 
 @media (max-width: 600px) {

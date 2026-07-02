@@ -55,6 +55,42 @@ export async function upsertBuyLink(bookId, retailerSlug, url) {
     .upsert({ book_id: bookId, retailer_id: ret.id, url }, { onConflict: 'book_id,retailer_id' });
 }
 
+/* ── Hire: submit a brief ── */
+export async function createHireBrief(brief) {
+  const { error } = await supabase.from('hire_briefs').insert(brief);
+  if (error) throw error;
+}
+
+/* ── Hire: browse freelancers ── */
+export async function fetchFreelancers({ serviceType } = {}) {
+  let q = supabase.from('freelancers').select('*').order('created_at', { ascending: false });
+  if (serviceType) q = q.eq('service_type', serviceType);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data;
+}
+
+/* ── Get Hired: browse open briefs ── */
+export async function fetchOpenBriefs({ serviceType } = {}) {
+  let q = supabase.from('hire_briefs').select('*').eq('status', 'open').order('created_at', { ascending: false });
+  if (serviceType) q = q.eq('service_type', serviceType);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data;
+}
+
+/* ── Get Hired: freelancer profile ── */
+export async function fetchFreelancerProfile(userId) {
+  const { data, error } = await supabase.from('freelancers').select('*').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertFreelancerProfile(userId, profile) {
+  const { error } = await supabase.from('freelancers').upsert({ ...profile, user_id: userId }, { onConflict: 'user_id' });
+  if (error) throw error;
+}
+
 /* ── Reader: toggle save ── */
 export async function fetchSavedBooks(userId) {
   const { data, error } = await supabase

@@ -2,11 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import './ComingSoon.css';
 
 const LABELS = {
-  '/hire/post':           { eyebrow: 'Hire Freelancer', title: 'Post a Brief', back: '/hire' },
-  '/hire/browse':         { eyebrow: 'Hire Freelancer', title: 'Browse Freelancers', back: '/hire' },
   '/hire/packages':       { eyebrow: 'Hire Freelancer', title: 'Explore Packages', back: '/hire' },
-  '/get-hired/projects':  { eyebrow: 'Get Hired', title: 'Browse Projects', back: '/get-hired' },
-  '/get-hired/profile':   { eyebrow: 'Get Hired', title: 'Create Your Profile', back: '/get-hired' },
   '/get-hired/services':  { eyebrow: 'Get Hired', title: 'Offer a Service', back: '/get-hired' },
 };
 

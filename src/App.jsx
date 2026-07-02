@@ -18,10 +18,15 @@ import Dashboard from './pages/Dashboard';
 import EditBook from './pages/EditBook';
 import BlogPost from './pages/BlogPost';
 import Hire from './pages/Hire';
+import PostBrief from './pages/PostBrief';
+import HireBrowse from './pages/HireBrowse';
 import GetHired from './pages/GetHired';
+import GetHiredProfile from './pages/GetHiredProfile';
+import GetHiredProjects from './pages/GetHiredProjects';
 import HelpCenter from './pages/HelpCenter';
 import SavedBooks from './pages/SavedBooks';
 import ComingSoon from './pages/ComingSoon';
+import CheckVerify from './pages/CheckVerify';
 
 export default function App() {
   return (
@@ -55,9 +60,18 @@ export default function App() {
           <Route path="/saved" element={
             <ProtectedRoute><SavedBooks /></ProtectedRoute>
           } />
+          <Route path="/check"               element={<CheckVerify />} />
           <Route path="/hire"                element={<Hire />}        />
+          <Route path="/hire/post"           element={<PostBrief />}   />
+          <Route path="/hire/browse"         element={<HireBrowse />}  />
           <Route path="/hire/*"              element={<ComingSoon />}  />
           <Route path="/get-hired"           element={<GetHired />}    />
+          <Route path="/get-hired/profile"   element={
+            <ProtectedRoute><GetHiredProfile /></ProtectedRoute>
+          } />
+          <Route path="/get-hired/projects"  element={
+            <ProtectedRoute><GetHiredProjects /></ProtectedRoute>
+          } />
           <Route path="/get-hired/*"         element={<ComingSoon />}  />
           <Route path="/help"                element={<HelpCenter />}  />
           <Route path="/help/*"              element={<ComingSoon />}  />

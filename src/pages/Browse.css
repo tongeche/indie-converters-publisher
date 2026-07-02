@@ -355,4 +355,15 @@
   .browse-sidebar { flex-direction: row; flex-wrap: wrap; gap: 16px; }
   .sidebar-section { min-width: 140px; }
   .browse-reco-scroll { padding: 0 16px; }
+  .browse-hero { padding: 88px 0 44px; }
+  .browse-hero h1 { font-size: clamp(1.6rem, 6vw, 2.4rem); }
+}
+
+@media (max-width: 480px) {
+  .browse-hero { padding: 72px 0 36px; }
+  .book-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .browse-controls { flex-direction: column; gap: 8px; }
+  .sort-select { width: 100%; }
+  .browse-layout { padding-top: 28px; gap: 28px; }
+  .search-wrap { width: 100%; }
 }

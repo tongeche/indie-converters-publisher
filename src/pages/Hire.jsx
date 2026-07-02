@@ -187,21 +187,6 @@ export default function Hire() {
         </div>
       </section>
 
-      {/* ── CTA banner ── */}
-      <section className="hire-cta">
-        <div className="container hire-cta-inner">
-          <h2 className="hire-cta-h2">
-            Ready to find the right person<br />for your <em>next book</em>?
-          </h2>
-          <div className="hire-cta-actions">
-            <Link to="/hire/post" className="btn btn-ghost">Post a Brief</Link>
-            <Link to="/hire/packages" className="btn" style={{ background: '#fff', color: 'var(--clay)', fontWeight: 700 }}>
-              Explore Packages
-            </Link>
-          </div>
-        </div>
-      </section>
-
     </div>
   );
 }

@@ -4,7 +4,6 @@ import BookCover from '../components/BookCover';
 import { fetchBooks, fetchBlogs } from '../lib/api';
 import mainHeroImg    from '../assets/main-hero.png';
 import browseHeroImg  from '../assets/browse-hero.png';
-import publishBannerImg    from '../assets/publish CTA banner.png';
 import hireFreelancerImg  from '../assets/hire-freelancer.png';
 import imgAche   from '../assets/moods/Ache.png';
 import imgDrift  from '../assets/moods/Drift.png';
@@ -318,7 +317,7 @@ export default function Landing() {
 
           <div className="hero-ctas">
             <Link to="/browse" className="btn hero-btn-primary">Browse Books</Link>
-            <Link to="/upload" className="btn hero-btn-ghost">Start Publishing</Link>
+            <Link to="/upload" className="hero-text-link">Start Publishing →</Link>
           </div>
         </div>
       </section>
@@ -349,9 +348,6 @@ export default function Landing() {
                 </div>
               </Link>
             ))}
-          </div>
-          <div className="featured-browse-row">
-            <Link to="/browse" className="btn featured-browse-btn">View all books →</Link>
           </div>
         </div>
       </section>
@@ -445,18 +441,6 @@ export default function Landing() {
               </Link>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ── CTA Band (publish CTA banner.png) ── */}
-      <section className="cta-band" style={{ backgroundImage: `url(${publishBannerImg})` }}>
-        <div className="cta-band-overlay" />
-        <div className="container cta-band-inner">
-          <div>
-            <div className="eyebrow" style={{ color: 'var(--ochre)' }}>Ready?</div>
-            <h2>Your manuscript is waiting to become a book.</h2>
-          </div>
-          <Link to="/upload" className="btn cta-band-btn">Start publishing →</Link>
         </div>
       </section>
 

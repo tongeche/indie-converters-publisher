@@ -216,6 +216,18 @@
   color: #F0EBFF;
 }
 
+.hero-text-link {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(240, 235, 255, 0.7);
+  font-size: 0.92rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 180ms ease;
+  padding: 4px 0;
+}
+.hero-text-link:hover { color: #F0EBFF; }
+
 @keyframes heroDotPulse {
   0%, 100% { filter: brightness(1); }
   50% { filter: brightness(1.45); }
@@ -281,25 +293,6 @@
 .shelf-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 0.92rem; color: var(--ink); }
 .shelf-author { font-size: 0.78rem; color: var(--ink-soft); }
 
-.featured-browse-row {
-  display: flex;
-  justify-content: center;
-  margin-top: 40px;
-}
-.featured-browse-btn {
-  background: transparent;
-  color: var(--clay);
-  border: 2px solid var(--clay);
-  border-radius: 999px;
-  padding: 12px 32px;
-  font-weight: 700;
-  font-size: 0.9rem;
-  transition: background 180ms ease, color 180ms ease;
-}
-.featured-browse-btn:hover {
-  background: var(--clay);
-  color: #fff;
-}
 
 /* ══════════════════════════════════════
    BROWSE CTA — browse-hero.png
@@ -668,56 +661,6 @@
 }
 
 /* ══════════════════════════════════════
-   CTA BAND — publish CTA banner.png
-   ══════════════════════════════════════ */
-.cta-band {
-  position: relative;
-  padding: 80px 0;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-.cta-band-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(14,5,36,0.82) 0%, rgba(46,17,128,0.78) 100%);
-}
-.cta-band-inner {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
-  flex-wrap: wrap;
-}
-.cta-band h2 {
-  font-size: clamp(1.4rem, 3vw, 2rem);
-  color: var(--cream);
-  max-width: 500px;
-  margin-top: 8px;
-}
-.cta-band-btn {
-  background: #fff;
-  color: var(--clay);
-  border: 2px solid #fff;
-  border-radius: 999px;
-  padding: 14px 36px;
-  font-weight: 700;
-  white-space: nowrap;
-  transition: background 200ms ease, color 200ms ease;
-  flex-shrink: 0;
-}
-.cta-band-btn:hover {
-  background: transparent;
-  color: #fff;
-}
-
-@media (max-width: 600px) {
-  .cta-band-inner { flex-direction: column; align-items: flex-start; }
-}
-
-/* ══════════════════════════════════════
    RESPONSIVE
    ══════════════════════════════════════ */
 @media (max-width: 768px) {
@@ -749,10 +692,6 @@
     bottom: 7%;
     opacity: 0.42;
   }
-}
-
-@media (max-width: 600px) {
-  .cta-band-inner { flex-direction: column; align-items: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -985,4 +924,81 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .jcard, .jcard--feature.jcard--visible { animation: none; transition: none; }
+}
+
+/* ══════════════════════════════════════
+   MOBILE — LANDING PAGE
+   Breakpoints: 720px (tablet), 480px (phone)
+   ══════════════════════════════════════ */
+
+/* ── Mood shelf: 4 cols → 2 cols (was completely missing) ── */
+@media (max-width: 720px) {
+  .mood-shelf-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .mood-shelf-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding-bottom: 28px;
+  }
+  .mood-lheading {
+    font-size: clamp(1.9rem, 7.5vw, 3rem);
+  }
+  .mood-surprise-btn {
+    align-self: flex-start;
+  }
+}
+
+/* ── Phone adjustments ── */
+@media (max-width: 480px) {
+  /* Hero */
+  .hero-heading { font-size: clamp(2rem, 9vw, 3rem); }
+  .hero-ctas { gap: 14px; align-items: flex-start; flex-direction: column; }
+  .hero-btn-primary { padding: 12px 28px; font-size: 0.9rem; }
+
+  /* Featured books: grid → horizontal scroll carousel */
+  .books-shelf {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 16px;
+    padding-bottom: 8px;
+    /* bleed to screen edges while container keeps 16px indent */
+    margin: 0 -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .books-shelf::-webkit-scrollbar { display: none; }
+  .shelf-item {
+    flex: 0 0 42vw;
+    max-width: 180px;
+    scroll-snap-align: start;
+  }
+
+  /* Browse CTA */
+  .browse-cta { padding: 64px 0; }
+  .browse-cta-content h2 { font-size: clamp(1.5rem, 7vw, 2.4rem); }
+  .browse-cta-btn { width: 100%; justify-content: center; }
+
+  /* Mood cards: make them taller for touch */
+  .mood-lcard { aspect-ratio: 2 / 3; }
+
+  /* Hire card: tighter padding on phones */
+  .hire-content { padding: 28px 20px; }
+  .hire-heading { font-size: clamp(1.5rem, 7vw, 2.2rem); }
+
+  /* Journal cards: reduce body padding */
+  .jcard-body { padding: 20px 20px; }
+  .jcard--std { padding: 20px 18px; min-height: 160px; }
+}
+
+/* ── Very small phones (< 380px) ── */
+@media (max-width: 380px) {
+  .shelf-item { flex: 0 0 52vw; }
+  .mood-shelf-grid { gap: 6px; }
+  .mood-lcard-verb { font-size: 1.2rem; }
 }
