@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { analyseFile, platformStatus } from '../lib/manuscriptValidator';
+import SEO from '../components/SEO';
 import './CheckVerify.css';
 
 const PLATFORM_ORDER = ['epubcheck', 'kdp', 'd2d', 'ingram', 'apple', 'kobo'];
@@ -61,6 +62,7 @@ export default function CheckVerify() {
 
   return (
     <div className="cv-page">
+      <SEO title="Manuscript Checker | IndieConverters" description="Check your manuscript file for common formatting issues before uploading." path="/check" />
 
       {/* Hero */}
       <section className="cv-hero">

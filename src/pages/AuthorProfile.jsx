@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
+import SEO from '../components/SEO';
 import { fetchAuthor, fetchAuthorBooks } from '../lib/api';
+import authorHeroImg from '../assets/author-hero.webp';
 import './AuthorProfile.css';
 
 export default function AuthorProfile() {
@@ -31,7 +33,14 @@ export default function AuthorProfile() {
 
   return (
     <div className="author-profile">
+      <SEO
+        title={`${author.display_name} | IndieConverters`}
+        description={bio ? bio.slice(0, 155) : `${author.display_name}'s author profile on IndieConverters.`}
+        path={`/author/${id}`}
+      />
       <div className="author-hero">
+        <img src={authorHeroImg} alt="" className="author-hero-img" />
+        <div className="author-hero-overlay" />
         <div className="container author-hero-inner">
           <div className="author-avatar">
             {author.photo_url

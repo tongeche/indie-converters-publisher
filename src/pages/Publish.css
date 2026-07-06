@@ -199,6 +199,31 @@
   .process-card { width: 100%; }
 }
 
+/* Print cover tool */
+.publish-tool-band {
+  background: var(--cream);
+  border-top: 1px solid rgba(68,28,178,0.08);
+  border-bottom: 1px solid rgba(68,28,178,0.08);
+}
+.publish-tool-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 32px;
+  align-items: center;
+}
+.publish-tool-inner h2 {
+  max-width: 620px;
+  color: var(--ink);
+  font-size: clamp(1.6rem, 3vw, 2.35rem);
+}
+.publish-tool-inner p {
+  max-width: 660px;
+  margin-top: 12px;
+  color: var(--ink-soft);
+  font-size: 0.96rem;
+  line-height: 1.75;
+}
+
 /* Rights */
 .rights-band { background: var(--ink); }
 .rights-inner {
@@ -274,5 +299,12 @@
   }
   .publish-hero-content { padding: calc(64px + 24px) 0 48px; max-width: 100%; }
   .process-step { grid-template-columns: 1fr; gap: 12px; }
+  .publish-tool-inner {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .publish-tool-inner .btn {
+    justify-content: center;
+  }
   .rights-inner { grid-template-columns: 1fr; }
 }

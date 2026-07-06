@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchBriefById } from '../lib/api';
+import SEO from '../components/SEO';
 import './BriefDetail.css';
 
 const SERVICE_LABELS = {
@@ -39,7 +40,7 @@ export default function BriefDetail() {
 
   if (!brief) {
     return (
-      <div className="bd-page">
+      <div className="brf-page">
         <div className="container bd-notfound">
           <h1>Brief not found</h1>
           <p>This brief may have been filled or removed.</p>
@@ -53,7 +54,8 @@ export default function BriefDetail() {
   const budget = formatBudget(b.budget_min, b.budget_max);
 
   return (
-    <div className="bd-page">
+    <div className="brf-page">
+      <SEO title={`${b.title} | IndieConverters`} description="Freelance brief details." path={`/get-hired/projects/${b.id}`} />
       <div className="bd-cover">
         <Link to="/get-hired/projects" className="bd-back-link">← Back to Open Projects</Link>
         <span className="bd-cover-tag">{SERVICE_LABELS[b.service_type] || b.service_type}</span>
@@ -63,7 +65,7 @@ export default function BriefDetail() {
         <div className="bd-header-row">
           <div className="bd-avatar">{initialsOf(b.contact_name)}</div>
           <div className="bd-top-info">
-            <h1 className="bd-title">{b.title}</h1>
+            <h1 className="brf-title">{b.title}</h1>
             <span className="bd-poster">Posted by {b.contact_name}</span>
           </div>
         </div>
@@ -78,7 +80,7 @@ export default function BriefDetail() {
         <div className="bd-layout">
           <div className="bd-main">
             <div className="bd-main-card">
-              <h2 className="bd-section-title">Project description</h2>
+              <h2 className="brf-section-title">Project description</h2>
               <p className="bd-desc">{b.description}</p>
             </div>
           </div>

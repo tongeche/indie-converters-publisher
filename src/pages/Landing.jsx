@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
+import SEO from '../components/SEO';
+import { trackEvent } from '../lib/analytics';
 import { fetchBooks, fetchBlogs } from '../lib/api';
 import mainHeroImg    from '../assets/main-hero.webp';
-import browseHeroImg  from '../assets/browse-hero.webp';
 import imgGhostwriting        from '../assets/services/ghostwriting.webp';
 import imgDevelopmentalEditing from '../assets/services/developmental-editing.webp';
 import imgCoverDesign         from '../assets/services/cover-design.webp';
@@ -351,6 +352,11 @@ export default function Landing() {
 
   return (
     <div className="landing">
+      <SEO
+        title="Indie Converters — Books that deserve to be found."
+        description="Curated indie books for readers. A proper publishing tool for authors. No exclusivity, no middlemen."
+        path="/"
+      />
 
       {/* ── Hero ── */}
       <section className="hero" ref={heroRef}>
@@ -389,8 +395,20 @@ export default function Landing() {
           </p>
 
           <div className="hero-ctas">
-            <Link to="/upload" className="btn hero-btn-primary">Start Publishing</Link>
-            <Link to="/browse" className="hero-text-link">Browse Books →</Link>
+            <Link
+              to="/upload"
+              className="btn hero-btn-primary"
+              onClick={() => trackEvent('Start Publishing Click', { location: 'hero' })}
+            >
+              Start Publishing
+            </Link>
+            <Link
+              to="/browse"
+              className="hero-text-link"
+              onClick={() => trackEvent('Browse Books Click', { location: 'hero' })}
+            >
+              Browse Books →
+            </Link>
           </div>
         </div>
       </section>
@@ -422,17 +440,6 @@ export default function Landing() {
               </Link>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ── Browse CTA (browse-hero.webp) ── */}
-      <section className="browse-cta" style={{ backgroundImage: `url(${browseHeroImg})` }}>
-        <div className="browse-cta-overlay" />
-        <div className="container browse-cta-content">
-          <div className="eyebrow" style={{ color: 'var(--ochre)' }}>Explore the library</div>
-          <h2>Discover your next great read</h2>
-          <p>Browse curated indie titles across every genre — from debut novels to underground classics.</p>
-          <Link to="/browse" className="btn browse-cta-btn">Browse all books →</Link>
         </div>
       </section>
 
@@ -522,7 +529,13 @@ export default function Landing() {
         <div className="container">
           <div className="ff-header">
             <h2 className="ff-heading">Need a little hand?</h2>
-            <Link to="/hire/post" className="btn ff-join-btn">Post a Brief →</Link>
+            <Link
+              to="/hire/post"
+              className="btn ff-join-btn"
+              onClick={() => trackEvent('Post a Brief Click', { location: 'hire-strip' })}
+            >
+              Post a Brief →
+            </Link>
           </div>
           <div className="ff-divider" />
           <div className="ff-grid">
@@ -536,14 +549,25 @@ export default function Landing() {
 
           <div className="hire-svc-grid">
             {HIRE_SERVICES.map(s => (
-              <Link key={s.slug} to={`/hire/browse?service=${s.slug}`} className="hire-svc-card">
+              <Link
+                key={s.slug}
+                to={`/hire/browse?service=${s.slug}`}
+                className="hire-svc-card"
+                onClick={() => trackEvent('Hire Service Card Click', { service: s.slug })}
+              >
                 <span className="hire-svc-title">{s.label}</span>
                 <div className="hire-svc-img" style={{ backgroundImage: `url(${s.img})` }} />
               </Link>
             ))}
           </div>
 
-          <Link to="/hire/browse" className="hire-browse-all">Browse all freelancers →</Link>
+          <Link
+            to="/hire/browse"
+            className="hire-browse-all"
+            onClick={() => trackEvent('Browse All Freelancers Click', { location: 'hire-strip' })}
+          >
+            Browse all freelancers →
+          </Link>
         </div>
       </section>
 

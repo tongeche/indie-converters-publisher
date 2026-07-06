@@ -4,8 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>Indie Converters — Books that deserve to be found.</title>
-    <meta name="description" content="Curated indie books for readers. A proper publishing tool for authors. No exclusivity, no middlemen." />
+    <!--
+      No static <title>/<meta name="description">/og:title/og:description here —
+      every route renders its own via src/components/SEO.jsx (React 19 hoists
+      title/meta/link tags rendered anywhere in the tree into <head>). Static
+      duplicates here would sit alongside the per-route ones instead of being
+      replaced by them.
+    -->
 
     <!-- Favicons -->
     <link rel="icon" type="image/x-icon"       href="/favicon.ico" />
@@ -15,11 +20,12 @@
     <link rel="manifest"                            href="/site.webmanifest" />
     <meta name="theme-color" content="#441CB2" />
 
-    <!-- Open Graph -->
+    <!-- Open Graph fallback — og:title/og:description come from SEO.jsx per route -->
     <meta property="og:type"        content="website" />
-    <meta property="og:title"       content="Indie Converters" />
-    <meta property="og:description" content="Curated indie books for readers. A proper publishing tool for authors." />
     <meta property="og:image"       content="/android-chrome-512x512.png" />
+
+    <!-- Analytics: Plausible (cookieless, no consent banner required) -->
+    <script defer data-domain="indieconverters.uk" src="https://plausible.io/js/script.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import logoIndie from '../assets/logo-indie.png';
+import SEO from '../components/SEO';
 import './Auth.css';
 
 export default function Login() {
@@ -27,6 +28,7 @@ export default function Login() {
 
   return (
     <div className="auth-page">
+      <SEO title="Sign In | IndieConverters" description="Sign in to your IndieConverters account." path="/login" />
       <div className="auth-bg" />
 
       <div className="auth-card">

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import logoIndie from '../assets/logo-indie.png';
 import { useAuth } from '../context/AuthContext';
+import { trackEvent } from '../lib/analytics';
 import './Nav.css';
 
 /* ── Inline SVG icons ── */
@@ -200,7 +201,11 @@ export default function Nav() {
           ) : (
             <>
               <Link to="/login" className="nav-link nav-signin">Sign in</Link>
-              <Link to="/signup" className="btn btn-primary btn-sm nav-cta">
+              <Link
+                to="/signup"
+                className="btn btn-primary btn-sm nav-cta"
+                onClick={() => trackEvent('Start Publishing Click', { location: 'nav' })}
+              >
                 Start Publishing
               </Link>
             </>

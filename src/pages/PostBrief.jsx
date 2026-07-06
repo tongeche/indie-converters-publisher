@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { createHireBrief } from '../lib/api';
+import SEO from '../components/SEO';
 import './PostBrief.css';
 
 const IconEdit   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="20" height="20"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
@@ -145,6 +146,11 @@ export default function PostBrief() {
 
   return (
     <div className="pb-page">
+      <SEO
+        title="Post a Brief | IndieConverters"
+        description="Describe what you need — cover design, editing, ghostwriting — and let freelancers with matching skills reach out to you."
+        path="/hire/post"
+      />
       <div className="container pb-header">
         <span className="pb-eyebrow">·· Hire Freelancer</span>
         <h1 className="pb-h1">Post a brief</h1>

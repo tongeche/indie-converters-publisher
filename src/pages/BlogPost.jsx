@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fetchBlogBySlug, fetchBlogs } from '../lib/api';
+import SEO from '../components/SEO';
 import './BlogPost.css';
 
 function BlogImage({ src, alt }) {
@@ -101,9 +102,19 @@ export default function BlogPost() {
     navigator.clipboard.writeText(pageUrl).catch(() => {});
   }
 
+  const seo = (
+    <SEO
+      title={`${post.title} | IndieConverters`}
+      description={post.excerpt || `${post.title} — an article from the IndieConverters blog.`}
+      path={`/blog/${slug}`}
+      image={post.hero_image_url}
+    />
+  );
+
   if (isGuide) {
     return (
       <div className="bpost-page">
+        {seo}
         <header className="bpost-guide-header">
           <div className="container bpost-guide-layout">
             <Link to="/help" className="bpost-back">← Help Center</Link>
@@ -154,6 +165,7 @@ export default function BlogPost() {
 
   return (
     <div className="bpost-page">
+      {seo}
 
       {/* ── Header: split hero ── */}
       <header className="bpost-header">

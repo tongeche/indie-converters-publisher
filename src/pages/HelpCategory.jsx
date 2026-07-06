@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { fetchBlogs } from '../lib/api';
 import { HELP_CATEGORIES } from '../lib/helpCategories';
 import ComingSoon from './ComingSoon';
+import SEO from '../components/SEO';
 import './HelpCenter.css';
 
 export default function HelpCategory() {
@@ -21,6 +22,11 @@ export default function HelpCategory() {
 
   return (
     <div className="help-page">
+      <SEO
+        title={`${category.title} | Help Center | IndieConverters`}
+        description={category.desc}
+        path={`/help/${slug}`}
+      />
       <section className="help-hero help-cat-hero">
         <div className="container help-hero-inner">
           <Link to="/help" className="help-cat-back">← Help Center</Link>

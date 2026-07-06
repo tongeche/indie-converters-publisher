@@ -2,7 +2,10 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import mammoth from 'mammoth/mammoth.browser';
 import { validateManuscript, analyseHtml, analyseTxt } from '../lib/manuscriptValidator';
+import { calculateRoyaltyEstimates, formatRoyaltyMoney } from '../lib/royaltyCalculator';
+import { calculatePrintCover, formatInches as formatCoverInches, TRIM_SIZE_OPTIONS } from '../lib/printCoverCalculator';
 import { useAuth } from '../context/AuthContext';
+import SEO from '../components/SEO';
 import { supabase } from '../lib/supabase';
 import './UploadWizard.css';
 
@@ -238,6 +241,14 @@ const TRIM_SIZES = [
   { id: '8_5x11', label: '8.5 x 11 in', note: 'Manuals, journals, activity books', wordsPerPage: 620, previewWords: 310, aspect: '8.5 / 11', previewWidth: '500px', minPages: 24, maxPages: 160 },
 ];
 
+const PRINT_COVER_TRIM_QUERY = {
+  '5x8': '5x8',
+  '5_5x8_5': '5.5x8.5',
+  '6x9': '6x9',
+  '7x10': '7x10',
+  '8_5x11': '8.5x11',
+};
+
 const COVER_PALETTES = [
   { id: 'violet', name: 'Indie Violet', bg: '#4C20C7', bg2: '#8E69E8', ink: '#F9F5FF', muted: '#D9CBFF', accent: '#E6C65A', soft: '#1A0E3F' },
   { id: 'ink', name: 'Literary Ink', bg: '#151121', bg2: '#33284C', ink: '#FFF8EA', muted: '#C9BDD6', accent: '#B88C3D', soft: '#070510' },
@@ -318,20 +329,23 @@ const PREVIEW_SPACING = [
 
 const BOOK_STYLES = [
   {
-    id: 'romance', name: 'Romance', tagline: 'Warm & intimate', icon: '♥',
-    cardBg: '#fdf4f0', cardBorder: '#e8c4b8', cardAccent: '#a84455', cardText: '#4a2535', cardMuted: '#8a6070',
+    id: 'indie-romance', legacyId: 'romance', name: 'indie-romance', title: 'Indie Romance', tagline: 'Warm, generous, intimate', icon: 'IR',
+    bestFor: 'Romance, memoir, intimate fiction', detail: 'Soft serif rhythm with relaxed spacing for emotionally close prose.',
+    cardBg: '#FFF7F4', cardBorder: '#E9C8BC', cardAccent: '#9E4157', cardText: '#3D2330', cardMuted: '#7A5A66',
     sampleFont: "'Fraunces', Georgia, serif",
     theme: 'sepia', font: 'fraunces', size: 'md', spacing: 'normal',
   },
   {
-    id: 'fantasy', name: 'Fantasy', tagline: 'Epic & dramatic', icon: '✦',
-    cardBg: '#12101e', cardBorder: '#3d3560', cardAccent: '#c9a227', cardText: '#e8d5a3', cardMuted: '#9080b0',
+    id: 'indie-fantasy', legacyId: 'fantasy', name: 'indie-fantasy', title: 'Indie Fantasy', tagline: 'Atmospheric, dramatic, deep', icon: 'IF',
+    bestFor: 'Fantasy, horror, mythic fiction', detail: 'Dark reading surface with classic type for immersive long reads.',
+    cardBg: '#141021', cardBorder: '#3D3560', cardAccent: '#D8B14A', cardText: '#F0DFA7', cardMuted: '#AFA1CA',
     sampleFont: "Georgia, 'Times New Roman', serif",
     theme: 'dark', font: 'georgia', size: 'md', spacing: 'relaxed',
   },
   {
-    id: 'classic', name: 'Classic', tagline: 'Clean & timeless', icon: '◆',
-    cardBg: '#ffffff', cardBorder: '#d8d8d4', cardAccent: '#1c1c1e', cardText: '#1c1c1e', cardMuted: '#6b6868',
+    id: 'indie-classic', legacyId: 'classic', name: 'indie-classic', title: 'Indie Classic', tagline: 'Clean, durable, trade-ready', icon: 'IC',
+    bestFor: 'Literary fiction, nonfiction, essays', detail: 'A restrained print-book default with compact margins and crisp contrast.',
+    cardBg: '#FFFFFF', cardBorder: '#DAD6E8', cardAccent: '#441CB2', cardText: '#1B1330', cardMuted: '#5C536F',
     sampleFont: "Georgia, 'Times New Roman', serif",
     theme: 'light', font: 'georgia', size: 'sm', spacing: 'compact',
   },
@@ -348,29 +362,36 @@ const DISTRIBUTION_CHANNELS = [
   {
     group: 'Major Retailers',
     channels: [
-      { id: 'amazon',      label: 'Amazon Kindle',       note: 'Largest eBook market — incompatible with Kindle Unlimited (KDP Select) if distributing wide' },
-      { id: 'apple',       label: 'Apple Books',         note: 'Available in 50+ countries, strong in English-speaking markets' },
-      { id: 'bn',          label: 'Barnes & Noble NOOK', note: 'Largest US digital bookstore after Amazon' },
-      { id: 'kobo',        label: 'Kobo',                note: 'Dominant in Canada, UK, Australia and Europe' },
-      { id: 'google-play', label: 'Google Play Books',   note: 'Android ecosystem, 2+ billion users globally' },
-      { id: 'scribd',      label: 'Scribd',              note: 'Subscription reading platform, 1M+ subscribers' },
+      { id: 'amazon',      label: 'Amazon Kindle',       note: 'Largest eBook market — incompatible with Kindle Unlimited (KDP Select) if distributing wide', formats: ['eBook', 'Paperback', 'Hardcover'], timing: '24-72h', payout: 'KDP estimate' },
+      { id: 'apple',       label: 'Apple Books',         note: 'Available in 50+ countries, strong in English-speaking markets', formats: ['eBook'], timing: '24-72h', payout: 'Wide retail' },
+      { id: 'bn',          label: 'Barnes & Noble NOOK', note: 'Largest US digital bookstore after Amazon', formats: ['eBook'], timing: '24-72h', payout: 'Wide retail' },
+      { id: 'kobo',        label: 'Kobo',                note: 'Dominant in Canada, UK, Australia and Europe', formats: ['eBook'], timing: '24-72h', payout: 'Wide retail' },
+      { id: 'google-play', label: 'Google Play Books',   note: 'Android ecosystem, 2+ billion users globally', formats: ['eBook'], timing: '24-72h', payout: 'Wide retail' },
+      { id: 'scribd',      label: 'Scribd',              note: 'Subscription reading platform, 1M+ subscribers', formats: ['eBook'], timing: '2-5 days', payout: 'Subscription' },
     ],
   },
   {
     group: 'Libraries & Institutions',
     channels: [
-      { id: 'overdrive',    label: 'OverDrive / Libby',  note: 'Powers 90% of library digital collections worldwide' },
-      { id: 'hoopla',       label: 'Hoopla',             note: 'No waitlists — instant lending from public libraries' },
-      { id: 'baker-taylor', label: 'Baker & Taylor',     note: 'Axis360 — major US library distribution network' },
+      { id: 'overdrive',    label: 'OverDrive / Libby',  note: 'Powers 90% of library digital collections worldwide', formats: ['eBook'], timing: '3-7 days', payout: 'Library terms' },
+      { id: 'hoopla',       label: 'Hoopla',             note: 'No waitlists — instant lending from public libraries', formats: ['eBook'], timing: '3-7 days', payout: 'Library terms' },
+      { id: 'baker-taylor', label: 'Baker & Taylor',     note: 'Axis360 — major US library distribution network', formats: ['eBook'], timing: '3-7 days', payout: 'Library terms' },
     ],
   },
   {
     group: 'International',
     channels: [
-      { id: 'tolino', label: 'Tolino', note: 'Leading eBook platform in Germany, Austria and Switzerland' },
-      { id: 'vivlio', label: 'Vivlio', note: 'Leading eBook platform in France and Belgium' },
+      { id: 'tolino', label: 'Tolino', note: 'Leading eBook platform in Germany, Austria and Switzerland', formats: ['eBook'], timing: '3-7 days', payout: 'Wide retail' },
+      { id: 'vivlio', label: 'Vivlio', note: 'Leading eBook platform in France and Belgium', formats: ['eBook'], timing: '3-7 days', payout: 'Wide retail' },
     ],
   },
+];
+
+const PRICE_PRESETS = [
+  { value: '2.99', label: '$2.99', note: 'entry eBook' },
+  { value: '4.99', label: '$4.99', note: 'common indie' },
+  { value: '9.99', label: '$9.99', note: 'top KDP 70%' },
+  { value: '14.99', label: '$14.99', note: 'print-friendly' },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -991,7 +1012,7 @@ export default function UploadWizard() {
     coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '', coverArtPlacement: 'window',
     price: '', isFree: false, buyUrl: '', buyPlatform: 'own',
     releasePlan: 'schedule', releaseDate: dateInputFromNow(DEFAULT_RELEASE_LEAD_DAYS),
-    bookStyle: 'romance',
+    bookStyle: 'indie-romance',
     distributionChannels: ['amazon', 'apple', 'bn', 'kobo', 'google-play', 'scribd'],
     frontMatter: {
       copyright:   { enabled: true,  content: '' },
@@ -1043,6 +1064,76 @@ export default function UploadWizard() {
     : releasePlan === 'schedule'
       ? `Scheduled for ${formatDateInput(releaseDate)}`
       : 'Private draft';
+  const royaltyEstimate = useMemo(() => calculateRoyaltyEstimates({
+    price: fd.price,
+    isFree: fd.isFree,
+    formats: fd.formats,
+    pageCount: resolvedSelectedPages,
+    trimSize: selectedTrim.id,
+    distributionChannels: fd.distributionChannels,
+  }), [
+    fd.price,
+    fd.isFree,
+    fd.formats,
+    resolvedSelectedPages,
+    selectedTrim.id,
+    fd.distributionChannels,
+  ]);
+  const flatDistributionChannels = useMemo(() => DISTRIBUTION_CHANNELS.flatMap(group => group.channels), []);
+  const selectedDistributionChannels = useMemo(() => (
+    (fd.distributionChannels || [])
+      .map(id => flatDistributionChannels.find(ch => ch.id === id))
+      .filter(Boolean)
+  ), [fd.distributionChannels, flatDistributionChannels]);
+  const parsedListPrice = Number.parseFloat(fd.price);
+  const priceStatusLabel = fd.isFree
+    ? 'Free'
+    : Number.isFinite(parsedListPrice) && parsedListPrice > 0
+      ? formatRoyaltyMoney(parsedListPrice)
+      : 'Not set';
+  const formatSummaryLabel = fd.formats.length ? fd.formats.join(', ') : 'None selected';
+  const bestRoyaltyLabel = royaltyEstimate.best
+    ? `${formatRoyaltyMoney(royaltyEstimate.best.authorEarnings)} via ${royaltyEstimate.best.channel}`
+    : fd.isFree
+      ? 'Free listing'
+      : 'Set a price to estimate';
+  const distributionModeLabel = selectedDistributionChannels.length === 0
+    ? 'Indie Converters only'
+    : selectedDistributionChannels.length === 1 && selectedDistributionChannels[0].id === 'amazon'
+      ? 'Amazon only'
+      : selectedDistributionChannels.some(ch => ['overdrive', 'hoopla', 'baker-taylor', 'tolino', 'vivlio'].includes(ch.id))
+        ? 'Wide plus libraries'
+        : 'Major retailers';
+  const hasEbookOnlyDistribution = hasPrintFormat && selectedDistributionChannels.some(ch => (
+    (ch.formats || []).length === 1 && ch.formats[0] === 'eBook'
+  ));
+  const printCoverTrimId = PRINT_COVER_TRIM_QUERY[selectedTrim.id] || selectedTrim.id;
+  const printCoverTrim = TRIM_SIZE_OPTIONS.find(option => option.id === printCoverTrimId)
+    || TRIM_SIZE_OPTIONS.find(option => option.id === '6x9')
+    || TRIM_SIZE_OPTIONS[0];
+  const printCoverBindingType = fd.formats.includes('Hardcover') && !fd.formats.includes('Paperback') ? 'hardcover' : 'paperback';
+  const printCoverEstimate = useMemo(() => (
+    hasPrintFormat
+      ? calculatePrintCover({
+          bindingType: printCoverBindingType,
+          trimWidth: printCoverTrim.width,
+          trimHeight: printCoverTrim.height,
+          interiorType: 'blackWhite',
+          paperType: 'white',
+          pageCount: resolvedSelectedPages || 0,
+        })
+      : null
+  ), [hasPrintFormat, printCoverBindingType, printCoverTrim.height, printCoverTrim.width, resolvedSelectedPages]);
+  const printCoverCalculatorPath = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('source', 'upload');
+    params.set('trim', printCoverTrimId);
+    params.set('binding', printCoverBindingType);
+    params.set('interior', 'blackWhite');
+    params.set('paper', 'white');
+    if (resolvedSelectedPages) params.set('pages', String(resolvedSelectedPages));
+    return `/tools/print-cover-calculator?${params.toString()}`;
+  }, [printCoverBindingType, printCoverTrimId, resolvedSelectedPages]);
   const manuscriptFileName = fd.manuscriptFile?.name
     || fd.manuscriptPath?.split('/').pop()?.replace(/^\d+-/, '')
     || '';
@@ -1641,6 +1732,7 @@ export default function UploadWizard() {
   if (step === 10) {
     return (
       <div className="wizard wizard--done">
+        <SEO title="Upload Manuscript | IndieConverters" description="Upload and publish your manuscript." path="/upload" />
         <div className="wz-done">
           <div className="wz-done-cover">
             {fd.coverPreview
@@ -1701,6 +1793,7 @@ export default function UploadWizard() {
   // ─────────────────── WIZARD LAYOUT ──────────────────────────
   return (
     <div className="wizard">
+      <SEO title="Upload Manuscript | IndieConverters" description="Upload and publish your manuscript." path="/upload" />
 
       {/* ── Sidebar ── */}
       <aside className="wz-sidebar">
@@ -2198,103 +2291,143 @@ export default function UploadWizard() {
             const showMs = !!currentPage;
             const isLastPage = msPage >= msPages.length - 1;
             return (
-              <div className="wz-step wz-step--preview">
-                <h2>Reading Style</h2>
-                <p className="wz-sub">Choose the style that best matches your book's tone. Readers can customise it — this sets the default.</p>
-                <div className="wz-style-grid">
-                  {BOOK_STYLES.map(style => (
-                    <button key={style.id} type="button"
-                      className={`wz-style-card ${fd.bookStyle === style.id ? 'selected' : ''}`}
-                      style={{ background: style.cardBg, borderColor: fd.bookStyle === style.id ? style.cardAccent : style.cardBorder, boxShadow: fd.bookStyle === style.id ? `0 0 0 2px ${style.cardAccent}` : 'none' }}
-                      onClick={() => applyStyle(style)}>
-                      <span className="wz-style-icon" style={{ color: style.cardAccent }}>{style.icon}</span>
-                      <span className="wz-style-name" style={{ color: style.cardText, fontFamily: style.sampleFont }}>{style.name}</span>
-                      <span className="wz-style-tagline" style={{ color: style.cardMuted }}>{style.tagline}</span>
-                      <p className="wz-style-sample" style={{ fontFamily: style.sampleFont, color: style.cardText }}>
-                        "The light fell in slats through wooden blinds, where the smell of old paper had long since become something closer to memory."
-                      </p>
-                    </button>
-                  ))}
+              <div className="wz-step wz-step--preview wz-reading-step">
+                <div className="wz-reading-head">
+                  <span className="wz-reading-kicker">Interior reading experience</span>
+                  <h2>Choose your default reader style</h2>
+                  <p className="wz-sub">Set a polished default for how your book opens on IndieConverters. Readers can still customise their own view.</p>
                 </div>
-                <details className="wz-finetune">
-                  <summary className="wz-finetune-summary">Fine-tune</summary>
-                  <div className="wz-preview-bar">
-                    <div className="wz-ctrl-group">
-                      <span className="wz-ctrl-label">Theme</span>
-                      <div className="wz-ctrl-row">
-                        {PREVIEW_THEMES.map(t => (
-                          <button key={t.id} type="button" className={`wz-theme-pill ${fd.pTheme === t.id ? 'active' : ''}`}
-                            style={{ background: t.bg, color: t.text, outlineColor: fd.pTheme === t.id ? t.text : 'transparent' }}
-                            onClick={() => up('pTheme', t.id)}>{t.name}</button>
-                        ))}
+
+                <div className="wz-reading-layout">
+                  <section className="wz-reading-panel wz-reading-panel--templates">
+                    <div className="wz-reading-panel-head">
+                      <div>
+                        <span>Templates</span>
+                        <h3>IndieConverters interiors</h3>
                       </div>
+                      <small>{selectedTrim.label}</small>
                     </div>
-                    <div className="wz-ctrl-group">
-                      <span className="wz-ctrl-label">Typeface</span>
-                      <div className="wz-ctrl-row">
-                        {PREVIEW_FONTS.map(f => (
-                          <button key={f.id} type="button" className={`wz-font-pill ${fd.pFont === f.id ? 'active' : ''}`}
-                            style={{ fontFamily: f.css }} onClick={() => up('pFont', f.id)}>{f.name}</button>
-                        ))}
-                      </div>
+
+                    <div className="wz-style-grid">
+                      {BOOK_STYLES.map(style => {
+                        const selected = fd.bookStyle === style.id || fd.bookStyle === style.legacyId;
+                        return (
+                          <button
+                            key={style.id}
+                            type="button"
+                            className={`wz-style-card ${selected ? 'selected' : ''}`}
+                            style={{
+                              '--style-bg': style.cardBg,
+                              '--style-border': style.cardBorder,
+                              '--style-accent': style.cardAccent,
+                              '--style-text': style.cardText,
+                              '--style-muted': style.cardMuted,
+                              '--style-font': style.sampleFont,
+                            }}
+                            onClick={() => applyStyle(style)}
+                          >
+                            <span className="wz-style-icon">{style.icon}</span>
+                            <span className="wz-style-name">{style.name}</span>
+                            <span className="wz-style-tagline">{style.tagline}</span>
+                            <span className="wz-style-best">{style.bestFor}</span>
+                            <p className="wz-style-sample">{style.detail}</p>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <div className="wz-ctrl-group">
-                      <span className="wz-ctrl-label">Size</span>
-                      <div className="wz-ctrl-row">
-                        {PREVIEW_SIZES.map((s, i) => (
-                          <button key={s.id} type="button" className={`wz-size-pill ${fd.pSize === s.id ? 'active' : ''}`}
-                            style={{ fontSize: `${0.78 + i * 0.15}rem` }} onClick={() => up('pSize', s.id)}>Aa</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="wz-ctrl-group">
-                      <span className="wz-ctrl-label">Spacing</span>
-                      <div className="wz-ctrl-row">
-                        {PREVIEW_SPACING.map(s => (
-                          <button key={s.id} type="button" className={`wz-spacing-pill ${fd.pSpacing === s.id ? 'active' : ''}`}
-                            onClick={() => up('pSpacing', s.id)}>{s.label}</button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </details>
-                <div className="wz-book-reader">
-                  <button className="wz-book-arrow" onClick={() => setMsPage(p => Math.max(0, p - 1))} disabled={msPage === 0} aria-label="Previous page">‹</button>
-                  <div className="wz-book-page" style={{ background: theme.bg, borderColor: theme.border, '--page-aspect': selectedTrim.aspect, '--page-width': selectedTrim.previewWidth }} tabIndex={0}
-                    onKeyDown={e => {
-                      if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) { e.preventDefault(); if (!isLastPage) setMsPage(p => p + 1); }
-                      if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) { e.preventDefault(); if (msPage > 0) setMsPage(p => p - 1); }
-                    }}>
-                    <div className="wz-book-page-hdr" style={{ borderColor: `${theme.text}15` }}>
-                      <span className="wz-book-running" style={{ fontFamily: fontCss, color: theme.text }}>{msPage % 2 === 0 ? (fd.title || 'Your Book Title') : ''}</span>
-                      <span className="wz-book-running" style={{ fontFamily: fontCss, color: theme.text, textAlign: 'right' }}>{msPage % 2 !== 0 ? authorName : ''}</span>
-                    </div>
-                    <div className="wz-book-page-body" style={{ fontFamily: fontCss, fontSize: sizeObj.size, lineHeight: sizeObj.lh, color: theme.text }}>
-                      {msLoading ? (
-                        <div className="wz-reader-loading" style={{ color: theme.text }}>
-                          <div className="wz-spinner" style={{ borderColor: `${theme.text}22`, borderTopColor: theme.text }} />
-                          Loading your manuscript…
+
+                    <details className="wz-finetune">
+                      <summary className="wz-finetune-summary">Fine-tune type settings</summary>
+                      <div className="wz-preview-bar">
+                        <div className="wz-ctrl-group">
+                          <span className="wz-ctrl-label">Theme</span>
+                          <div className="wz-ctrl-row">
+                            {PREVIEW_THEMES.map(t => (
+                              <button key={t.id} type="button" className={`wz-theme-pill ${fd.pTheme === t.id ? 'active' : ''}`}
+                                style={{ background: t.bg, color: t.text, outlineColor: fd.pTheme === t.id ? t.text : 'transparent' }}
+                                onClick={() => up('pTheme', t.id)}>{t.name}</button>
+                            ))}
+                          </div>
                         </div>
-                      ) : showMs ? (
-                        currentPage.map((para, i) => <p key={i} className="wz-reader-para">{para}</p>)
-                      ) : (
-                        SAMPLE_TEXT.map((block, i) =>
-                          block.type === 'chapter'
-                            ? <div key={i} className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>{block.text}</div>
-                            : <p key={i} className="wz-reader-para">{block.text}</p>
-                        )
-                      )}
+                        <div className="wz-ctrl-group">
+                          <span className="wz-ctrl-label">Typeface</span>
+                          <div className="wz-ctrl-row">
+                            {PREVIEW_FONTS.map(f => (
+                              <button key={f.id} type="button" className={`wz-font-pill ${fd.pFont === f.id ? 'active' : ''}`}
+                                style={{ fontFamily: f.css }} onClick={() => up('pFont', f.id)}>{f.name}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="wz-ctrl-group">
+                          <span className="wz-ctrl-label">Size</span>
+                          <div className="wz-ctrl-row">
+                            {PREVIEW_SIZES.map((s, i) => (
+                              <button key={s.id} type="button" className={`wz-size-pill ${fd.pSize === s.id ? 'active' : ''}`}
+                                style={{ fontSize: `${0.78 + i * 0.15}rem` }} onClick={() => up('pSize', s.id)}>Aa</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="wz-ctrl-group">
+                          <span className="wz-ctrl-label">Spacing</span>
+                          <div className="wz-ctrl-row">
+                            {PREVIEW_SPACING.map(s => (
+                              <button key={s.id} type="button" className={`wz-spacing-pill ${fd.pSpacing === s.id ? 'active' : ''}`}
+                                onClick={() => up('pSpacing', s.id)}>{s.label}</button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </section>
+
+                  <section className="wz-reading-panel wz-reading-panel--preview">
+                    <div className="wz-reading-panel-head">
+                      <div>
+                        <span>Preview</span>
+                        <h3>{showMs ? 'Your manuscript' : 'Sample reading page'}</h3>
+                      </div>
+                      <small>{showMs ? `Page ${msPage + 1} of ${msPages.length}` : 'Sample text'}</small>
                     </div>
-                    <div className="wz-book-page-ftr" style={{ borderColor: `${theme.text}15`, color: theme.text }}>
-                      {showMs && <span style={{ opacity: 0.34, fontSize: '0.72rem', fontFamily: fontCss }}>Page {msPage + 1} / {msPages.length} · {selectedTrim.label}</span>}
-                      {!showMs && !msLoading && (
-                        <span style={{ opacity: 0.28, fontSize: '0.65rem' }}>
-                          {fd.manuscriptPath ? '.txt files only · sample text shown' : 'Sample text · upload a .txt manuscript to preview'}
-                        </span>
-                      )}
+
+                    <div className="wz-book-reader">
+                      <button className="wz-book-arrow" onClick={() => setMsPage(p => Math.max(0, p - 1))} disabled={msPage === 0} aria-label="Previous page">‹</button>
+                      <div className="wz-book-page" style={{ background: theme.bg, borderColor: theme.border, '--page-aspect': selectedTrim.aspect, '--page-width': selectedTrim.previewWidth }} tabIndex={0}
+                        onKeyDown={e => {
+                          if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) { e.preventDefault(); if (!isLastPage) setMsPage(p => p + 1); }
+                          if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) { e.preventDefault(); if (msPage > 0) setMsPage(p => p - 1); }
+                        }}>
+                        <div className="wz-book-page-hdr" style={{ borderColor: `${theme.text}15` }}>
+                          <span className="wz-book-running" style={{ fontFamily: fontCss, color: theme.text }}>{msPage % 2 === 0 ? (fd.title || 'Your Book Title') : ''}</span>
+                          <span className="wz-book-running" style={{ fontFamily: fontCss, color: theme.text, textAlign: 'right' }}>{msPage % 2 !== 0 ? authorName : ''}</span>
+                        </div>
+                        <div className="wz-book-page-body" style={{ fontFamily: fontCss, fontSize: sizeObj.size, lineHeight: sizeObj.lh, color: theme.text }}>
+                          {msLoading ? (
+                            <div className="wz-reader-loading" style={{ color: theme.text }}>
+                              <div className="wz-spinner" style={{ borderColor: `${theme.text}22`, borderTopColor: theme.text }} />
+                              Loading your manuscript…
+                            </div>
+                          ) : showMs ? (
+                            currentPage.map((para, i) => <p key={i} className="wz-reader-para">{para}</p>)
+                          ) : (
+                            SAMPLE_TEXT.map((block, i) =>
+                              block.type === 'chapter'
+                                ? <div key={i} className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>{block.text}</div>
+                                : <p key={i} className="wz-reader-para">{block.text}</p>
+                            )
+                          )}
+                        </div>
+                        <div className="wz-book-page-ftr" style={{ borderColor: `${theme.text}15`, color: theme.text }}>
+                          {showMs && <span style={{ opacity: 0.34, fontSize: '0.72rem', fontFamily: fontCss }}>Page {msPage + 1} / {msPages.length} · {selectedTrim.label}</span>}
+                          {!showMs && !msLoading && (
+                            <span style={{ opacity: 0.28, fontSize: '0.65rem' }}>
+                              {fd.manuscriptPath ? '.txt files only · sample text shown' : 'Sample text · upload a .txt manuscript to preview'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button className="wz-book-arrow" onClick={() => setMsPage(p => Math.min(msPages.length - 1, p + 1))} disabled={isLastPage || !showMs} aria-label="Next page">›</button>
                     </div>
-                  </div>
-                  <button className="wz-book-arrow" onClick={() => setMsPage(p => Math.min(msPages.length - 1, p + 1))} disabled={isLastPage || !showMs} aria-label="Next page">›</button>
+                  </section>
                 </div>
               </div>
             );
@@ -2521,6 +2654,54 @@ export default function UploadWizard() {
               <div className="wz-section-divider"><span>Pricing & Buy Link</span></div>
 
               <div className="wz-fields">
+                {hasPrintFormat && (
+                  <div className="wz-print-cover-tool">
+                    <div>
+                      <strong>Need a full-wrap print cover?</strong>
+                      <span>Calculate spine width, bleed, safe area, and 300 DPI export size before you design or hire a cover designer.</span>
+                      {printCoverEstimate && (
+                        <>
+                          <div className="wz-print-cover-mini" aria-label="Estimated print cover size">
+                            <div>
+                              <span>Full wrap</span>
+                              <strong>{formatCoverInches(printCoverEstimate.fullCoverWidth)} x {formatCoverInches(printCoverEstimate.fullCoverHeight)}</strong>
+                            </div>
+                            <div>
+                              <span>Spine</span>
+                              <strong>{formatCoverInches(printCoverEstimate.spineWidth)}</strong>
+                            </div>
+                            <div>
+                              <span>300 DPI</span>
+                              <strong>{printCoverEstimate.pixelWidth} x {printCoverEstimate.pixelHeight}px</strong>
+                            </div>
+                          </div>
+                          <small className="wz-print-cover-assumption">
+                            Based on {selectedTrim.label}
+                            {resolvedSelectedPages ? `, ${resolvedSelectedPages} pages` : ', page count pending'}
+                            , black and white interior, white paper.
+                          </small>
+                        </>
+                      )}
+                    </div>
+                    <Link to={printCoverCalculatorPath}>Open calculator</Link>
+                  </div>
+                )}
+
+                <div className="wz-pricing-snapshot" aria-label="Pricing summary">
+                  <div>
+                    <span>Formats</span>
+                    <strong>{formatSummaryLabel}</strong>
+                  </div>
+                  <div>
+                    <span>List price</span>
+                    <strong>{priceStatusLabel}</strong>
+                  </div>
+                  <div>
+                    <span>Best estimate</span>
+                    <strong>{bestRoyaltyLabel}</strong>
+                  </div>
+                </div>
+
                 <label className={`wz-toggle-card ${fd.isFree ? 'on' : ''}`}>
                   <div><strong>This book is free</strong><span>Readers can download or access it without paying.</span></div>
                   <div className={`wz-toggle ${fd.isFree ? 'on' : ''}`} onClick={() => up('isFree', !fd.isFree)} role="switch" />
@@ -2532,8 +2713,88 @@ export default function UploadWizard() {
                       <span className="wz-price-sym">$</span>
                       <input type="number" min="0" step="0.01" value={fd.price} onChange={e => up('price', e.target.value)} placeholder="9.99" />
                     </div>
+                    <div className="wz-price-presets" aria-label="Quick price presets">
+                      {PRICE_PRESETS.map(preset => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          className={fd.price === preset.value ? 'selected' : ''}
+                          aria-pressed={fd.price === preset.value}
+                          onClick={() => up('price', preset.value)}
+                        >
+                          <strong>{preset.label}</strong>
+                          <span>{preset.note}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {hasPrintFormat && (
+                      <p className="wz-pricing-note">
+                        Print estimates use {selectedTrim.label}
+                        {resolvedSelectedPages ? ` and ${resolvedSelectedPages} pages` : ''}
+                        . Final print costs may change after file conversion.
+                      </p>
+                    )}
                   </div>
                 )}
+
+                <div className="wz-royalty-panel">
+                  <div className="wz-royalty-head">
+                    <div>
+                      <span>Royalty estimate</span>
+                      <small>Estimate only. Actual royalties vary by marketplace, tax, file size, print specs, and reader country.</small>
+                    </div>
+                    {royaltyEstimate.best && (
+                      <div className="wz-royalty-best">
+                        <small>Best estimate</small>
+                        <strong>{formatRoyaltyMoney(royaltyEstimate.best.authorEarnings)}</strong>
+                        <span>{royaltyEstimate.best.channel}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="wz-royalty-promise">
+                    Indie Converters direct is modeled with a platform fee 20% lower than KDP's comparable fee, so authors keep more on direct sales.
+                  </div>
+
+                  {royaltyEstimate.estimates.length > 0 ? (
+                    <div className="wz-royalty-table" role="table" aria-label="Royalty estimates">
+                      <div className="wz-royalty-row wz-royalty-row--head" role="row">
+                        <span role="columnheader">Channel</span>
+                        <span role="columnheader">Format</span>
+                        <span role="columnheader">Costs</span>
+                        <span role="columnheader">Author earns</span>
+                      </div>
+                      {royaltyEstimate.estimates.map(item => (
+                        <div key={item.id} className={`wz-royalty-row ${item.featured ? 'is-featured' : ''}`} role="row">
+                          <div role="cell">
+                            <strong>{item.channel}</strong>
+                            <small>{item.note}</small>
+                          </div>
+                          <span role="cell">{item.format}</span>
+                          <span role="cell">
+                            {item.productionCost
+                              ? `${formatRoyaltyMoney(item.productionCost)} print`
+                              : item.platformCosts
+                                ? `${formatRoyaltyMoney(item.platformCosts)} ${item.costLabel || 'fee'}`
+                                : '$0.00'}
+                          </span>
+                          <strong role="cell">{formatRoyaltyMoney(item.authorEarnings)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="wz-royalty-empty">{royaltyEstimate.warnings[0] || 'Enter a paid list price to preview royalties.'}</div>
+                  )}
+
+                  {royaltyEstimate.warnings.length > 0 && royaltyEstimate.estimates.length > 0 && (
+                    <div className="wz-royalty-warnings">
+                      {royaltyEstimate.warnings.map(warning => (
+                        <span key={warning}>{warning}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="wz-row">
                   <div className="wz-field">
                     <label>Where do you sell it? <span className="opt">optional</span></label>
@@ -2564,6 +2825,30 @@ export default function UploadWizard() {
                 Distribution takes 24–72 hours after publishing.
               </p>
 
+              <div className="wz-dist-summary" aria-label="Distribution summary">
+                <div>
+                  <span>Route</span>
+                  <strong>{distributionModeLabel}</strong>
+                </div>
+                <div>
+                  <span>Channels</span>
+                  <strong>
+                    {selectedDistributionChannels.length
+                      ? `${selectedDistributionChannels.length} selected`
+                      : 'Direct only'}
+                  </strong>
+                </div>
+                <div>
+                  <span>Best estimate</span>
+                  <strong>{bestRoyaltyLabel}</strong>
+                </div>
+              </div>
+
+              <div className="wz-dist-guidance">
+                <strong>How earnings are estimated</strong>
+                <p>Direct Indie Converters sales use the lower platform-fee model. Retailers and libraries use their own payout terms, so final statements may vary.</p>
+              </div>
+
               {/* Presets */}
               <div className="wz-dist-presets">
                 <button type="button"
@@ -2591,6 +2876,12 @@ export default function UploadWizard() {
                 </div>
               )}
 
+              {hasEbookOnlyDistribution && (
+                <div className="wz-dist-format-note">
+                  Print editions mainly route through print-capable partners. eBook-only stores will receive the digital edition.
+                </div>
+              )}
+
               {/* Channel groups */}
               <div className="wz-dist-groups">
                 {DISTRIBUTION_CHANNELS.map(group => (
@@ -2610,6 +2901,11 @@ export default function UploadWizard() {
                             <div className="wz-dist-channel-text">
                               <span className="wz-dist-channel-name">{ch.label}</span>
                               <span className="wz-dist-channel-note">{ch.note}</span>
+                              <span className="wz-dist-channel-meta">
+                                <span>{ch.formats.join(' / ')}</span>
+                                <span>{ch.timing}</span>
+                                <span>{ch.payout}</span>
+                              </span>
                             </div>
                           </label>
                         );
@@ -2940,12 +3236,14 @@ export default function UploadWizard() {
                   { title: 'Cover & Pricing', to: 5, rows: [
                     ['Cover',     fd.coverFile?.name || `${selectedTemplate.name} template${fd.coverArtPreview ? ' + artwork' : ''}`],
                     ['Price',     fd.isFree ? 'Free' : (fd.price ? `$${fd.price}` : '—')],
+                    ['Best royalty estimate', royaltyEstimate.best ? `${formatRoyaltyMoney(royaltyEstimate.best.authorEarnings)} via ${royaltyEstimate.best.channel}` : '—'],
                     ['Buy link',  fd.buyUrl || '—'],
                     ['Platform',  fd.buyPlatform !== 'own' ? fd.buyPlatform : 'Own website'],
                   ]},
                   { title: 'Distribution', to: 6, rows: [
-                    ['Channels', fd.distributionChannels.length
-                      ? fd.distributionChannels.map(id => DISTRIBUTION_CHANNELS.flatMap(g => g.channels).find(c => c.id === id)?.label || id).join(', ')
+                    ['Route', distributionModeLabel],
+                    ['Channels', selectedDistributionChannels.length
+                      ? selectedDistributionChannels.map(channel => channel.label).join(', ')
                       : 'None selected — Indie Converters only'],
                   ]},
                   { title: 'Book Structure', to: 7, rows: [

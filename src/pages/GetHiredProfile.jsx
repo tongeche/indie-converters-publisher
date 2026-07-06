@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchFreelancerProfile, upsertFreelancerProfile } from '../lib/api';
+import SEO from '../components/SEO';
 import './GetHiredProfile.css';
 
 const IconEdit   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="20" height="20"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
@@ -179,6 +180,7 @@ export default function GetHiredProfile() {
 
   return (
     <div className="ghp-page">
+      <SEO title="Your Freelancer Profile | IndieConverters" description="Manage your freelancer profile." path="/get-hired/profile" />
       <div className="container ghp-header">
         <span className="ghp-eyebrow">·· Get Hired</span>
         <h1 className="ghp-h1">Your freelancer profile</h1>

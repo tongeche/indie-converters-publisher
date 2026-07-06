@@ -29,6 +29,8 @@
   padding-top: 48px;
 }
 
+.browse-filter-toggle { display: none; }
+
 .browse-sidebar { display: flex; flex-direction: column; gap: 24px; }
 .sidebar-section h3 {
   font-family: 'Inter', sans-serif;
@@ -39,22 +41,6 @@
   color: var(--ink-soft);
   margin-bottom: 12px;
 }
-.sidebar-check {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-  cursor: pointer;
-  font-size: 0.88rem;
-  color: var(--ink-soft);
-}
-.sidebar-check input[type="checkbox"] {
-  accent-color: var(--clay);
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
-}
-.sidebar-check:hover span { color: var(--clay); }
 .clear-btn {
   font-size: 0.8rem;
   color: var(--ochre);
@@ -123,20 +109,9 @@
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 28px;
 }
-.book-card { display: flex; flex-direction: column; gap: 12px; cursor: pointer; }
+.book-card { display: block; cursor: pointer; }
 .book-card .book-cover { transition: transform 200ms ease; }
-.book-card:hover .book-cover { transform: translateY(-4px); }
-.book-card-meta { display: flex; flex-direction: column; gap: 3px; }
-.card-genre {
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ochre);
-}
-.card-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 0.92rem; color: var(--ink); }
-.card-author { font-size: 0.78rem; color: var(--ink-soft); }
-.card-price { font-size: 0.8rem; font-weight: 600; color: var(--clay); margin-top: 2px; }
+.book-card:hover .book-cover { transform: translateY(-6px); }
 
 .no-results { padding: 60px 0; color: var(--ink-soft); }
 .link-btn {
@@ -168,27 +143,28 @@
 }
 .search-clear:hover { color: var(--ink); background: rgba(68,28,178,0.06); }
 
-/* ── Format chips in sidebar ── */
-.sidebar-format-chips {
+/* ── Chip groups in sidebar (genre + format) — touch-friendly multi-select ── */
+.sidebar-chip-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-top: 4px;
 }
-.sidebar-format-chip {
-  padding: 5px 12px;
+.sidebar-chip {
+  padding: 9px 14px;
+  min-height: 38px;
   border-radius: 20px;
   border: 1.5px solid rgba(68,28,178,0.18);
   background: transparent;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 500;
   color: var(--ink-soft);
   cursor: pointer;
   transition: border-color 140ms, background 140ms, color 140ms;
   font-family: 'Inter', sans-serif;
 }
-.sidebar-format-chip:hover { border-color: var(--clay); color: var(--clay); }
-.sidebar-format-chip.on {
+.sidebar-chip:hover { border-color: var(--clay); color: var(--clay); }
+.sidebar-chip.on {
   background: var(--clay);
   border-color: var(--clay);
   color: #fff;
@@ -260,9 +236,6 @@
 
 /* ── Loading meta text ── */
 .results-meta-loading { color: var(--ink-soft); font-style: italic; }
-
-/* ── Free badge on cards ── */
-.card-price--free { color: #10b981; }
 
 /* ── Load more ── */
 .browse-load-more {
@@ -352,8 +325,36 @@
 
 @media (max-width: 768px) {
   .browse-layout { grid-template-columns: 1fr; }
-  .browse-sidebar { flex-direction: row; flex-wrap: wrap; gap: 16px; }
-  .sidebar-section { min-width: 140px; }
+
+  .browse-filter-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 18px;
+    background: #fff;
+    border: 1.5px solid var(--sand);
+    border-radius: 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    margin-bottom: 20px;
+  }
+  .browse-filter-toggle-icon { display: inline-block; transition: transform 180ms ease; }
+  .browse-filter-toggle-icon.open { transform: rotate(180deg); }
+
+  .browse-sidebar {
+    display: none;
+    gap: 28px;
+    padding-bottom: 24px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--sand);
+  }
+  .browse-sidebar--open { display: flex; }
+
   .browse-reco-scroll { padding: 0 16px; }
   .browse-hero { padding: 88px 0 44px; }
   .browse-hero h1 { font-size: clamp(1.6rem, 6vw, 2.4rem); }

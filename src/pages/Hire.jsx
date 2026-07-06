@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import SEO from '../components/SEO';
 import './Hire.css';
 
 const IconEdit    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="24" height="24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
@@ -95,6 +96,11 @@ const TRUST = [
 export default function Hire() {
   return (
     <div className="hire-page">
+      <SEO
+        title="Hire a Freelancer | IndieConverters"
+        description="Hire ghostwriters, editors, cover designers, and formatters who understand indie publishing — no bidding wars, no middleman."
+        path="/hire"
+      />
 
       {/* ── Hero ── */}
       <section className="hire-hero">

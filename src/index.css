@@ -135,10 +135,37 @@ img { display: block; max-width: 100%; }
 .cover-sand .cover-rule { background: rgba(27,19,48,0.25); }
 .cover-sand .cover-dot { color: var(--ink); }
 
-/* Photo cover — real image fills the entire cover */
-.book-cover--photo { padding: 0; }
-.book-cover--photo::before { display: none; }
-.book-cover--photo img { border-radius: 2px 6px 6px 2px; }
+/* Photo cover — real image, styled like a standing book (spine shadow + page edge) */
+.book-cover--photo {
+  padding: 0;
+  overflow: visible;
+  box-shadow: 0 18px 30px -10px rgba(20,10,40,0.38), 0 4px 10px rgba(20,10,40,0.16);
+}
+.book-cover--photo::before {
+  display: block;
+  width: 14px;
+  background: linear-gradient(to right, rgba(0,0,0,0.35), transparent);
+  border-radius: 2px 0 0 2px;
+  z-index: 1;
+}
+.book-cover--photo::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  right: -6px;
+  width: 6px;
+  background:
+    repeating-linear-gradient(to bottom, rgba(90,70,40,0.1) 0px, rgba(90,70,40,0.1) 0.5px, transparent 0.5px, transparent 2px),
+    linear-gradient(to right, #e3d9be 0%, #f8f2e4 40%, #efe7d2 68%, #d6caab 100%);
+  border-radius: 0 3px 3px 0;
+  box-shadow: 1px 0 2px rgba(0,0,0,0.12), inset -1px 0 2px rgba(0,0,0,0.08);
+}
+.book-cover--photo img {
+  position: relative;
+  z-index: 0;
+  border-radius: 2px 6px 6px 2px;
+}
 
 /* ── Mobile section padding ── */
 @media (max-width: 640px) {

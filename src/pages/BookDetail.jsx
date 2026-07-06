@@ -3,6 +3,7 @@ import { Link, useParams, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import BookCover from '../components/BookCover';
+import SEO from '../components/SEO';
 import { fetchBook, fetchRelatedBooks, toggleSave, checkSaved } from '../lib/api';
 import './BookDetail.css';
 
@@ -51,6 +52,7 @@ export default function BookDetail() {
   const [saved,       setSaved]      = useState(false);
   const [savePending, setSavePending] = useState(false);
   const [heroColor,   setHeroColor]  = useState(null);
+  const [coverCorsBlocked, setCoverCorsBlocked] = useState(false);
   const [buyOpen,     setBuyOpen]    = useState(false);
   const [menuOpen,    setMenuOpen]   = useState(false);
   const [copied,      setCopied]     = useState(false);
@@ -59,6 +61,7 @@ export default function BookDetail() {
   useEffect(() => {
     setLoading(true);
     setHeroColor(null);
+    setCoverCorsBlocked(false);
     setBuyOpen(false);
     fetchBook(id).then(b => {
       setBook(b);
@@ -90,6 +93,13 @@ export default function BookDetail() {
   const handleCoverLoad = useCallback((e) => {
     const color = extractColor(e.currentTarget);
     if (color) setHeroColor(color);
+  }, []);
+
+  // Some cover hosts (e.g. Google Books) don't send CORS headers, so the
+  // crossOrigin="anonymous" load fails outright — retry once without it so
+  // the cover still displays (just without the dominant-color extraction).
+  const handleCoverError = useCallback(() => {
+    setCoverCorsBlocked(blocked => blocked ? blocked : true);
   }, []);
 
   function handleTiltMove(e) {
@@ -175,6 +185,11 @@ export default function BookDetail() {
 
   return (
     <div className="bd-page">
+      <SEO
+        title={`${book.title} by ${book.author} | IndieConverters`}
+        description={book.blurb ? book.blurb.slice(0, 155) : `${book.title} by ${book.author} — an independently published book on IndieConverters.`}
+        path={`/book/${id}`}
+      />
 
       {/* ═══════════════ HERO ═══════════════ */}
       <section className="bd-hero" style={heroGradient(heroColor)}>
@@ -229,11 +244,13 @@ export default function BookDetail() {
             >
               {book.coverUrl
                 ? <img
+                    key={`${book.coverUrl}-${coverCorsBlocked}`}
                     src={book.coverUrl}
                     alt={book.title}
                     className="bd-cover-img"
-                    crossOrigin="anonymous"
+                    crossOrigin={coverCorsBlocked ? undefined : 'anonymous'}
                     onLoad={handleCoverLoad}
+                    onError={coverCorsBlocked ? undefined : handleCoverError}
                   />
                 : <BookCover title={book.title} author={book.author} colorClass={book.coverColor} size="lg" />
               }
@@ -267,7 +284,7 @@ export default function BookDetail() {
               }
             </div>
 
-            {book.rating && (
+            {book.rating > 0 && (
               <div className="bd-rating-row">
                 <Stars rating={book.rating} />
                 <span className="bd-rating-source">Goodreads</span>
@@ -354,6 +371,13 @@ export default function BookDetail() {
                 </div>
               </div>
             </div>
+
+            {book.blurb && (
+              <div className="bd-hero-excerpt">
+                <span className="bd-hero-excerpt-label">Excerpt</span>
+                {book.blurb.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -362,60 +386,13 @@ export default function BookDetail() {
       <div className="bd-content">
         <div className="container bd-content-inner">
 
-          {book.blurb && (
-            <section className="bd-publisher">
-              <h2 className="bd-section-title">From the Publisher</h2>
-              <div className="bd-description">
-                {book.blurb.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
-              </div>
-            </section>
-          )}
-
-          {metaPills.length > 0 && (
-            <div className="bd-meta-strip">
-              {[
-                book.language  && { label: 'Language',  value: book.language  },
-                book.pubYear   && { label: 'Published', value: book.pubYear   },
-                book.pageCount && { label: 'Pages',     value: book.pageCount.toLocaleString() },
-                book.publisher && { label: 'Publisher', value: book.publisher },
-                book.isbn      && { label: 'ISBN-13',   value: book.isbn      },
-              ].filter(Boolean).map(({ label, value }) => (
-                <div key={label} className="bd-meta-cell">
-                  <span className="bd-meta-label">{label}</span>
-                  <span className="bd-meta-value">{value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {book.keywords?.length > 0 && (
-            <section className="bd-subjects">
-              <h2 className="bd-section-title">Subjects</h2>
-              <div className="bd-subject-tags">
-                {book.keywords.map(k => (
-                  <Link key={k} to={`/browse?q=${encodeURIComponent(k)}`} className="bd-subject-tag">
-                    {k.replace(/-/g, ' ')}
-                  </Link>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
 
         {related.length > 0 && (
           <section className="bd-more">
             <div className="container">
               <div className="bd-more-head">
-                <h2 className="bd-section-title bd-more-title">You might also like</h2>
-                {book.genres?.length > 0 && (
-                  <div className="bd-more-genre-tags">
-                    {book.genres.slice(0, 3).map(g => (
-                      <Link key={g} to={`/browse?genre=${g}`} className="bd-more-genre-chip">
-                        {g.replace(/-/g, ' ')}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+                <h2 className="bd-section-title bd-more-title">We think you might like</h2>
               </div>
             </div>
             <div className="bd-more-scroll-wrap">
@@ -429,7 +406,7 @@ export default function BookDetail() {
                       }
                     </div>
                     <span className="bd-related-title">{b.title}</span>
-                    {b.price && <span className="bd-related-price">${b.price}</span>}
+                    {b.price > 0 && <span className="bd-related-price">${b.price}</span>}
                   </Link>
                 ))}
               </div>

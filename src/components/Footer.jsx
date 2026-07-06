@@ -85,6 +85,10 @@ export default function Footer() {
             <Link to="/hire">Hire a Freelancer</Link>
             <span>·</span>
             <Link to="/help">Help</Link>
+            <span>·</span>
+            <Link to="/privacy">Privacy Policy</Link>
+            <span>·</span>
+            <Link to="/terms">Terms of Service</Link>
           </div>
           <span className="footer-dot-mark">··</span>
         </div>

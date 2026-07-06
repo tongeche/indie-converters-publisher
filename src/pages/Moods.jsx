@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fetchBooks } from '../lib/api';
+import SEO from '../components/SEO';
 import imgAche   from '../assets/moods/Ache.webp';
 import imgDrift  from '../assets/moods/Drift.webp';
 import imgHaunt  from '../assets/moods/haunt.webp';
@@ -126,6 +127,11 @@ export default function Moods() {
 
   return (
     <div className="moods-page">
+      <SEO
+        title="Book Moods | IndieConverters"
+        description="Pick a feeling, find a book. Mood-based discovery for indie fiction and nonfiction."
+        path="/moods"
+      />
 
       {/* ── Hero ── */}
       <section className="moods-hero">

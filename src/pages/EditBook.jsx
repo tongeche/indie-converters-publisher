@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchBookForEdit, updateBook, updateBookGenres, upsertBuyLink } from '../lib/api';
+import SEO from '../components/SEO';
 import './EditBook.css';
 
 const FORMATS   = ['eBook', 'Paperback', 'Hardcover', 'Audiobook'];
@@ -189,6 +190,7 @@ export default function EditBook() {
 
   return (
     <div className="eb-page">
+      <SEO title="Edit Book | IndieConverters" description="Edit your book listing." path="/dashboard/edit" />
       {/* ── Top bar ── */}
       <header className="eb-topbar">
         <Link to="/dashboard" className="eb-back">← Dashboard</Link>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchBlogs } from '../lib/api';
+import SEO from '../components/SEO';
 import blogHero from '../assets/blog-page-hero.webp';
 import './News.css';
 
@@ -102,6 +103,11 @@ export default function Blog() {
 
   return (
     <div className="blist-page">
+      <SEO
+        title="Blog | IndieConverters"
+        description="Guides and articles on publishing, formatting, and building a career as an indie author."
+        path="/blog"
+      />
 
       {/* ── Hero ── */}
       <section className="blist-hero" style={{ backgroundImage: `url(${blogHero})` }}>

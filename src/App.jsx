@@ -27,9 +27,12 @@ import GetHiredProjects from './pages/GetHiredProjects';
 import BriefDetail from './pages/BriefDetail';
 import HelpCenter from './pages/HelpCenter';
 import HelpCategory from './pages/HelpCategory';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 import SavedBooks from './pages/SavedBooks';
 import ComingSoon from './pages/ComingSoon';
 import CheckVerify from './pages/CheckVerify';
+import PrintCoverCalculator from './pages/PrintCoverCalculator';
 
 export default function App() {
   return (
@@ -64,6 +67,7 @@ export default function App() {
             <ProtectedRoute><SavedBooks /></ProtectedRoute>
           } />
           <Route path="/check"               element={<CheckVerify />} />
+          <Route path="/tools/print-cover-calculator" element={<PrintCoverCalculator />} />
           <Route path="/hire"                element={<Hire />}        />
           <Route path="/hire/post"           element={<PostBrief />}   />
           <Route path="/hire/browse"         element={<HireBrowse />}  />
@@ -83,6 +87,8 @@ export default function App() {
           <Route path="/help"                element={<HelpCenter />}  />
           <Route path="/help/:slug"          element={<HelpCategory />} />
           <Route path="/help/*"              element={<ComingSoon />}  />
+          <Route path="/privacy"             element={<PrivacyPolicy />} />
+          <Route path="/terms"               element={<TermsOfService />} />
           <Route path="*"                    element={<Browse />}      />
         </Routes>
         <Footer />

@@ -2,7 +2,7 @@
    BRIEF DETAIL
    ══════════════════════════════════════ */
 
-.bd-page {
+.brf-page {
   min-height: 100vh;
   background: var(--cream);
 }
@@ -76,7 +76,7 @@
   gap: 4px;
 }
 
-.bd-title {
+.brf-title {
   font-family: 'Fraunces', serif;
   font-size: 1.5rem;
   font-weight: 700;
@@ -119,7 +119,7 @@
   padding: 28px 32px;
 }
 
-.bd-section-title {
+.brf-section-title {
   font-family: 'Fraunces', serif;
   font-size: 1.1rem;
   font-weight: 700;

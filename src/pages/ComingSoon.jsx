@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import SEO from '../components/SEO';
 import './ComingSoon.css';
 
 const LABELS = {};
@@ -9,6 +10,7 @@ export default function ComingSoon() {
 
   return (
     <div className="coming-soon-page">
+      <SEO title={`${meta.title} | IndieConverters`} description="This page is on its way." path={pathname} />
       <div className="coming-soon-hero">
         <div className="container">
           <span className="eyebrow">{meta.eyebrow}</span>

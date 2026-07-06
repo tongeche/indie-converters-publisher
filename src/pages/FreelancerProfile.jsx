@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchFreelancerById } from '../lib/api';
+import SEO from '../components/SEO';
 import './FreelancerProfile.css';
 
 const IconPin = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>;
@@ -52,6 +53,11 @@ export default function FreelancerProfile() {
 
   return (
     <div className="fp-page">
+      <SEO
+        title={`${f.display_name} | IndieConverters`}
+        description={f.bio ? f.bio.slice(0, 155) : `${f.display_name}'s freelancer profile on IndieConverters.`}
+        path={`/hire/freelancer/${id}`}
+      />
       <div
         className="fp-cover"
         style={f.cover_image_url ? { backgroundImage: `url(${f.cover_image_url})` } : undefined}

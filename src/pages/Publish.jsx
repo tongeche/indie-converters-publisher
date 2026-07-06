@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import publishBannerImg from '../assets/publish CTA banner.webp';
+import SEO from '../components/SEO';
 import './Publish.css';
 
 const STEPS = [
@@ -83,6 +84,11 @@ export default function Publish() {
 
   return (
     <div className="publish-page">
+      <SEO
+        title="Publish Your Book | IndieConverters"
+        description="Upload your manuscript, convert it to EPUB and PDF, and list it for readers — free during early access, no exclusivity."
+        path="/publish"
+      />
       {/* Hero */}
       <section className="publish-hero">
         <img src={publishBannerImg} alt="" className="publish-hero-img" />
@@ -140,6 +146,20 @@ export default function Publish() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Print cover tool */}
+      <section className="section publish-tool-band">
+        <div className="container publish-tool-inner">
+          <div>
+            <div className="eyebrow">Print covers</div>
+            <h2>Know the full-wrap size before you design.</h2>
+            <p>
+              Calculate spine width, bleed, safe area, and 300 DPI export dimensions for paperback covers before you open Canva or send a brief to a designer.
+            </p>
+          </div>
+          <Link to="/tools/print-cover-calculator" className="btn btn-outline">Open cover calculator</Link>
         </div>
       </section>
 

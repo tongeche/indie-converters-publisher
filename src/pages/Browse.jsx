@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import BookCover from '../components/BookCover';
+import SEO from '../components/SEO';
 import { useAuth } from '../context/AuthContext';
 import { fetchBooks, fetchGenres, fetchSavedBooks, fetchRelatedBooks } from '../lib/api';
 import allBooksHero from '../assets/all-books-hero.webp';
@@ -32,6 +33,7 @@ export default function Browse() {
   const [offset,      setOffset]      = useState(0);
   const [genres,      setGenres]      = useState([]);
   const [recommended, setRecommended] = useState([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const hasMore = books.length < total;
 
   // Keep inputValue in sync when URL changes externally (back/forward)
@@ -115,9 +117,15 @@ export default function Browse() {
   }
 
   const hasFilters = activeGenres.length > 0 || activeFormats.length > 0 || language || query;
+  const activeFilterCount = activeGenres.length + activeFormats.length + (language ? 1 : 0);
 
   return (
     <div className="browse">
+      <SEO
+        title="Browse Indie Books | IndieConverters"
+        description="Browse independently published books by genre, mood, format, and language — no exclusivity, no subscription required."
+        path="/browse"
+      />
 
       {/* ── Hero ── */}
       <div className="browse-hero" style={{ backgroundImage: `url(${allBooksHero})` }}>
@@ -153,28 +161,41 @@ export default function Browse() {
       {/* ── Main layout ── */}
       <div className="container browse-layout">
 
+        {/* ── Mobile filter toggle ── */}
+        <button
+          type="button"
+          className="browse-filter-toggle"
+          onClick={() => setFiltersOpen(o => !o)}
+          aria-expanded={filtersOpen}
+        >
+          <span>Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}</span>
+          <span className={`browse-filter-toggle-icon${filtersOpen ? ' open' : ''}`} aria-hidden="true">⌄</span>
+        </button>
+
         {/* ── Sidebar ── */}
-        <aside className="browse-sidebar">
+        <aside className={`browse-sidebar${filtersOpen ? ' browse-sidebar--open' : ''}`}>
 
           {/* Genre */}
           <div className="sidebar-section">
             <h3>Genre</h3>
-            {genres.map(g => (
-              <label key={g.slug} className="sidebar-check">
-                <input type="checkbox" checked={activeGenres.includes(g.slug)}
-                  onChange={() => toggleMulti('genre', g.slug)} />
-                <span>{g.label}</span>
-              </label>
-            ))}
+            <div className="sidebar-chip-group">
+              {genres.map(g => (
+                <button key={g.slug} type="button"
+                  className={`sidebar-chip ${activeGenres.includes(g.slug) ? 'on' : ''}`}
+                  onClick={() => toggleMulti('genre', g.slug)}>
+                  {g.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Format */}
           <div className="sidebar-section">
             <h3>Format</h3>
-            <div className="sidebar-format-chips">
+            <div className="sidebar-chip-group">
               {FORMATS.map(f => (
                 <button key={f} type="button"
-                  className={`sidebar-format-chip ${activeFormats.includes(f) ? 'on' : ''}`}
+                  className={`sidebar-chip ${activeFormats.includes(f) ? 'on' : ''}`}
                   onClick={() => toggleMulti('format', f)}>
                   {f}
                 </button>
@@ -267,24 +288,13 @@ export default function Browse() {
                 {loading
                   ? Array(12).fill(null).map((_, i) => <div key={i} className="book-card-skeleton" />)
                   : books.map(book => (
-                      <Link to={`/book/${book.slug}`} key={book.slug} className="book-card">
+                      <Link to={`/book/${book.slug}`} key={book.slug} className="book-card" aria-label={`${book.title} by ${book.author}`}>
                         <BookCover
                           title={book.title}
                           author={book.author}
                           colorClass={book.coverColor}
                           coverUrl={book.coverUrl}
                         />
-                        <div className="book-card-meta">
-                          <span className="card-genre">
-                            {(book.genres[0] || book.genre)?.replace(/-/g, ' ')}
-                          </span>
-                          <span className="card-title">{book.title}</span>
-                          <span className="card-author">{book.author}</span>
-                          {book.price
-                            ? <span className="card-price">${Number(book.price).toFixed(2)}</span>
-                            : book.formats?.includes('eBook') && <span className="card-price card-price--free">Free</span>
-                          }
-                        </div>
                       </Link>
                     ))
                 }

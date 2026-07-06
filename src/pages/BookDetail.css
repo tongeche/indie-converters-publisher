@@ -210,6 +210,28 @@
   color: rgba(255,255,255,0.3);
 }
 
+/* Excerpt — moved into the hero, below the buy card */
+.bd-hero-excerpt {
+  margin-top: 28px;
+  max-width: 520px;
+}
+.bd-hero-excerpt-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 10px;
+}
+.bd-hero-excerpt p {
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.72);
+  margin: 0 0 10px;
+}
+.bd-hero-excerpt p:last-child { margin-bottom: 0; }
+
 /* ── Buy card ── */
 .bd-buy-card {
   display: flex;
@@ -408,83 +430,6 @@
   margin-bottom: 16px;
 }
 
-/* From the Publisher */
-.bd-publisher {
-  padding-bottom: 40px;
-  border-bottom: 1px solid rgba(0,0,0,0.08);
-  margin-bottom: 36px;
-}
-
-.bd-description {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  font-size: 0.97rem;
-  color: #3a3a3c;
-  line-height: 1.8;
-  max-width: 680px;
-}
-
-/* Metadata strip */
-.bd-meta-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0;
-  background: #fff;
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 14px;
-  overflow: hidden;
-  margin-bottom: 36px;
-}
-
-.bd-meta-cell {
-  flex: 1;
-  min-width: 120px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 16px 20px;
-  border-right: 1px solid rgba(0,0,0,0.06);
-}
-.bd-meta-cell:last-child { border-right: none; }
-
-.bd-meta-label {
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #8e8e93;
-}
-.bd-meta-value {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #1c1c1e;
-}
-
-/* Subjects */
-.bd-subjects {
-  margin-bottom: 40px;
-}
-.bd-subject-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.bd-subject-tag {
-  display: inline-block;
-  padding: 6px 14px;
-  border-radius: 100px;
-  border: 1.5px solid rgba(0,0,0,0.12);
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: #5e5ce6;
-  background: #fff;
-  text-transform: capitalize;
-  text-decoration: none;
-  transition: background 150ms ease, border-color 150ms ease;
-}
-.bd-subject-tag:hover { background: #f2f2ff; border-color: #5e5ce6; }
-
 /* ═══ MORE BY AUTHOR ═════════════════════════════════════════ */
 .bd-more {
   margin-top: 16px;
@@ -494,31 +439,6 @@
 
 .bd-more-head { margin-bottom: 20px; }
 .bd-more-title { margin-bottom: 8px; }
-
-.bd-more-genre-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.bd-more-genre-chip {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 100px;
-  background: #f2f2f7;
-  border: 1px solid rgba(0,0,0,0.08);
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #5e5ce6;
-  text-transform: capitalize;
-  text-decoration: none;
-  letter-spacing: 0.02em;
-  transition: background 150ms ease, border-color 150ms ease;
-}
-.bd-more-genre-chip:hover {
-  background: #ebebff;
-  border-color: #5e5ce6;
-}
 
 /* Horizontal scroll strip */
 .bd-more-scroll-wrap {
@@ -632,8 +552,7 @@
   .bd-buy-card { flex-direction: column; align-items: stretch; max-width: 100%; }
   .bd-actions-row { flex-direction: row; justify-content: center; }
   .bd-content-inner { padding-top: 28px; }
-  .bd-meta-strip { display: none; }
-  .bd-subjects { display: none; }
+  .bd-hero-excerpt { text-align: left; max-width: 100%; margin-top: 20px; }
 
   /* ··· dropdown: bottom sheet */
   .bd-menu-dropdown {

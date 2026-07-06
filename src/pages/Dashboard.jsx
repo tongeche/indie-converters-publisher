@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { fetchMyBriefs, markBriefFilled, fetchFreelancers } from '../lib/api';
+import SEO from '../components/SEO';
 import './Dashboard.css';
 
 /* ── currencies ─────────────────────────────────────────────── */
@@ -136,6 +137,7 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
+      <SEO title="Dashboard | IndieConverters" description="Manage your books, briefs, and author profile." path="/dashboard" />
       {/* ── Sidebar ─────────────────────────────────────────── */}
       <aside className="dash-sidebar">
         <Link to="/" className="dash-logo">

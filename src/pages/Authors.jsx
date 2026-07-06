@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import SEO from '../components/SEO';
 import authorsHeroImg from '../assets/authors-hero.webp';
 import './Authors.css';
 
@@ -50,6 +51,11 @@ export default function Authors() {
 
   return (
     <div className="authors-page">
+      <SEO
+        title="Author Profiles | IndieConverters"
+        description="Meet the independent authors publishing on IndieConverters — bios, backlists, and links to their work."
+        path="/authors"
+      />
 
       {/* ── Hero ── */}
       <section className="authors-hero">

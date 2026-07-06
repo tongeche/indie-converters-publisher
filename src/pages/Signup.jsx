@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import logoIndie from '../assets/logo-indie.png';
+import SEO from '../components/SEO';
 import './Auth.css';
 
 export default function Signup() {
@@ -50,6 +51,7 @@ export default function Signup() {
 
   return (
     <div className="auth-page">
+      <SEO title="Sign Up | IndieConverters" description="Create your free IndieConverters account to publish, browse, and hire freelancers." path="/signup" />
       <div className="auth-bg" />
 
       <div className="auth-card">

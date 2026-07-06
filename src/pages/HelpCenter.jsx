@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchBlogs } from '../lib/api';
 import { HELP_CATEGORIES as CATEGORIES } from '../lib/helpCategories';
+import SEO from '../components/SEO';
 import './HelpCenter.css';
 
 const POPULAR_TAGS = ['Getting started', 'EPUB', 'Book metadata', 'Author marketing'];
@@ -136,6 +137,11 @@ export default function HelpCenter() {
 
   return (
     <div className="help-page">
+      <SEO
+        title="Help Center | IndieConverters"
+        description="Answers on publishing, formatting, discovery, and hiring freelancers on IndieConverters."
+        path="/help"
+      />
 
       {/* ═══ HERO ═══ */}
       <section className="help-hero">
@@ -194,6 +200,21 @@ export default function HelpCenter() {
                   </div>
                 </Link>
               ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!query && (
+        <section className="help-tools">
+          <div className="container">
+            <div className="help-tool-card">
+              <div>
+                <span className="help-tool-kicker">Publishing tool</span>
+                <h2>Print cover calculator</h2>
+                <p>Calculate full-wrap paperback cover size, spine width, bleed, safe area, and 300 DPI export dimensions before you design.</p>
+              </div>
+              <Link to="/tools/print-cover-calculator" className="help-tool-link">Open calculator</Link>
             </div>
           </div>
         </section>

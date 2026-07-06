@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { fetchOpenBriefs } from '../lib/api';
+import SEO from '../components/SEO';
 import './GetHiredProjects.css';
 
 const IconArrow = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M5 12h14M12 5l7 7-7 7"/></svg>;
@@ -58,6 +59,7 @@ export default function GetHiredProjects() {
 
   return (
     <div className="gp-page">
+      <SEO title="Open Briefs | IndieConverters" description="Browse open freelance briefs from authors." path="/get-hired/projects" />
       <div className="container gp-layout">
 
         <aside className="gp-sidebar">

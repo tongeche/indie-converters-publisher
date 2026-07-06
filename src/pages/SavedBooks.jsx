@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import BookCover from '../components/BookCover';
 import { fetchSavedBooks, toggleSave } from '../lib/api';
+import SEO from '../components/SEO';
 import './SavedBooks.css';
 
 export default function SavedBooks() {
@@ -30,6 +31,7 @@ export default function SavedBooks() {
 
   return (
     <div className="saved-page">
+      <SEO title="Saved Books | IndieConverters" description="Books you've saved to read later." path="/saved" />
       <div className="container">
 
         <header className="saved-header">
