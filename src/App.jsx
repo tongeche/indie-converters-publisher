@@ -20,10 +20,13 @@ import BlogPost from './pages/BlogPost';
 import Hire from './pages/Hire';
 import PostBrief from './pages/PostBrief';
 import HireBrowse from './pages/HireBrowse';
+import FreelancerProfile from './pages/FreelancerProfile';
 import GetHired from './pages/GetHired';
 import GetHiredProfile from './pages/GetHiredProfile';
 import GetHiredProjects from './pages/GetHiredProjects';
+import BriefDetail from './pages/BriefDetail';
 import HelpCenter from './pages/HelpCenter';
+import HelpCategory from './pages/HelpCategory';
 import SavedBooks from './pages/SavedBooks';
 import ComingSoon from './pages/ComingSoon';
 import CheckVerify from './pages/CheckVerify';
@@ -64,6 +67,7 @@ export default function App() {
           <Route path="/hire"                element={<Hire />}        />
           <Route path="/hire/post"           element={<PostBrief />}   />
           <Route path="/hire/browse"         element={<HireBrowse />}  />
+          <Route path="/hire/freelancer/:id" element={<FreelancerProfile />} />
           <Route path="/hire/*"              element={<ComingSoon />}  />
           <Route path="/get-hired"           element={<GetHired />}    />
           <Route path="/get-hired/profile"   element={
@@ -72,8 +76,12 @@ export default function App() {
           <Route path="/get-hired/projects"  element={
             <ProtectedRoute><GetHiredProjects /></ProtectedRoute>
           } />
+          <Route path="/get-hired/projects/:id" element={
+            <ProtectedRoute><BriefDetail /></ProtectedRoute>
+          } />
           <Route path="/get-hired/*"         element={<ComingSoon />}  />
           <Route path="/help"                element={<HelpCenter />}  />
+          <Route path="/help/:slug"          element={<HelpCategory />} />
           <Route path="/help/*"              element={<ComingSoon />}  />
           <Route path="*"                    element={<Browse />}      />
         </Routes>

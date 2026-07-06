@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import BookCover from '../components/BookCover';
 import { useAuth } from '../context/AuthContext';
 import { fetchBooks, fetchGenres, fetchSavedBooks, fetchRelatedBooks } from '../lib/api';
-import allBooksHero from '../assets/all-books-hero.png';
+import allBooksHero from '../assets/all-books-hero.webp';
 import './Browse.css';
 
 const FORMATS   = ['eBook', 'Paperback', 'Hardcover', 'Audiobook'];

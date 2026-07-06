@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchBlogs } from '../lib/api';
-import blogHero from '../assets/blog-page-hero.png';
+import blogHero from '../assets/blog-page-hero.webp';
 import './News.css';
 
 function formatDate(iso) {

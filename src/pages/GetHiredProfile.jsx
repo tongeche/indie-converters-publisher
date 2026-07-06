@@ -24,15 +24,20 @@ export default function GetHiredProfile() {
   const { user } = useAuth();
 
   const [form, setForm] = useState({
-    displayName:  '',
-    serviceType:  '',
-    bio:          '',
-    portfolioUrl: '',
-    rateMin:      '',
-    rateMax:      '',
-    location:     '',
-    contactEmail: user?.email || '',
-    photoUrl:     '',
+    displayName:   '',
+    serviceTypes:  [],
+    bio:           '',
+    portfolioUrl:  '',
+    rateMin:       '',
+    rateMax:       '',
+    location:      '',
+    contactEmail:  user?.email || '',
+    photoUrl:      '',
+    coverImageUrl: '',
+    skills:        [],
+    newSkill:      '',
+    languages:     [],
+    newLanguage:   '',
   });
   const [loading,      setLoading]      = useState(true);
   const [errors,       setErrors]       = useState(EMPTY_ERRORS);
@@ -41,23 +46,32 @@ export default function GetHiredProfile() {
   const [saved,        setSaved]        = useState(false);
   const [photoFile,    setPhotoFile]    = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
+  const [coverFile,    setCoverFile]    = useState(null);
+  const [coverPreview, setCoverPreview] = useState('');
   const photoRef = useRef(null);
+  const coverRef = useRef(null);
 
   useEffect(() => {
     fetchFreelancerProfile(user.id).then(profile => {
       if (profile) {
         setForm({
-          displayName:  profile.display_name  || '',
-          serviceType:  profile.service_type   || '',
-          bio:          profile.bio            || '',
-          portfolioUrl: profile.portfolio_url  || '',
-          rateMin:      profile.rate_min != null ? String(profile.rate_min) : '',
-          rateMax:      profile.rate_max != null ? String(profile.rate_max) : '',
-          location:     profile.location       || '',
-          contactEmail: profile.contact_email  || user.email || '',
-          photoUrl:     profile.photo_url      || '',
+          displayName:   profile.display_name   || '',
+          serviceTypes:  profile.service_types   || [],
+          bio:           profile.bio             || '',
+          portfolioUrl:  profile.portfolio_url   || '',
+          rateMin:       profile.rate_min != null ? String(profile.rate_min) : '',
+          rateMax:       profile.rate_max != null ? String(profile.rate_max) : '',
+          location:      profile.location        || '',
+          contactEmail:  profile.contact_email   || user.email || '',
+          photoUrl:      profile.photo_url       || '',
+          coverImageUrl: profile.cover_image_url || '',
+          skills:        profile.skills          || [],
+          newSkill:      '',
+          languages:     profile.languages       || [],
+          newLanguage:   '',
         });
         setPhotoPreview(profile.photo_url || '');
+        setCoverPreview(profile.cover_image_url || '');
       }
       setLoading(false);
     });
@@ -68,6 +82,11 @@ export default function GetHiredProfile() {
     setPhotoPreview(URL.createObjectURL(file));
   }
 
+  function handleCover(file) {
+    setCoverFile(file);
+    setCoverPreview(URL.createObjectURL(file));
+  }
+
   const initials = form.displayName.trim()
     ? form.displayName.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
     : '?';
@@ -76,11 +95,30 @@ export default function GetHiredProfile() {
     setForm(f => ({ ...f, [key]: value }));
   }
 
+  function addTag(listKey, inputKey, max) {
+    const val = form[inputKey].trim();
+    if (!val || form[listKey].includes(val) || form[listKey].length >= max) return;
+    setForm(f => ({ ...f, [listKey]: [...f[listKey], val], [inputKey]: '' }));
+  }
+
+  function removeTag(listKey, value) {
+    setForm(f => ({ ...f, [listKey]: f[listKey].filter(x => x !== value) }));
+  }
+
+  function toggleServiceType(slug) {
+    setForm(f => ({
+      ...f,
+      serviceTypes: f.serviceTypes.includes(slug)
+        ? f.serviceTypes.filter(x => x !== slug)
+        : [...f.serviceTypes, slug],
+    }));
+  }
+
   function validate() {
     const next = {};
-    if (!form.displayName.trim())  next.displayName  = 'Your name is required';
-    if (!form.serviceType)         next.serviceType  = 'Pick a primary service';
-    if (!form.bio.trim())          next.bio          = 'Tell authors what you do';
+    if (!form.displayName.trim())     next.displayName  = 'Your name is required';
+    if (form.serviceTypes.length === 0) next.serviceTypes = 'Pick at least one service';
+    if (!form.bio.trim())             next.bio          = 'Tell authors what you do';
     if (!/^\S+@\S+\.\S+$/.test(form.contactEmail)) next.contactEmail = 'Enter a valid email';
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -104,16 +142,29 @@ export default function GetHiredProfile() {
         }
       }
 
+      let coverImageUrl = form.coverImageUrl;
+      if (coverFile) {
+        const path = `${user.id}/freelancer-cover-${Date.now()}-${coverFile.name}`;
+        const { error: ce } = await supabase.storage.from('covers').upload(path, coverFile);
+        if (!ce) {
+          coverImageUrl = supabase.storage.from('covers').getPublicUrl(path).data.publicUrl;
+          setField('coverImageUrl', coverImageUrl);
+        }
+      }
+
       await upsertFreelancerProfile(user.id, {
-        display_name:  form.displayName.trim(),
-        service_type:  form.serviceType,
-        bio:           form.bio.trim(),
-        portfolio_url: form.portfolioUrl.trim() || null,
-        rate_min:      form.rateMin ? Number(form.rateMin) : null,
-        rate_max:      form.rateMax ? Number(form.rateMax) : null,
-        location:      form.location.trim() || null,
-        contact_email: form.contactEmail.trim(),
-        photo_url:     photoUrl || null,
+        display_name:    form.displayName.trim(),
+        service_types:   form.serviceTypes,
+        bio:             form.bio.trim(),
+        portfolio_url:   form.portfolioUrl.trim() || null,
+        rate_min:        form.rateMin ? Number(form.rateMin) : null,
+        rate_max:        form.rateMax ? Number(form.rateMax) : null,
+        location:        form.location.trim() || null,
+        contact_email:   form.contactEmail.trim(),
+        photo_url:       photoUrl || null,
+        cover_image_url: coverImageUrl || null,
+        skills:          form.skills,
+        languages:       form.languages,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -136,6 +187,31 @@ export default function GetHiredProfile() {
 
       <div className="container ghp-body">
         <form className="ghp-form" onSubmit={handleSubmit} noValidate>
+
+          <div className="ghp-cover-field">
+            <label>Cover image <span className="ghp-opt">optional</span></label>
+            <div
+              className="ghp-cover-preview"
+              style={coverPreview ? { backgroundImage: `url(${coverPreview})` } : undefined}
+            >
+              {!coverPreview && <span>No cover image yet</span>}
+            </div>
+            <input
+              ref={coverRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: 'none' }}
+              onChange={e => { if (e.target.files[0]) handleCover(e.target.files[0]); }}
+            />
+            <button
+              type="button"
+              className="btn btn-outline ghp-photo-upload-btn"
+              onClick={() => coverRef.current?.click()}
+            >
+              Upload cover image
+            </button>
+            <span className="ghp-photo-hint">A wide banner shown at the top of your card on the browse page.</span>
+          </div>
 
           <div className="ghp-photo-row">
             <div className="ghp-photo-avatar">
@@ -176,21 +252,73 @@ export default function GetHiredProfile() {
           </div>
 
           <div className="ghp-field">
-            <label>Primary service<span className="ghp-req">*</span></label>
+            <label>Services <span className="ghp-opt">select all that apply</span></label>
             <div className="ghp-service-grid">
               {SERVICE_TYPES.map(({ slug, label, Icon }) => (
                 <button
                   key={slug}
                   type="button"
-                  className={`ghp-service-chip ${form.serviceType === slug ? 'is-active' : ''}`}
-                  onClick={() => setField('serviceType', slug)}
+                  className={`ghp-service-chip ${form.serviceTypes.includes(slug) ? 'is-active' : ''}`}
+                  onClick={() => toggleServiceType(slug)}
                 >
                   <Icon />
                   <span>{label}</span>
                 </button>
               ))}
             </div>
-            {errors.serviceType && <span className="ghp-error">{errors.serviceType}</span>}
+            {errors.serviceTypes && <span className="ghp-error">{errors.serviceTypes}</span>}
+          </div>
+
+          <div className="ghp-field">
+            <label>Skills <span className="ghp-opt">{form.skills.length} / 8</span></label>
+            <div className="ghp-tags">
+              {form.skills.map(s => (
+                <span key={s} className="ghp-tag">
+                  {s}
+                  <button type="button" onClick={() => removeTag('skills', s)}>×</button>
+                </span>
+              ))}
+              {form.skills.length < 8 && (
+                <input
+                  className="ghp-tag-input"
+                  placeholder="Add a skill…"
+                  value={form.newSkill}
+                  onChange={e => setField('newSkill', e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      addTag('skills', 'newSkill', 8);
+                    }
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="ghp-field">
+            <label>Languages <span className="ghp-opt">{form.languages.length} / 5</span></label>
+            <div className="ghp-tags">
+              {form.languages.map(l => (
+                <span key={l} className="ghp-tag">
+                  {l}
+                  <button type="button" onClick={() => removeTag('languages', l)}>×</button>
+                </span>
+              ))}
+              {form.languages.length < 5 && (
+                <input
+                  className="ghp-tag-input"
+                  placeholder="Add a language…"
+                  value={form.newLanguage}
+                  onChange={e => setField('newLanguage', e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      addTag('languages', 'newLanguage', 5);
+                    }
+                  }}
+                />
+              )}
+            </div>
           </div>
 
           <div className="ghp-field">

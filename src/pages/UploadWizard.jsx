@@ -16,7 +16,8 @@ const WIZARD_STEPS = [
   { label: 'Cover & Pricing', group: 'Publish'   },
   { label: 'Distribution',    group: 'Publish'   },
   { label: 'Book Structure',  group: 'Structure' },
-  { label: 'Review',          group: 'Publish'   },
+  { label: 'Marketing Kit',   group: 'Launch'    },
+  { label: 'Review',          group: 'Review'    },
 ];
 
 const FM_ITEMS = [
@@ -37,13 +38,13 @@ const FM_ITEMS = [
     label: 'Dedication',
     tip: 'A short personal note — to a person, a cause, or an idea.',
     required: false,
-    template: () => 'For [name],\n\n[optional line or two]',
+    template: () => 'For [name],\n\nFor believing in this story before anyone else did.',
   },
   { key: 'epigraph',
     label: 'Epigraph',
     tip: 'An opening quotation that sets the tone of the book.',
     required: false,
-    template: () => '"[Quote text]"\n— [Author Name], [Work Title]',
+    template: () => '"Begin where the question still feels alive."\n— Original line',
   },
   { key: 'preface',
     label: 'Preface / Foreword',
@@ -59,13 +60,66 @@ const FM_ITEMS = [
   },
 ];
 
+const DEDICATION_SAMPLES = [
+  {
+    label: 'Simple',
+    text: 'For [name],\n\nFor believing in this story before anyone else did.',
+  },
+  {
+    label: 'Family',
+    text: 'For my family,\n\nFor your patience, love, and steady encouragement through every draft.',
+  },
+  {
+    label: 'Mentor',
+    text: 'For [name],\n\nThank you for showing me what discipline, courage, and care can make possible.',
+  },
+  {
+    label: 'Readers',
+    text: 'For every reader who has ever needed a quiet place to feel understood.',
+  },
+];
+
+function buildEpigraphSamples(fd, genreLabel) {
+  const title = fd.title?.trim();
+  const genre = (genreLabel || '').toLowerCase();
+  const titleLine = title
+    ? `Some books begin as questions. ${title} begins as a door left open.`
+    : 'Some stories begin as questions. This one begins as a door left open.';
+
+  let genreLine = 'The first truth is rarely the final one.';
+  if (genre.includes('fiction') || genre.includes('novel')) {
+    genreLine = 'Every life contains a room no one else can enter.';
+  } else if (genre.includes('memoir') || genre.includes('biograph')) {
+    genreLine = 'Memory does not return whole. It arrives in fragments, asking to be named.';
+  } else if (genre.includes('poetry')) {
+    genreLine = 'What cannot be held may still be heard.';
+  } else if (genre.includes('romance')) {
+    genreLine = 'The heart keeps its own weather.';
+  } else if (genre.includes('mystery') || genre.includes('thriller')) {
+    genreLine = 'The answer was there before anyone knew how to ask.';
+  } else if (genre.includes('business') || genre.includes('self') || genre.includes('guide')) {
+    genreLine = 'Change begins as a quiet decision, then asks for practice.';
+  } else if (genre.includes('history') || genre.includes('research')) {
+    genreLine = 'The past is never silent; it waits for better questions.';
+  } else if (genre.includes('fantasy') || genre.includes('science')) {
+    genreLine = 'Every impossible world begins with one believable door.';
+  }
+
+  return [
+    { label: 'From title', text: `"${titleLine}"\n— Original line` },
+    { label: 'Genre mood', text: `"${genreLine}"\n— Original line` },
+    { label: 'Quiet opening', text: '"Begin where the question still feels alive."\n— Original line' },
+    { label: 'Quote template', text: '"[Quote text]"\n— [Author Name], [Work Title]' },
+  ];
+}
+
 const BM_ITEMS = [
   { key: 'aboutAuthor',
     label: 'About the Author',
     tip: 'A brief bio for new readers discovering you through this book.',
     required: true,
     template: (_, author) =>
-      `${author} is a writer based in [location].\n\n[Brief bio paragraph — your background, interests, and what drives your writing.]\n\nConnect: [website or social link]`,
+      `${author} is an independent author based in [location]. Their work explores [themes or subjects] through stories written for curious, thoughtful readers.\n\nConnect: [website or social link]`,
   },
   { key: 'acknowledgements',
     label: 'Acknowledgements',
@@ -108,6 +162,81 @@ const AUDIENCES = [
   { value: 'children',    label: 'Children',     sub: 'Under 8' },
 ];
 const FORMATS = ['eBook','Paperback','Hardcover','Audiobook'];
+const RELEASE_LEAD_DAYS = 7;
+const DEFAULT_RELEASE_LEAD_DAYS = 14;
+
+function dateInputFromNow(days = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateInput(value) {
+  if (!value) return '';
+  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+const ISBN_REGISTRY_OPTIONS = [
+  {
+    title: 'Bowker (USA)',
+    note: 'Official U.S. ISBN agency for publishers in the United States and its territories.',
+    links: [{ label: 'Buy from Bowker', href: 'https://www.myidentifiers.com/identify-protect-your-book/isbn/buy-isbn' }],
+  },
+  {
+    title: 'Nielsen ISBN Store (UK & Ireland)',
+    note: 'Official ISBN agency for publishers in the UK and Ireland.',
+    links: [{ label: 'Open Nielsen store', href: 'https://www.nielsenisbnstore.com/' }],
+  },
+  {
+    title: 'ISBN Canada',
+    note: 'Free ISBNs for eligible Canadian publishers through Library and Archives Canada.',
+    links: [{ label: 'Apply with ISBN Canada', href: 'https://www.canada.ca/en/library-archives/services/publishers/isbn/apply.html' }],
+  },
+  {
+    title: 'Free platform ISBNs',
+    note: 'KDP and IngramSpark can assign ISBNs during setup, but they are platform-owned.',
+    links: [
+      { label: 'KDP ISBN help', href: 'https://kdp.amazon.com/help/topic/GTJ8LBXL6Z4WV5QX' },
+      { label: 'IngramSpark ISBNs', href: 'https://www.ingramspark.com/free-isbns' },
+    ],
+  },
+];
+
+const AUDIOBOOK_RESOURCES = [
+  {
+    title: 'ACX / Audible',
+    note: 'Create an audiobook edition for Audible, Amazon, and Apple Books through ACX.',
+    href: 'https://www.acx.com/mp/how-it-works/authors',
+    label: 'Open ACX',
+  },
+  {
+    title: 'Spotify for Authors',
+    note: 'Upload and manage audiobooks directly for Spotify listeners.',
+    href: 'https://authors.spotify.com/get-started',
+    label: 'Open Spotify',
+  },
+  {
+    title: 'KDP audiobook guidance',
+    note: 'Amazon KDP routes audiobook production and distribution through ACX.',
+    href: 'https://kdp.amazon.com/help/topic/G201014330',
+    label: 'Read KDP help',
+  },
+];
+
+const TRIM_SIZES = [
+  { id: '5x8', label: '5 x 8 in', note: 'Fiction and compact paperbacks', wordsPerPage: 250, previewWords: 130, aspect: '5 / 8', previewWidth: '360px', minPages: 24, maxPages: 828 },
+  { id: '5_5x8_5', label: '5.5 x 8.5 in', note: 'Literary fiction, poetry, memoir', wordsPerPage: 275, previewWords: 145, aspect: '5.5 / 8.5', previewWidth: '380px', minPages: 24, maxPages: 828 },
+  { id: '6x9', label: '6 x 9 in', note: 'Nonfiction, business, memoir', wordsPerPage: 330, previewWords: 170, aspect: '6 / 9', previewWidth: '410px', minPages: 24, maxPages: 828 },
+  { id: '7x10', label: '7 x 10 in', note: 'Technical books and workbooks', wordsPerPage: 430, previewWords: 220, aspect: '7 / 10', previewWidth: '450px', minPages: 24, maxPages: 220 },
+  { id: '8_5x11', label: '8.5 x 11 in', note: 'Manuals, journals, activity books', wordsPerPage: 620, previewWords: 310, aspect: '8.5 / 11', previewWidth: '500px', minPages: 24, maxPages: 160 },
+];
 
 const COVER_PALETTES = [
   { id: 'violet', name: 'Indie Violet', bg: '#4C20C7', bg2: '#8E69E8', ink: '#F9F5FF', muted: '#D9CBFF', accent: '#E6C65A', soft: '#1A0E3F' },
@@ -135,6 +264,12 @@ const COVER_DEVICE_PREVIEWS = [
   { id: 'desktop', label: 'Desktop' },
   { id: 'tablet', label: 'Tablet' },
   { id: 'phone', label: 'Phone' },
+];
+
+const MARKETING_FORMATS = [
+  { id: 'square', label: 'Square post', size: '1080 x 1080', width: 1080, height: 1080 },
+  { id: 'story', label: 'Story / reel', size: '1080 x 1920', width: 1080, height: 1920 },
+  { id: 'banner', label: 'Wide banner', size: '1600 x 900', width: 1600, height: 900 },
 ];
 
 const GENRE_KEYWORDS = {
@@ -509,15 +644,256 @@ function CoverPreviewArt({ coverPreview, title, subtitle, author, genreLabel, te
   );
 }
 
-function buildTocEntries(headings, fmPageOffset = 2) {
+function estimatePages(wordCount, wordsPerPage = 250) {
+  const words = Number(wordCount) || 0;
+  const pageWords = Math.max(1, Number(wordsPerPage) || 250);
+  if (words <= 0) return 0;
+  return Math.max(1, Math.round(words / pageWords));
+}
+
+function trimAvailability(trim, estimatedPages, hasPrintFormat) {
+  if (!hasPrintFormat || !estimatedPages) {
+    return {
+      blocked: false,
+      severity: 'neutral',
+      label: `~${trim.wordsPerPage} words/page`,
+      detail: '',
+    };
+  }
+
+  if (estimatedPages < trim.minPages) {
+    return {
+      blocked: true,
+      severity: 'error',
+      label: `~${estimatedPages} pages`,
+      detail: `${trim.label} needs at least ${trim.minPages} print pages.`,
+    };
+  }
+
+  if (estimatedPages > trim.maxPages) {
+    return {
+      blocked: true,
+      severity: 'error',
+      label: `~${estimatedPages} pages`,
+      detail: `${trim.label} is best kept under ${trim.maxPages} pages in this workflow.`,
+    };
+  }
+
+  if (estimatedPages < 48) {
+    return {
+      blocked: false,
+      severity: 'info',
+      label: `~${estimatedPages} pages`,
+      detail: 'Spine text may not fit below 48 pages.',
+    };
+  }
+
+  return {
+    blocked: false,
+    severity: 'ok',
+    label: `~${estimatedPages} pages`,
+    detail: `Fits the ${trim.minPages}-${trim.maxPages} page range.`,
+  };
+}
+
+function buildTocEntries(headings, fmPageOffset = 2, wordsPerPage = 250) {
   let cumulativeWords = 0;
+  const pageWords = Math.max(1, Number(wordsPerPage) || 250);
   return headings
     .filter(h => h.level <= 2)
     .map((h, i) => {
-      const pg = Math.max(1, Math.round(cumulativeWords / 250)) + fmPageOffset + 1;
+      const pg = Math.max(1, Math.round(cumulativeWords / pageWords)) + fmPageOffset + 1;
       cumulativeWords += (h.words || 0);
       return { id: `toc-${i}`, level: h.level, label: h.text, estimatedPage: pg, include: true };
     });
+}
+
+function mergeTocPageEstimates(entries = [], headings = [], fmPageOffset = 2, wordsPerPage = 250) {
+  const fresh = buildTocEntries(headings, fmPageOffset, wordsPerPage);
+  return fresh.map((next, i) => {
+    const current = entries[i];
+    if (!current) return next;
+    return {
+      ...next,
+      id: current.id || next.id,
+      label: current.label ?? next.label,
+      include: current.include ?? next.include,
+    };
+  });
+}
+
+function sameTocEntries(a = [], b = []) {
+  if (a.length !== b.length) return false;
+  return a.every((entry, i) => {
+    const other = b[i];
+    return other
+      && entry.id === other.id
+      && entry.level === other.level
+      && entry.label === other.label
+      && entry.estimatedPage === other.estimatedPage
+      && entry.include === other.include;
+  });
+}
+
+function marketingTagline(fd, genreLabel) {
+  const subtitle = fd.subtitle?.trim();
+  if (subtitle) return subtitle;
+
+  const description = fd.description?.replace(/\s+/g, ' ').trim();
+  if (description) {
+    const firstSentence = description.match(/[^.!?]+[.!?]/)?.[0] || description;
+    return firstSentence.replace(/\s+/g, ' ').trim();
+  }
+
+  return `A new indie ${String(genreLabel || 'book').toLowerCase()} release for curious readers.`;
+}
+
+function marketingAvailabilityCopy(fd, genreLabel) {
+  const genre = String(genreLabel || 'book').toLowerCase();
+  return {
+    label: fd.isFree ? 'Read free' : 'Available now',
+    headline: fd.isFree ? `Start the new indie ${genre} release` : `Read the new indie ${genre} release`,
+    subline: 'Find it on the author catalogue and selected book platforms.',
+    cta: fd.isFree ? 'Read free' : 'Get the book',
+  };
+}
+
+function buildMarketingMockupSvg({ format, coverHref, fd, authorName, genreLabel }) {
+  const palette = coverPalette(fd.coverPalette);
+  const title = fd.title?.trim() || 'Your Book Title';
+  const kicker = genreLabel || 'Indie book';
+  const tagline = marketingTagline(fd, genreLabel);
+  const availability = marketingAvailabilityCopy(fd, genreLabel);
+  const safeCover = escapeXml(coverHref);
+  const id = `cover-${format.id}`;
+  const accent = palette.accent || '#E6C65A';
+  const ink = '#FFF8EA';
+  const mutedInk = '#D9CBFF';
+  const layouts = {
+    square: {
+      card: [32, 20, 1016, 1040, 52],
+      release: [96, 120],
+      pill: [790, 84, 190, 52],
+      cover: [108, 228, 350, 560],
+      title: [528, 318, 78, 12, 3],
+      panel: [96, 732, 888, 150],
+      button: [96, 928, 320, 74],
+      footer: [96, 1040],
+      dots: [912, 1040],
+    },
+    story: {
+      card: [36, 32, 1008, 1856, 56],
+      release: [96, 144],
+      pill: [790, 104, 190, 52],
+      cover: [112, 280, 360, 576],
+      title: [548, 372, 76, 12, 3],
+      panel: [96, 1008, 888, 190],
+      button: [96, 1272, 330, 76],
+      footer: [96, 1808],
+      dots: [912, 1808],
+    },
+    banner: {
+      card: [32, 24, 1536, 852, 48],
+      release: [112, 122],
+      pill: [1282, 82, 210, 54],
+      cover: [120, 198, 310, 496],
+      title: [500, 276, 84, 16, 2],
+      panel: [500, 618, 850, 120],
+      button: [500, 768, 300, 70],
+      footer: [112, 838],
+      dots: [1410, 838],
+    },
+  };
+  const layout = layouts[format.id] || layouts.square;
+  const [cardX, cardY, cardW, cardH, cardR] = layout.card;
+  const [cx, cy, cw, ch] = layout.cover;
+  const [tx, ty, titleSize, titleChars, titleMaxLines] = layout.title;
+  const [panelX, panelY, panelW, panelH] = layout.panel;
+  const [buttonX, buttonY, buttonW, buttonH] = layout.button;
+  const [footerX, footerY] = layout.footer;
+  const [dotsX, dotsY] = layout.dots;
+  const [pillX, pillY, pillW, pillH] = layout.pill;
+  const [releaseX, releaseY] = layout.release;
+  const titleLines = wrapSvgText(title, titleChars, titleMaxLines);
+  const titleBlock = svgTextBlock(titleLines, tx, ty, {
+    fill: ink,
+    size: titleSize,
+    weight: 800,
+    family: 'Georgia, serif',
+    lineHeight: 1.06,
+  });
+  const titleBottom = ty + Math.max(0, titleLines.length - 1) * titleSize * 1.06;
+  const bylineY = titleBottom + (format.id === 'banner' ? 54 : 64);
+  const ruleY = bylineY + (format.id === 'banner' ? 58 : 66);
+  const taglineY = ruleY + (format.id === 'banner' ? 58 : 68);
+  const taglineBlock = svgTextBlock(wrapSvgText(tagline, format.id === 'banner' ? 38 : 28, 2), tx, taglineY, {
+    fill: ink,
+    size: format.id === 'banner' ? 34 : 34,
+    weight: 800,
+    family: 'Arial, sans-serif',
+    lineHeight: 1.22,
+  });
+  const panelHeadlineLines = wrapSvgText(availability.headline, format.id === 'banner' ? 56 : 48, 1);
+  const panelHeadlineSize = format.id === 'banner' ? 30 : 34;
+  const panelHeadlineY = panelY + (format.id === 'banner' ? 72 : 82);
+  const panelHeadline = svgTextBlock(panelHeadlineLines, panelX + 44, panelHeadlineY, {
+    fill: ink,
+    size: panelHeadlineSize,
+    weight: 800,
+    family: 'Arial, sans-serif',
+    lineHeight: 1.16,
+  });
+  const panelSublineY = Math.min(
+    panelY + panelH - 28,
+    panelHeadlineY + panelHeadlineLines.length * panelHeadlineSize * 1.16 + 24
+  );
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${format.width}" height="${format.height}" viewBox="0 0 ${format.width} ${format.height}">
+    <defs>
+      <clipPath id="card-${format.id}">
+        <rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" rx="${cardR}" />
+      </clipPath>
+      <linearGradient id="bg-${format.id}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#140D2E" />
+        <stop offset="0.54" stop-color="${palette.bg}" />
+        <stop offset="1" stop-color="#7D35EE" />
+      </linearGradient>
+      <filter id="shadow-${format.id}" x="-30%" y="-20%" width="160%" height="160%">
+        <feDropShadow dx="22" dy="34" stdDeviation="28" flood-color="#090515" flood-opacity="0.34" />
+      </filter>
+      <clipPath id="${id}">
+        <rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="18" />
+      </clipPath>
+    </defs>
+    <rect width="${format.width}" height="${format.height}" fill="#F4EFE8" />
+    <g clip-path="url(#card-${format.id})">
+      <rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" fill="url(#bg-${format.id})" />
+      <circle cx="${cardX + cardW * 0.88}" cy="${cardY + cardH * 0.18}" r="${Math.min(cardW, cardH) * 0.3}" fill="${palette.bg2}" opacity="0.18" />
+      <circle cx="${cardX + cardW * 0.15}" cy="${cardY + cardH * 0.96}" r="${Math.min(cardW, cardH) * 0.28}" fill="${accent}" opacity="0.13" />
+      <text x="${releaseX}" y="${releaseY}" fill="${mutedInk}" font-size="${format.id === 'banner' ? 28 : 30}" font-weight="800" font-family="Arial, sans-serif" letter-spacing="10">NEW RELEASE</text>
+      <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH / 2}" fill="${accent}" />
+      <text x="${pillX + pillW / 2}" y="${pillY + pillH * 0.66}" fill="#170C30" font-size="${format.id === 'banner' ? 24 : 22}" font-weight="900" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(kicker.toUpperCase())}</text>
+      <g filter="url(#shadow-${format.id})">
+        <rect x="${cx - 20}" y="${cy + 16}" width="${cw}" height="${ch}" rx="22" fill="#090515" opacity="0.25" />
+        <image href="${safeCover}" x="${cx}" y="${cy}" width="${cw}" height="${ch}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})" />
+        <rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="18" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="2" />
+      </g>
+      ${titleBlock}
+      <text x="${tx}" y="${bylineY}" fill="${ink}" font-size="${format.id === 'banner' ? 30 : 31}" font-weight="800" font-family="Arial, sans-serif">by ${escapeXml(authorName)}</text>
+      <rect x="${tx}" y="${ruleY}" width="${format.id === 'banner' ? 520 : 350}" height="4" fill="${mutedInk}" opacity="0.72" />
+      ${taglineBlock}
+      <rect x="${panelX}" y="${panelY}" width="${panelW}" height="${panelH}" rx="34" fill="#FFFFFF" opacity="0.17" />
+      <text x="${panelX + 44}" y="${panelY + 48}" fill="${accent}" font-size="${format.id === 'banner' ? 26 : 28}" font-weight="900" font-family="Arial, sans-serif" letter-spacing="6">${escapeXml(availability.label.toUpperCase())}</text>
+      ${panelHeadline}
+      <text x="${panelX + 44}" y="${panelSublineY}" fill="${ink}" opacity="0.72" font-size="${format.id === 'banner' ? 22 : 24}" font-family="Arial, sans-serif">${escapeXml(availability.subline)}</text>
+      <rect x="${buttonX}" y="${buttonY}" width="${buttonW}" height="${buttonH}" rx="${buttonH / 2}" fill="#FFFDF8" />
+      <text x="${buttonX + buttonW / 2}" y="${buttonY + buttonH * 0.62}" fill="${palette.bg}" font-size="${format.id === 'banner' ? 26 : 28}" font-weight="900" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(availability.cta)}</text>
+      <text x="${footerX}" y="${footerY}" fill="${ink}" opacity="0.72" font-size="${format.id === 'banner' ? 21 : 22}" font-weight="800" font-family="Arial, sans-serif">Indie Converters Author Catalogue</text>
+      <circle cx="${dotsX}" cy="${dotsY - 6}" r="8" fill="${accent}" />
+      <circle cx="${dotsX + 28}" cy="${dotsY - 6}" r="8" fill="${accent}" />
+      <circle cx="${dotsX + 56}" cy="${dotsY - 6}" r="8" fill="${accent}" />
+    </g>
+  </svg>`;
 }
 
 // ─── Keyword chip input ───────────────────────────────────────────────────────
@@ -568,6 +944,8 @@ export default function UploadWizard() {
   const [publishError, setPublishError] = useState('');
   const [publishedSlug,setPublishedSlug]= useState('');
   const [savedAsDraft, setSavedAsDraft] = useState(false);
+  const [publishOutcome, setPublishOutcome] = useState('');
+  const [finalReleaseDate, setFinalReleaseDate] = useState('');
   const [draftId,      setDraftId]      = useState(() => localStorage.getItem('ic_draft_id') || null);
   const [msText,       setMsText]       = useState(null);
   const [msHtml,       setMsHtml]       = useState(null);
@@ -575,6 +953,8 @@ export default function UploadWizard() {
   const [msPage,       setMsPage]       = useState(0);
   const [msSpread,     setMsSpread]     = useState(false);
   const [msLoading,    setMsLoading]    = useState(false);
+  const [authorProfile,setAuthorProfile]= useState(null);
+  const [authorProfileLoading, setAuthorProfileLoading] = useState(() => Boolean(user?.id));
   const [coverPreviewDevice, setCoverPreviewDevice] = useState('desktop');
   const fileRef  = useRef(null);
   const coverRef = useRef(null);
@@ -604,12 +984,13 @@ export default function UploadWizard() {
     genre: '', genreSecondary: '', keywords: [], tags: [],
     pubYear: String(new Date().getFullYear()), publisher: 'Self-published', pageCount: '',
     isbnOption: 'skip', isbn: '',
-    manuscriptFile: null, manuscriptPath: '', formats: ['eBook'],
+    manuscriptFile: null, manuscriptPath: '', formats: ['eBook'], trimSize: '5x8',
     pTheme: 'light', pFont: 'fraunces', pSize: 'md', pSpacing: 'normal',
-    coverFile: null, coverPreview: '', coverColor: 'cover-clay',
+    coverFile: null, coverPreview: '', coverDataUrl: '', coverColor: 'cover-clay',
     coverMode: 'template', coverTemplate: 'editorial', coverPalette: 'violet',
     coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '', coverArtPlacement: 'window',
     price: '', isFree: false, buyUrl: '', buyPlatform: 'own',
+    releasePlan: 'schedule', releaseDate: dateInputFromNow(DEFAULT_RELEASE_LEAD_DAYS),
     bookStyle: 'romance',
     distributionChannels: ['amazon', 'apple', 'bn', 'kobo', 'google-play', 'scribd'],
     frontMatter: {
@@ -630,7 +1011,85 @@ export default function UploadWizard() {
     },
   });
 
+  const authorProfileBio = (authorProfile?.long_bio || authorProfile?.short_bio || '').trim();
+  const authorProfileBioSource = authorProfile?.long_bio?.trim()
+    ? 'Full bio from your author profile'
+    : authorProfile?.short_bio?.trim()
+      ? 'Short bio from your author profile'
+      : '';
+  const selectedTrim = TRIM_SIZES.find(t => t.id === fd.trimSize) || TRIM_SIZES[0];
+  const estimatedTrimPages = estimatePages(msStructure?.wordCount, selectedTrim.wordsPerPage);
+  const resolvedSelectedPages = Number.parseInt(fd.pageCount, 10) || estimatedTrimPages;
+  const pageCountDisplay = fd.pageCount || (estimatedTrimPages ? `~${estimatedTrimPages} estimated` : '');
+  const hasPrintFormat = fd.formats.some(f => ['Paperback', 'Hardcover'].includes(f));
+  const audiobookOnly = fd.formats.length === 1 && fd.formats.includes('Audiobook');
+  const trimChecks = useMemo(() => (
+    TRIM_SIZES.map(trim => {
+      const estimatedPages = estimatePages(msStructure?.wordCount, trim.wordsPerPage);
+      return {
+        trim,
+        estimatedPages,
+        availability: trimAvailability(trim, estimatedPages, hasPrintFormat),
+      };
+    })
+  ), [msStructure?.wordCount, hasPrintFormat]);
+  const selectedTrimAvailability = trimAvailability(selectedTrim, resolvedSelectedPages, hasPrintFormat);
+  const minReleaseDate = dateInputFromNow(RELEASE_LEAD_DAYS);
+  const releasePlan = fd.releasePlan || 'schedule';
+  const releaseDate = fd.releaseDate || dateInputFromNow(DEFAULT_RELEASE_LEAD_DAYS);
+  const releaseDateInvalid = releasePlan === 'schedule' && (!releaseDate || releaseDate < minReleaseDate);
+  const releaseSummary = releasePlan === 'now'
+    ? 'Publish today'
+    : releasePlan === 'schedule'
+      ? `Scheduled for ${formatDateInput(releaseDate)}`
+      : 'Private draft';
+  const manuscriptFileName = fd.manuscriptFile?.name
+    || fd.manuscriptPath?.split('/').pop()?.replace(/^\d+-/, '')
+    || '';
+  const manuscriptIssues = useMemo(() => {
+    if (!msStructure) return [];
+    if (msStructure.issues?.some(i => i.type === 'unsupported')) return msStructure.issues;
+    return validateManuscript({
+      headings: msStructure.headings || [],
+      wordCount: msStructure.wordCount || 0,
+      paragraphCount: msStructure.paragraphCount || 0,
+      maxBlankRun: msStructure.maxBlankRun || 0,
+      fileSize: msStructure.fileSize || fd.manuscriptFile?.size || 0,
+      wordsPerPage: selectedTrim.wordsPerPage,
+    });
+  }, [msStructure, fd.manuscriptFile?.size, selectedTrim.wordsPerPage]);
+
+  useEffect(() => {
+    if (!hasPrintFormat || !msStructure?.wordCount) return;
+    const current = trimChecks.find(check => check.trim.id === fd.trimSize);
+    if (!current?.availability.blocked) return;
+    const next = trimChecks.find(check => !check.availability.blocked);
+    if (next) setFd(p => (p.trimSize === next.trim.id ? p : { ...p, trimSize: next.trim.id }));
+  }, [fd.trimSize, hasPrintFormat, msStructure?.wordCount, trimChecks]);
+
   function up(key, val) { setFd(p => ({ ...p, [key]: val })); setStepError(''); }
+
+  function toggleFormat(format, checked) {
+    setStepError('');
+    setFd(p => {
+      if (format === 'Audiobook') {
+        return { ...p, formats: checked ? ['Audiobook'] : [] };
+      }
+      const withoutAudio = p.formats.filter(f => f !== 'Audiobook');
+      const next = checked
+        ? Array.from(new Set([...withoutAudio, format]))
+        : withoutAudio.filter(f => f !== format);
+      return { ...p, formats: next };
+    });
+  }
+
+  function clearManuscriptUpload() {
+    setFd(p => ({ ...p, manuscriptFile: null, manuscriptPath: '', pageCount: '' }));
+    setMsStructure(null);
+    setMsHtml(null);
+    setMsText(null);
+    setMsPage(0);
+  }
 
   function upMatter(section, key, field, val) {
     setFd(p => ({
@@ -645,7 +1104,9 @@ export default function UploadWizard() {
     let content = current.content;
     if (newEnabled && !content) {
       const item = items.find(i => i.key === key);
-      content = item?.template(fd, authorName, fd.pubYear || String(new Date().getFullYear())) || '';
+      content = section === 'backMatter' && key === 'aboutAuthor' && authorProfileBio
+        ? authorProfileBio
+        : item?.template(fd, authorName, fd.pubYear || String(new Date().getFullYear())) || '';
     }
     upMatter(section, key, 'enabled', newEnabled);
     if (newEnabled && !current.content) upMatter(section, key, 'content', content);
@@ -660,16 +1121,42 @@ export default function UploadWizard() {
   const msPages = useMemo(() => {
     if (!msText) return [];
     const paras = msText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+    const targetWords = selectedTrim.previewWords || 130;
     const pages = [];
     let cur = [], wc = 0;
     for (const p of paras) {
       const w = p.split(/\s+/).length;
-      if (wc + w > 130 && cur.length > 0) { pages.push(cur); cur = [p]; wc = w; }
+      if (wc + w > targetWords && cur.length > 0) { pages.push(cur); cur = [p]; wc = w; }
       else { cur.push(p); wc += w; }
     }
     if (cur.length > 0) pages.push(cur);
     return pages;
-  }, [msText]);
+  }, [msText, selectedTrim.previewWords]);
+
+  useEffect(() => {
+    setMsPage(0);
+  }, [fd.trimSize]);
+
+  useEffect(() => {
+    if (!msStructure?.headings?.length) return;
+    setFd(p => {
+      const toc = p.frontMatter.toc;
+      if (!toc?.enabled || !toc.entries?.length) return p;
+      const fmOffset = Object.values(p.frontMatter).filter(v => v.enabled).length + 1;
+      const entries = mergeTocPageEstimates(toc.entries, msStructure.headings, fmOffset, selectedTrim.wordsPerPage);
+      if (sameTocEntries(toc.entries, entries)) return p;
+      return {
+        ...p,
+        frontMatter: {
+          ...p.frontMatter,
+          toc: {
+            ...toc,
+            entries,
+          },
+        },
+      };
+    });
+  }, [fd.frontMatter, msStructure?.headings, selectedTrim.wordsPerPage]);
 
   useEffect(() => {
     supabase.from('genres').select('slug, label').order('label').then(({ data }) => {
@@ -677,14 +1164,34 @@ export default function UploadWizard() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    setAuthorProfileLoading(true);
+    supabase
+      .from('authors')
+      .select('display_name, short_bio, long_bio, website_url, goodreads_url, location')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.warn('[author profile] load failed:', error.message);
+        if (!cancelled) setAuthorProfile(data || null);
+      })
+      .finally(() => {
+        if (!cancelled) setAuthorProfileLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   // Auto-fill matter + fetch manuscript text for Reading Style preview
   useEffect(() => {
     if (step === 7 && !fd.frontMatter.copyright.content) {
       upMatter('frontMatter', 'copyright', 'content',
         FM_ITEMS[0].template(fd, authorName, fd.pubYear || String(new Date().getFullYear())));
     }
-    if (step === 7 && !fd.backMatter.aboutAuthor.content) {
-      upMatter('backMatter', 'aboutAuthor', 'content', BM_ITEMS[0].template(fd, authorName));
+    if (step === 7 && !fd.backMatter.aboutAuthor.content && !authorProfileLoading) {
+      upMatter('backMatter', 'aboutAuthor', 'content', authorProfileBio || BM_ITEMS[0].template(fd, authorName));
     }
     if (step === 4 && fd.manuscriptPath && !msText && !msLoading) {
       const ext = fd.manuscriptPath.split('.').pop().toLowerCase();
@@ -699,15 +1206,15 @@ export default function UploadWizard() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [step, authorProfileLoading, authorProfileBio]);
 
   // Auto-save progress to localStorage on step change
   useEffect(() => {
-    if (step === 9) return;
+    if (step === 10) return;
     if (!fd.title && !fd.manuscriptPath) return;
     try {
       localStorage.setItem('ic_wizard_progress', JSON.stringify({
-        fd: { ...fd, coverFile: null, manuscriptFile: null, coverPreview: '', coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '' },
+        fd: { ...fd, coverFile: null, manuscriptFile: null, coverPreview: '', coverDataUrl: '', coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '' },
         step,
         savedAt: Date.now(),
       }));
@@ -717,6 +1224,99 @@ export default function UploadWizard() {
 
   const primaryGenreLabel = genres.find(g => g.slug === fd.genre)?.label || '';
   const selectedTemplate = coverTemplate(fd.coverTemplate);
+  const marketingCoverHref = fd.coverDataUrl || fd.coverPreview || `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(buildTemplateCoverSvg({
+    title: fd.title,
+    subtitle: fd.subtitle,
+    author: authorName,
+    genreLabel: primaryGenreLabel,
+    templateId: fd.coverTemplate,
+    paletteId: fd.coverPalette,
+    artDataUrl: fd.coverArtDataUrl,
+    artPlacement: fd.coverArtPlacement,
+  }))}`;
+  const stepGroups = WIZARD_STEPS.reduce((acc, item, index) => {
+    const last = acc[acc.length - 1];
+    if (last?.label === item.group) last.steps.push({ item, index });
+    else acc.push({ label: item.group, steps: [{ item, index }] });
+    return acc;
+  }, []);
+
+  function downloadBlob(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadTextFile(filename, text, type = 'text/plain') {
+    downloadBlob(filename, new Blob([text], { type }));
+  }
+
+  function renderSvgToPng(svg, format) {
+    return new Promise((resolve, reject) => {
+      const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = format.width;
+          canvas.height = format.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, format.width, format.height);
+          canvas.toBlob(blob => {
+            URL.revokeObjectURL(url);
+            if (blob) resolve(blob);
+            else reject(new Error('Could not render mockup image.'));
+          }, 'image/png');
+        } catch (err) {
+          URL.revokeObjectURL(url);
+          reject(err);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Could not load mockup image.'));
+      };
+      img.src = url;
+    });
+  }
+
+  function buildMarketingMockup(format) {
+    return buildMarketingMockupSvg({
+      format,
+      coverHref: marketingCoverHref,
+      fd,
+      authorName,
+      genreLabel: primaryGenreLabel,
+    });
+  }
+
+  function marketingMockupDataUrl(format) {
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(buildMarketingMockup(format))}`;
+  }
+
+  async function downloadMarketingMockup(format) {
+    const svg = buildMarketingMockup(format);
+    const filenameBase = `${slugify(fd.title || 'book') || 'book'}-${format.id}-mockup`;
+    try {
+      const pngBlob = await renderSvgToPng(svg, format);
+      downloadBlob(`${filenameBase}.png`, pngBlob);
+    } catch (err) {
+      console.warn('[marketing] PNG export failed, falling back to SVG:', err);
+      downloadTextFile(`${filenameBase}.svg`, svg, 'image/svg+xml');
+    }
+  }
+
+  function downloadAllMarketingMockups() {
+    MARKETING_FORMATS.forEach((format, index) => {
+      window.setTimeout(() => downloadMarketingMockup(format), index * 150);
+    });
+  }
 
   // ── Validation ────────────────────────────────────────────────
   function validate(s) {
@@ -724,11 +1324,16 @@ export default function UploadWizard() {
     if (s === 1 && !fd.description.trim()) return 'Description is required.';
     if (s === 1 && !fd.genre)              return 'Please select a primary genre.';
     if (s === 2 && !fd.pubYear)            return 'Publication year is required.';
-    if (s === 2 && fd.isbnOption === 'own') {
+    if (s === 2 && (fd.isbnOption === 'own' || fd.isbnOption === 'register')) {
       if (!fd.isbn.trim())                 return 'Enter your ISBN-13.';
       if (!isValidISBN13(fd.isbn))         return 'Invalid ISBN-13 — check the number and try again.';
     }
+    if (s === 3 && fd.formats.length === 0) return 'Choose at least one format for this book.';
+    if (s === 3 && audiobookOnly)          return 'Audiobook production is not available in this upload flow. Use one of the audiobook services listed here, or choose eBook, paperback, or hardcover to continue.';
     if (s === 3 && !fd.manuscriptPath)     return 'Upload your manuscript before continuing.';
+    if (s === 3 && hasPrintFormat && selectedTrimAvailability.blocked) {
+      return selectedTrimAvailability.detail;
+    }
     return null;
   }
 
@@ -753,16 +1358,17 @@ export default function UploadWizard() {
       if (ext === 'docx') {
         const { value: html }    = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
         const { value: rawText } = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
-        setMsHtml(html); setMsStructure(analyseHtml(html, file.size)); setMsText(rawText);
+        setMsHtml(html); setMsStructure(analyseHtml(html, file.size, { wordsPerPage: selectedTrim.wordsPerPage })); setMsText(rawText);
       } else if (ext === 'txt' || ext === 'rtf') {
         const text = await file.text();
-        setMsText(text); setMsStructure(analyseTxt(text, file.size));
+        setMsText(text); setMsStructure(analyseTxt(text, file.size, { wordsPerPage: selectedTrim.wordsPerPage }));
         const safeHtml = text.split(/\n{2,}/).map(p =>
           `<p>${p.trim().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>`
         ).join('\n');
         setMsHtml(safeHtml);
       } else {
         setMsStructure({ headings: [], wordCount: 0, paragraphCount: 0, estimatedPages: 0,
+          maxBlankRun: 0, fileSize: file.size,
           issues: [{ type: 'unsupported', severity: 'info',
             message: `Layout preview isn't available for .${ext} files. Your manuscript will still be stored correctly.` }] });
       }
@@ -777,7 +1383,7 @@ export default function UploadWizard() {
   function chooseCoverMode(mode) {
     setStepError('');
     setFd(p => mode === 'template'
-      ? { ...p, coverMode: 'template', coverFile: null, coverPreview: '' }
+      ? { ...p, coverMode: 'template', coverFile: null, coverPreview: '', coverDataUrl: '' }
       : { ...p, coverMode: 'upload' }
     );
   }
@@ -794,7 +1400,10 @@ export default function UploadWizard() {
       return;
     }
     const previewUrl = URL.createObjectURL(file);
-    setFd(p => ({ ...p, coverMode: 'upload', coverFile: file, coverPreview: previewUrl }));
+    setFd(p => ({ ...p, coverMode: 'upload', coverFile: file, coverPreview: previewUrl, coverDataUrl: '' }));
+    const reader = new FileReader();
+    reader.onload = () => setFd(p => ({ ...p, coverDataUrl: reader.result || '' }));
+    reader.readAsDataURL(file);
     setStepError('');
   }
 
@@ -823,6 +1432,28 @@ export default function UploadWizard() {
     };
     reader.onerror = () => setStepError('Could not read that artwork image. Try another file.');
     reader.readAsDataURL(file);
+  }
+
+  function handleBookPreviewPointerMove(e) {
+    if (e.pointerType === 'touch') return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+
+    e.currentTarget.style.setProperty('--book-rotate-x', `${(0.8 - y * 5).toFixed(2)}deg`);
+    e.currentTarget.style.setProperty('--book-rotate-y', `${(-2.5 + x * 6).toFixed(2)}deg`);
+    e.currentTarget.style.setProperty('--book-lift', '-6px');
+    e.currentTarget.style.setProperty('--book-glare-x', `${((x + 0.5) * 100).toFixed(0)}%`);
+    e.currentTarget.style.setProperty('--book-glare-y', `${((y + 0.5) * 100).toFixed(0)}%`);
+  }
+
+  function resetBookPreviewTilt(e) {
+    e.currentTarget.style.removeProperty('--book-rotate-x');
+    e.currentTarget.style.removeProperty('--book-rotate-y');
+    e.currentTarget.style.removeProperty('--book-lift');
+    e.currentTarget.style.removeProperty('--book-glare-x');
+    e.currentTarget.style.removeProperty('--book-glare-y');
   }
 
   function clearCoverArt() {
@@ -884,12 +1515,14 @@ export default function UploadWizard() {
     setSavingDraft(true);
     try {
       const coverUrl = await uploadCoverAsset({ optional: true });
+      const resolvedPageCount = fd.pageCount ? parseInt(fd.pageCount, 10) : (estimatedTrimPages || null);
       const bookData = {
         title: fd.title, subtitle: fd.subtitle || null, description: fd.description || null,
         cover_url: coverUrl, formats: fd.formats, keywords: fd.keywords,
         is_published: false, author_user_id: user.id, manuscript_path: fd.manuscriptPath || null,
-        pub_year: fd.pubYear ? parseInt(fd.pubYear) : null, page_count: fd.pageCount ? parseInt(fd.pageCount) : null,
-        isbn_13: fd.isbnOption === 'own' && fd.isbn ? fd.isbn.replace(/[-\s]/g, '') : null,
+        pub_year: fd.pubYear ? parseInt(fd.pubYear) : null, page_count: resolvedPageCount,
+        trim_size: selectedTrim.id,
+        isbn_13: (fd.isbnOption === 'own' || fd.isbnOption === 'register') && fd.isbn ? fd.isbn.replace(/[-\s]/g, '') : null,
         language: fd.language, publisher_name: fd.publisher || null,
         price: fd.isFree ? 0 : (fd.price ? parseFloat(fd.price) : null),
         front_matter: buildMatter(FM_ITEMS, fd.frontMatter), back_matter: buildMatter(BM_ITEMS, fd.backMatter),
@@ -910,10 +1543,23 @@ export default function UploadWizard() {
   }
 
   // ── Publish ───────────────────────────────────────────────────
-  async function handlePublish(publishNow = true) {
+  async function handlePublish(mode = releasePlan) {
     setPublishError(''); setPublishing(true);
     try {
+      if (mode === 'schedule' && releaseDateInvalid) {
+        throw new Error(`Choose a release date at least ${RELEASE_LEAD_DAYS} days from today.`);
+      }
       const coverUrl = await uploadCoverAsset();
+      const resolvedPageCount = fd.pageCount ? parseInt(fd.pageCount, 10) : (estimatedTrimPages || null);
+      const isPublishingNow = mode === 'now';
+      const resolvedPubDate = mode === 'schedule'
+        ? releaseDate
+        : isPublishingNow
+          ? dateInputFromNow(0)
+          : null;
+      const resolvedPubYear = resolvedPubDate
+        ? parseInt(resolvedPubDate.slice(0, 4), 10)
+        : (fd.pubYear ? parseInt(fd.pubYear) : null);
       let { data: author } = await supabase.from('authors').select('id,slug').eq('user_id', user.id).maybeSingle();
       if (!author) {
         const { data: a, error: ae } = await supabase.from('authors')
@@ -926,12 +1572,14 @@ export default function UploadWizard() {
       const { data: book, error: be } = await supabase.from('books').insert({
         slug: bookSlug, title: fd.title, subtitle: fd.subtitle || null,
         description: fd.description, cover_url: coverUrl, formats: fd.formats,
-        keywords: fd.keywords, is_published: publishNow, author_user_id: user.id,
+        keywords: fd.keywords, is_published: isPublishingNow, author_user_id: user.id,
         manuscript_path: fd.manuscriptPath,
-        pub_year: fd.pubYear ? parseInt(fd.pubYear) : null,
-        page_count: fd.pageCount ? parseInt(fd.pageCount) : null,
-        isbn_13: fd.isbnOption === 'own' && fd.isbn ? fd.isbn.replace(/[-\s]/g, '') : null,
-        language: fd.language, publisher_name: fd.publisher,
+        pub_date: resolvedPubDate,
+        pub_year: resolvedPubYear,
+        page_count: resolvedPageCount,
+        trim_size: selectedTrim.id,
+        isbn_13: (fd.isbnOption === 'own' || fd.isbnOption === 'register') && fd.isbn ? fd.isbn.replace(/[-\s]/g, '') : null,
+        language: fd.language, publisher_name: fd.publisher || null,
         price: fd.isFree ? 0 : (fd.price ? parseFloat(fd.price) : null),
         front_matter: buildMatter(FM_ITEMS, fd.frontMatter), back_matter: buildMatter(BM_ITEMS, fd.backMatter),
         distribution_channels: fd.distributionChannels,
@@ -953,8 +1601,10 @@ export default function UploadWizard() {
       localStorage.removeItem('ic_draft_id');
       localStorage.removeItem('ic_wizard_progress');
       setPublishedSlug(bookSlug);
-      setSavedAsDraft(!publishNow);
-      setStep(9);
+      setSavedAsDraft(!isPublishingNow);
+      setPublishOutcome(mode);
+      setFinalReleaseDate(resolvedPubDate || '');
+      setStep(10);
     } catch (err) { setPublishError(err.message); } finally { setPublishing(false); }
   }
 
@@ -966,34 +1616,29 @@ export default function UploadWizard() {
 
   // ── Live format-vs-structure checks ──────────────────────────
   const formatIssues = (() => {
-    if (!msStructure?.estimatedPages) return [];
-    const pg        = msStructure.estimatedPages;
+    if (!resolvedSelectedPages) return [];
+    const pg        = resolvedSelectedPages;
     const printFmts = fd.formats.filter(f => ['Paperback', 'Hardcover'].includes(f));
     const out       = [];
-    if (printFmts.length > 0 && pg < 24) {
-      out.push({ type: 'print-min-pages', severity: 'error',
-        message: `~${pg} estimated pages is below the 24-page minimum required for ${printFmts.join(' / ')} on Amazon KDP and IngramSpark. Add more content to reach at least 24 pages (~6,000 words), or remove print formats.` });
+    if (printFmts.length > 0 && selectedTrimAvailability.blocked) {
+      out.push({ type: 'print-trim-fit', severity: 'error',
+        message: `${selectedTrimAvailability.label} at ${selectedTrim.label}: ${selectedTrimAvailability.detail}` });
     }
     if (fd.formats.includes('Paperback') && pg >= 24 && pg < 48) {
       out.push({ type: 'no-spine-text', severity: 'info',
         message: `At ~${pg} pages your paperback spine will be too narrow for lettering — KDP and IngramSpark require 48+ pages for spine text. Notify your cover designer to leave the spine blank.` });
     }
-    if (printFmts.length > 0 && pg > 828) {
-      out.push({ type: 'print-max-pages', severity: 'warning',
-        message: `~${pg} pages exceeds Amazon KDP's 828-page limit for a standard 5×8" paperback. Consider splitting into two volumes before publishing in print.` });
-    }
     return out;
   })();
 
   const _severityOrder = { error: 0, warning: 1, info: 2 };
-  const layoutIssues = [...formatIssues, ...(msStructure?.issues || [])]
+  const layoutIssues = [...formatIssues, ...manuscriptIssues]
     .sort((a, b) => _severityOrder[a.severity] - _severityOrder[b.severity]);
 
-  const groups = [...new Set(WIZARD_STEPS.map(s => s.group))];
   const pct    = Math.round((step / (WIZARD_STEPS.length - 1)) * 100);
 
   // ─────────────────── SUCCESS / DRAFT SCREEN ──────────────────
-  if (step === 9) {
+  if (step === 10) {
     return (
       <div className="wizard wizard--done">
         <div className="wz-done">
@@ -1012,12 +1657,24 @@ export default function UploadWizard() {
                 />}
           </div>
           <div className="wz-done-text">
-            {savedAsDraft ? (
+            {(publishOutcome === 'draft' || (!publishOutcome && savedAsDraft)) ? (
               <>
                 <span className="wz-done-badge wz-done-badge--draft">·· Saved as Draft</span>
                 <h1>{fd.title}</h1>
                 {fd.subtitle && <p className="wz-done-sub">{fd.subtitle}</p>}
                 <p className="wz-done-desc">Your book is saved as a draft. It won't be visible to readers until you publish it from your dashboard.</p>
+                <div className="wz-done-actions">
+                  <Link to="/dashboard" className="btn btn-primary">Go to dashboard →</Link>
+                </div>
+              </>
+            ) : publishOutcome === 'schedule' ? (
+              <>
+                <span className="wz-done-badge wz-done-badge--scheduled">·· Scheduled</span>
+                <h1>{fd.title}</h1>
+                {fd.subtitle && <p className="wz-done-sub">{fd.subtitle}</p>}
+                <p className="wz-done-desc">
+                  Your book is queued for {formatDateInput(finalReleaseDate)}. It stays private while you finish review, collect feedback, and prepare launch assets.
+                </p>
                 <div className="wz-done-actions">
                   <Link to="/dashboard" className="btn btn-primary">Go to dashboard →</Link>
                 </div>
@@ -1055,16 +1712,16 @@ export default function UploadWizard() {
           <span className="wz-prog-label">{step + 1} of {WIZARD_STEPS.length}</span>
         </div>
         <nav className="wz-step-nav">
-          {groups.map(group => (
-            <div key={group} className="wz-group">
-              <span className="wz-group-label">{group}</span>
-              {WIZARD_STEPS.map((s, i) => s.group !== group ? null : (
-                <button key={i} className={`wz-step-item ${i === step ? 'current' : ''} ${i < step ? 'done' : ''}`}
-                  onClick={() => goTo(i)} disabled={i > step}>
+          {stepGroups.map((group, groupIndex) => (
+            <div key={`${group.label}-${groupIndex}`} className="wz-group">
+              <span className="wz-group-label">{group.label}</span>
+              {group.steps.map(({ item, index }) => (
+                <button key={index} className={`wz-step-item ${index === step ? 'current' : ''} ${index < step ? 'done' : ''}`}
+                  onClick={() => goTo(index)} disabled={index > step}>
                   <span className="wz-step-num">
-                    {i < step ? <span className="wz-check">✓</span> : String(i + 1).padStart(2, '0')}
+                    {index < step ? <span className="wz-check">✓</span> : String(index + 1).padStart(2, '0')}
                   </span>
-                  <span className="wz-step-name">{s.label}</span>
+                  <span className="wz-step-name">{item.label}</span>
                 </button>
               ))}
             </div>
@@ -1101,7 +1758,7 @@ export default function UploadWizard() {
               </div>
               <div className="wz-resume-actions">
                 <button className="btn btn-primary btn-sm" onClick={() => {
-                  setFd(prev => ({ ...prev, ...savedProgress.fd }));
+                  setFd(prev => ({ ...prev, ...savedProgress.fd, trimSize: savedProgress.fd?.trimSize || prev.trimSize }));
                   setStep(savedProgress.step || 0);
                   setSavedProgress(null);
                 }}>Continue →</button>
@@ -1268,13 +1925,16 @@ export default function UploadWizard() {
                     <input type="number" min="1900" max={new Date().getFullYear() + 2} value={fd.pubYear} onChange={e => up('pubYear', e.target.value)} placeholder={String(new Date().getFullYear())} />
                   </div>
                   <div className="wz-field">
-                    <label>Page count <span className="opt">optional</span></label>
-                    <input type="number" min="1" value={fd.pageCount} onChange={e => up('pageCount', e.target.value)} placeholder="e.g. 280" />
+                    <label>Publisher name <span className="opt">optional</span></label>
+                    <input type="text" value={fd.publisher} onChange={e => up('publisher', e.target.value)} placeholder="Self-published" />
                   </div>
                 </div>
-                <div className="wz-field">
-                  <label>Publisher name <span className="opt">optional — leave blank for Self-published</span></label>
-                  <input type="text" value={fd.publisher} onChange={e => up('publisher', e.target.value)} placeholder="Self-published" />
+                <div className="wz-format-card wz-format-card--estimate">
+                  <div className="wz-format-card-icon">#</div>
+                  <div>
+                    <strong>Page count comes after manuscript upload</strong>
+                    <p>We estimate pages from your manuscript word count and selected trim size in the next step. You can override it there if you already know the final print page count.</p>
+                  </div>
                 </div>
               </div>
 
@@ -1284,6 +1944,7 @@ export default function UploadWizard() {
                 <div className="wz-isbn-options">
                   {[
                     { id: 'own',  title: 'I have my own ISBN-13', sub: 'Enter a 13-digit ISBN you already own or purchased from a registry.' },
+                    { id: 'register', title: 'Register a new ISBN', sub: 'Choose an official registry, complete the purchase or application, then paste the ISBN here.' },
                     { id: 'skip', title: 'Skip for now',           sub: 'Your book can still be listed and found without one. You can add it later from your dashboard.' },
                   ].map(opt => (
                     <label key={opt.id} className={`wz-isbn-opt ${fd.isbnOption === opt.id ? 'selected' : ''}`}>
@@ -1292,19 +1953,35 @@ export default function UploadWizard() {
                     </label>
                   ))}
                 </div>
-                <div className="wz-isbn-resources">
-                  <span className="wz-isbn-resources-title">Where to get an ISBN</span>
-                  <div className="wz-isbn-resource-grid">
-                    <div className="wz-isbn-resource"><strong>Bowker (USA)</strong><span>Official US ISBN agency. Single ISBNs from $125.</span></div>
-                    <div className="wz-isbn-resource"><strong>Nielsen (UK)</strong><span>UK national ISBN agency. Prices vary by package.</span></div>
-                    <div className="wz-isbn-resource"><strong>ISBN Canada</strong><span>Free for Canadian publishers. Apply through Library and Archives Canada.</span></div>
-                    <div className="wz-isbn-resource"><strong>IngramSpark / KDP</strong><span>Both offer a free ISBN when you publish through their platforms (platform-owned).</span></div>
+                {fd.isbnOption === 'register' && (
+                  <div className="wz-isbn-resources">
+                    <div className="wz-isbn-resources-head">
+                      <span className="wz-isbn-resources-title">Register a new ISBN</span>
+                      <p>Open the right registry in a new tab, finish the purchase or application, then come back and paste the ISBN-13 below.</p>
+                    </div>
+                    <div className="wz-isbn-resource-grid">
+                      {ISBN_REGISTRY_OPTIONS.map(option => (
+                        <div key={option.title} className="wz-isbn-resource">
+                          <div>
+                            <strong>{option.title}</strong>
+                            <span>{option.note}</span>
+                          </div>
+                          <div className="wz-isbn-resource-links">
+                            {option.links.map(link => (
+                              <a key={link.href} href={link.href} target="_blank" rel="noreferrer">
+                                {link.label} <span aria-hidden="true">{'->'}</span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="wz-isbn-resources-note">A platform-assigned ISBN can tie that edition to the platform that issued it. Owning your own ISBN gives you more control over imprint and distribution.</p>
                   </div>
-                  <p className="wz-isbn-resources-note">A platform-assigned ISBN ties you to that platform. Owning your own ISBN gives you full control.</p>
-                </div>
-                {fd.isbnOption === 'own' && (
+                )}
+                {(fd.isbnOption === 'own' || fd.isbnOption === 'register') && (
                   <div className="wz-field" style={{ marginTop: 20 }}>
-                    <label>ISBN-13 <span className="req">*</span></label>
+                    <label>{fd.isbnOption === 'register' ? 'Paste your new ISBN-13' : 'ISBN-13'} <span className="req">*</span></label>
                     <input type="text" value={fd.isbn} onChange={e => up('isbn', e.target.value)} placeholder="978-0-000-00000-0" maxLength={17} />
                     {fd.isbn && (
                       <span className={`wz-isbn-status ${isValidISBN13(fd.isbn) ? 'ok' : 'err'}`}>
@@ -1340,9 +2017,9 @@ export default function UploadWizard() {
                 {fd.manuscriptPath && !uploading && (
                   <div className="wz-file-chip">
                     <span className="wz-file-ok">✓</span>
-                    <span className="wz-file-name">{fd.manuscriptFile?.name}</span>
+                    <span className="wz-file-name">{manuscriptFileName || 'Uploaded manuscript'}</span>
                     <span className="wz-file-size">{fd.manuscriptFile ? `${(fd.manuscriptFile.size / 1024).toFixed(0)} KB` : ''}</span>
-                    <button type="button" className="wz-rm-btn" onClick={() => { up('manuscriptFile', null); up('manuscriptPath', ''); setMsStructure(null); setMsHtml(null); setMsText(null); }}>Replace</button>
+                    <button type="button" className="wz-rm-btn" onClick={clearManuscriptUpload}>Replace</button>
                   </div>
                 )}
                 <div className="wz-field" style={{ marginTop: 28 }}>
@@ -1351,50 +2028,101 @@ export default function UploadWizard() {
                     {FORMATS.map(f => (
                       <label key={f} className={`wz-format-tag ${fd.formats.includes(f) ? 'on' : ''}`}>
                         <input type="checkbox" checked={fd.formats.includes(f)}
-                          onChange={e => up('formats', e.target.checked ? [...fd.formats, f] : fd.formats.filter(x => x !== f))} />
+                          onChange={e => toggleFormat(f, e.target.checked)} />
                         {f}
                       </label>
                     ))}
                   </div>
                 </div>
-                {fd.formats.includes('Audiobook') && (
-                  <div className="wz-format-card wz-format-card--audio">
-                    <div className="wz-format-card-icon">🎧</div>
-                    <div>
-                      <strong>Audiobook selected</strong>
-                      <p>We don't host audio files. Distribute through <b>ACX / Audible</b>, <b>Libro.fm</b>, or your own site — then add the buy link in Cover & Pricing. Readers will be sent directly there.</p>
+                {audiobookOnly && (
+                  <div className="wz-audio-handoff">
+                    <div className="wz-audio-handoff-head">
+                      <span className="wz-audio-icon">AU</span>
+                      <div>
+                        <strong>Audiobook production is external</strong>
+                        <p>Indie Converters does not create or host audiobook files yet. Use one of these services, then come back and list your eBook or print edition here.</p>
+                      </div>
+                    </div>
+                    <div className="wz-audio-resource-grid">
+                      {AUDIOBOOK_RESOURCES.map(resource => (
+                        <a key={resource.href} className="wz-audio-resource" href={resource.href} target="_blank" rel="noreferrer">
+                          <strong>{resource.title}</strong>
+                          <span>{resource.note}</span>
+                          <b>{resource.label} {'->'}</b>
+                        </a>
+                      ))}
                     </div>
                   </div>
                 )}
-                {(fd.formats.includes('Paperback') || fd.formats.includes('Hardcover')) && (
+                {!audiobookOnly && (
+                  <div className="wz-field wz-trim-picker">
+                    <label>Trim size for preview and print estimate</label>
+                    <p className="wz-hint">Used to estimate print pages and shape the Reading Style preview. eBooks still reflow on each reader's device.</p>
+                    <div className="wz-trim-grid wz-trim-grid--select">
+                      {TRIM_SIZES.map(t => {
+                        const check = trimChecks.find(item => item.trim.id === t.id);
+                        const availability = check?.availability || trimAvailability(t, 0, hasPrintFormat);
+                        const isBlocked = availability.blocked;
+                        return (
+                          <label
+                            key={t.id}
+                            className={`wz-trim-option ${fd.trimSize === t.id ? 'selected' : ''} ${isBlocked ? 'disabled' : ''} wz-trim-option--${availability.severity}`}
+                            aria-disabled={isBlocked}
+                          >
+                            <input type="radio" name="trimSize" value={t.id}
+                              checked={fd.trimSize === t.id}
+                              disabled={isBlocked}
+                              onChange={() => up('trimSize', t.id)} />
+                            <span className="wz-trim-copy">
+                              <span className="wz-trim-size">{t.label}</span>
+                              <span className="wz-trim-use">{t.note}</span>
+                              {hasPrintFormat && availability.detail && (
+                                <span className="wz-trim-status">{availability.detail}</span>
+                              )}
+                            </span>
+                            <span className="wz-trim-est">{availability.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {!audiobookOnly && (fd.formats.includes('Paperback') || fd.formats.includes('Hardcover')) && (
                   <div className="wz-format-card wz-format-card--print">
-                    <div className="wz-format-card-icon">📖</div>
+                    <div className="wz-format-card-icon">PR</div>
                     <div>
                       <strong>Print edition selected</strong>
-                      <div className="wz-trim-sizes">
-                        <span className="wz-trim-label">Common trim sizes:</span>
-                        <div className="wz-trim-grid">
-                          {[
-                            { size: '5 × 8"',     use: 'Most common for fiction' },
-                            { size: '5.5 × 8.5"', use: 'Literary fiction, poetry' },
-                            { size: '6 × 9"',     use: 'Nonfiction, business, memoir' },
-                            { size: '7 × 10"',    use: 'Technical, workbooks' },
-                            { size: '8.5 × 11"',  use: 'Manuals, journals, activity books' },
-                          ].map(t => (
-                            <div key={t.size} className="wz-trim-row">
-                              <span className="wz-trim-size">{t.size}</span>
-                              <span className="wz-trim-use">{t.use}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      <p>Using <b>{selectedTrim.label}</b> for print estimates, about {selectedTrim.wordsPerPage} words per page. Change the trim size above before refining your preview.</p>
+                    </div>
+                  </div>
+                )}
+                {!audiobookOnly && msStructure && (
+                  <div className="wz-page-estimate-card">
+                    <div className="wz-page-estimate-main">
+                      <span className="wz-page-estimate-label">Estimated length</span>
+                      <strong>{estimatedTrimPages ? `~${estimatedTrimPages} pages` : 'Page estimate unavailable'}</strong>
+                      <p>
+                        {estimatedTrimPages
+                          ? `Based on ${msStructure.wordCount.toLocaleString()} words at ${selectedTrim.label}.`
+                          : 'We could not estimate pages from this file type. Add a final page count if you know it.'}
+                      </p>
+                    </div>
+                    <div className="wz-field wz-page-override">
+                      <label>Manual page count override <span className="opt">optional</span></label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={fd.pageCount}
+                        onChange={e => up('pageCount', e.target.value)}
+                        placeholder={estimatedTrimPages ? String(estimatedTrimPages) : 'e.g. 280'}
+                      />
                     </div>
                   </div>
                 )}
               </div>
 
               {/* ── Inline Layout Check ── */}
-              {msStructure && (
+              {!audiobookOnly && msStructure && (
                 <div className="wz-layout-inline">
                   <div className="wz-section-divider"><span>Layout Analysis</span></div>
 
@@ -1421,7 +2149,8 @@ export default function UploadWizard() {
                         <h3>Chapter Structure</h3>
                         <div className="wz-layout-stats">
                           {msStructure.wordCount > 0 && <span>{msStructure.wordCount.toLocaleString()} words</span>}
-                          {msStructure.estimatedPages > 0 && <span>~{msStructure.estimatedPages} pages</span>}
+                          {estimatedTrimPages > 0 && <span>~{estimatedTrimPages} pages</span>}
+                          <span>{selectedTrim.label}</span>
                           {msStructure.paragraphCount > 0 && <span>{msStructure.paragraphCount} paragraphs</span>}
                           <span>{msStructure.headings.length} heading{msStructure.headings.length !== 1 ? 's' : ''}</span>
                         </div>
@@ -1531,7 +2260,7 @@ export default function UploadWizard() {
                 </details>
                 <div className="wz-book-reader">
                   <button className="wz-book-arrow" onClick={() => setMsPage(p => Math.max(0, p - 1))} disabled={msPage === 0} aria-label="Previous page">‹</button>
-                  <div className="wz-book-page" style={{ background: theme.bg, borderColor: theme.border }} tabIndex={0}
+                  <div className="wz-book-page" style={{ background: theme.bg, borderColor: theme.border, '--page-aspect': selectedTrim.aspect, '--page-width': selectedTrim.previewWidth }} tabIndex={0}
                     onKeyDown={e => {
                       if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) { e.preventDefault(); if (!isLastPage) setMsPage(p => p + 1); }
                       if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) { e.preventDefault(); if (msPage > 0) setMsPage(p => p - 1); }
@@ -1557,7 +2286,7 @@ export default function UploadWizard() {
                       )}
                     </div>
                     <div className="wz-book-page-ftr" style={{ borderColor: `${theme.text}15`, color: theme.text }}>
-                      {showMs && <span style={{ opacity: 0.3, fontSize: '0.72rem', fontFamily: fontCss }}>{msPage + 1}</span>}
+                      {showMs && <span style={{ opacity: 0.34, fontSize: '0.72rem', fontFamily: fontCss }}>Page {msPage + 1} / {msPages.length} · {selectedTrim.label}</span>}
                       {!showMs && !msLoading && (
                         <span style={{ opacity: 0.28, fontSize: '0.65rem' }}>
                           {fd.manuscriptPath ? '.txt files only · sample text shown' : 'Sample text · upload a .txt manuscript to preview'}
@@ -1575,13 +2304,13 @@ export default function UploadWizard() {
           {step === 5 && (
             <div className="wz-step">
               <h2>Cover & Pricing</h2>
-              <p className="wz-sub">Create a clean starter cover from your book details, or upload a finished cover if you already have one.</p>
+              <p className="wz-sub">Create a clean starter cover, upload finished artwork, or hire a cover designer when you want a more polished launch.</p>
 
-              <div className="wz-cover-mode-tabs" role="tablist" aria-label="Cover source">
+              <div className="wz-cover-mode-tabs" aria-label="Cover source options">
                 <button
                   type="button"
                   className={fd.coverMode !== 'upload' ? 'active' : ''}
-                  aria-selected={fd.coverMode !== 'upload'}
+                  aria-pressed={fd.coverMode !== 'upload'}
                   onClick={() => chooseCoverMode('template')}
                 >
                   Create from template
@@ -1589,11 +2318,18 @@ export default function UploadWizard() {
                 <button
                   type="button"
                   className={fd.coverMode === 'upload' ? 'active' : ''}
-                  aria-selected={fd.coverMode === 'upload'}
+                  aria-pressed={fd.coverMode === 'upload'}
                   onClick={() => chooseCoverMode('upload')}
                 >
                   Upload cover
                 </button>
+                <Link
+                  to="/hire/browse?service=cover-design&source=cover-pricing"
+                  className="wz-cover-mode-link"
+                  aria-label="Hire a cover designer"
+                >
+                  Hire designer <span aria-hidden="true">→</span>
+                </Link>
               </div>
 
               <div className="wz-cover-layout">
@@ -1618,7 +2354,7 @@ export default function UploadWizard() {
                           <button
                             type="button"
                             className="wz-text-link"
-                            onClick={() => setFd(p => ({ ...p, coverMode: 'template', coverFile: null, coverPreview: '' }))}
+                            onClick={() => setFd(p => ({ ...p, coverMode: 'template', coverFile: null, coverPreview: '', coverDataUrl: '' }))}
                           >
                             Remove and use template
                           </button>
@@ -1748,9 +2484,13 @@ export default function UploadWizard() {
                         <span />
                       </div>
                       <div className="wz-device-content">
-                        {coverPreviewDevice === 'desktop' && (
-                          <div className="wz-device-desktop-layout">
-                            <div className="wz-device-cover-slot">
+                        <div className="wz-device-cover-stage">
+                          <div className="wz-device-cover-slot">
+                            <div
+                              className={`wz-device-book-mockup ${fd.coverPreview ? 'wz-device-book-mockup--uploaded' : ''}`}
+                              onPointerMove={handleBookPreviewPointerMove}
+                              onPointerLeave={resetBookPreviewTilt}
+                            >
                               <CoverPreviewArt
                                 coverPreview={fd.coverPreview}
                                 title={fd.title}
@@ -1763,59 +2503,8 @@ export default function UploadWizard() {
                                 artPlacement={fd.coverArtPlacement}
                               />
                             </div>
-                            <div className="wz-device-copy">
-                              <strong>{fd.title || 'Your Book Title'}</strong>
-                              <span>{authorName}</span>
-                              <i />
-                              <i />
-                              <b />
-                            </div>
                           </div>
-                        )}
-
-                        {coverPreviewDevice === 'tablet' && (
-                          <div className="wz-device-tablet-layout">
-                            <div className="wz-device-cover-slot">
-                              <CoverPreviewArt
-                                coverPreview={fd.coverPreview}
-                                title={fd.title}
-                                subtitle={fd.subtitle}
-                                author={authorName}
-                                genreLabel={primaryGenreLabel}
-                                templateId={fd.coverTemplate}
-                                paletteId={fd.coverPalette}
-                                artPreview={fd.coverArtPreview}
-                                artPlacement={fd.coverArtPlacement}
-                              />
-                            </div>
-                            <div className="wz-device-copy">
-                              <strong>{fd.title || 'Your Book Title'}</strong>
-                              <span>{primaryGenreLabel || 'Book preview'}</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {coverPreviewDevice === 'phone' && (
-                          <div className="wz-device-phone-layout">
-                            <div className="wz-device-cover-slot">
-                              <CoverPreviewArt
-                                coverPreview={fd.coverPreview}
-                                title={fd.title}
-                                subtitle={fd.subtitle}
-                                author={authorName}
-                                genreLabel={primaryGenreLabel}
-                                templateId={fd.coverTemplate}
-                                paletteId={fd.coverPalette}
-                                artPreview={fd.coverArtPreview}
-                                artPlacement={fd.coverArtPlacement}
-                              />
-                            </div>
-                            <div className="wz-device-copy">
-                              <strong>{fd.title || 'Your Book Title'}</strong>
-                              <span>{authorName}</span>
-                            </div>
-                          </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1950,12 +2639,13 @@ export default function UploadWizard() {
               <div className="wz-matter-list">
                 {FM_ITEMS.map(item => {
                   const data = fd.frontMatter[item.key];
+                  const epigraphSamples = item.key === 'epigraph' ? buildEpigraphSamples(fd, primaryGenreLabel) : [];
 
                   function handleTocToggle() {
                     const newEnabled = !data.enabled;
                     if (newEnabled && data.entries.length === 0 && msStructure?.headings?.length > 0) {
                       const fmOffset = Object.values(fd.frontMatter).filter(v => v.enabled).length + 1;
-                      setFd(p => ({ ...p, frontMatter: { ...p.frontMatter, toc: { enabled: true, entries: buildTocEntries(msStructure.headings, fmOffset) } } }));
+                      setFd(p => ({ ...p, frontMatter: { ...p.frontMatter, toc: { enabled: true, entries: buildTocEntries(msStructure.headings, fmOffset, selectedTrim.wordsPerPage) } } }));
                     } else {
                       setFd(p => ({ ...p, frontMatter: { ...p.frontMatter, toc: { ...p.frontMatter.toc, enabled: newEnabled } } }));
                     }
@@ -1971,7 +2661,7 @@ export default function UploadWizard() {
 
                   function resetToc() {
                     const fmOffset = Object.values(fd.frontMatter).filter(v => v.enabled).length + 1;
-                    setFd(p => ({ ...p, frontMatter: { ...p.frontMatter, toc: { enabled: true, entries: buildTocEntries(msStructure.headings, fmOffset) } } }));
+                    setFd(p => ({ ...p, frontMatter: { ...p.frontMatter, toc: { enabled: true, entries: buildTocEntries(msStructure.headings, fmOffset, selectedTrim.wordsPerPage) } } }));
                   }
 
                   return (
@@ -2024,7 +2714,7 @@ export default function UploadWizard() {
                                     ))}
                                   </div>
                                   <p className="wz-toc-hint">
-                                    Rename any entry by editing the label. Uncheck entries you want to hide (e.g. internal sub-sections). Page numbers are estimates based on word count.
+                                    Rename any entry by editing the label. Uncheck entries you want to hide (e.g. internal sub-sections). Page numbers are estimates based on word count and selected trim size.
                                   </p>
                                 </div>
 
@@ -2061,6 +2751,48 @@ export default function UploadWizard() {
                       {/* ── Regular matter textarea ── */}
                       {data.enabled && !item.isToc && (
                         <div className="wz-matter-body">
+                          {item.key === 'dedication' && (
+                            <div className="wz-matter-samples" aria-label="Dedication samples">
+                              <div className="wz-matter-samples-head">
+                                <span>Start with a sample</span>
+                                <small>Pick one, then customise it.</small>
+                              </div>
+                              <div className="wz-matter-sample-grid">
+                                {DEDICATION_SAMPLES.map(sample => (
+                                  <button
+                                    key={sample.label}
+                                    type="button"
+                                    className="wz-matter-sample"
+                                    onClick={() => upMatter('frontMatter', 'dedication', 'content', sample.text)}
+                                  >
+                                    <span>{sample.label}</span>
+                                    <small>{sample.text.split('\n')[0]}</small>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {item.key === 'epigraph' && (
+                            <div className="wz-matter-samples" aria-label="Epigraph samples">
+                              <div className="wz-matter-samples-head">
+                                <span>Use book details</span>
+                                <small>Original starters; replace with a licensed quote if needed.</small>
+                              </div>
+                              <div className="wz-matter-sample-grid">
+                                {epigraphSamples.map(sample => (
+                                  <button
+                                    key={sample.label}
+                                    type="button"
+                                    className="wz-matter-sample"
+                                    onClick={() => upMatter('frontMatter', 'epigraph', 'content', sample.text)}
+                                  >
+                                    <span>{sample.label}</span>
+                                    <small>{sample.text.split('\n')[0]}</small>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <textarea rows={8} value={data.content}
                             onChange={e => upMatter('frontMatter', item.key, 'content', e.target.value)}
                             placeholder="Write or edit this section…" />
@@ -2089,6 +2821,33 @@ export default function UploadWizard() {
                       </div>
                       {data.enabled && (
                         <div className="wz-matter-body">
+                          {item.key === 'aboutAuthor' && (
+                            <div className={`wz-profile-bio-source ${authorProfileBio ? '' : 'is-empty'}`}>
+                              <div>
+                                <span>
+                                  {authorProfileLoading
+                                    ? 'Loading your author profile...'
+                                    : authorProfileBio
+                                      ? authorProfileBioSource
+                                      : 'No author profile bio found yet'}
+                                </span>
+                                <small>
+                                  {authorProfileBio
+                                    ? 'This field starts from your saved profile bio. You can edit it here for this book.'
+                                    : 'Add a bio below, or update your author profile from the dashboard later.'}
+                                </small>
+                              </div>
+                              {authorProfileBio && (
+                                <button
+                                  type="button"
+                                  className="wz-text-link"
+                                  onClick={() => upMatter('backMatter', 'aboutAuthor', 'content', authorProfileBio)}
+                                >
+                                  Use profile bio
+                                </button>
+                              )}
+                            </div>
+                          )}
                           <textarea rows={8} value={data.content}
                             onChange={e => upMatter('backMatter', item.key, 'content', e.target.value)}
                             placeholder="Write or edit this section…" />
@@ -2101,8 +2860,49 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ════════ STEP 8: Review & Publish ════════ */}
+          {/* ════════ STEP 8: Marketing Kit ════════ */}
           {step === 8 && (
+            <div className="wz-step wz-step--marketing">
+              <h2>Marketing Kit</h2>
+              <p className="wz-sub">Optional launch assets for sharing your book. Download one or skip ahead to review.</p>
+
+              <section className="wz-marketing-panel">
+                <div className="wz-marketing-head">
+                  <div>
+                    <span>Book mockups</span>
+                    <small>Generated from your current cover and book details.</small>
+                  </div>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={downloadAllMarketingMockups}>
+                    Download all
+                  </button>
+                </div>
+                <div className="wz-mockup-grid">
+                  {MARKETING_FORMATS.map(format => {
+                    const previewSrc = marketingMockupDataUrl(format);
+                    return (
+                      <div key={format.id} className={`wz-mockup-card wz-mockup-card--${format.id}`}>
+                        <div className={`wz-social-preview wz-social-preview--${format.id}`}>
+                          <img src={previewSrc} alt={`${format.label} marketing mockup`} className="wz-social-preview-img" />
+                        </div>
+                        <div className="wz-mockup-meta">
+                          <div>
+                            <strong>{format.label}</strong>
+                            <span>{format.size}</span>
+                          </div>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => downloadMarketingMockup(format)}>
+                            Download PNG
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* ════════ STEP 9: Review & Publish ════════ */}
+          {step === 9 && (
             <div className="wz-step">
               <h2>Review & Publish</h2>
               <p className="wz-sub">Check everything before going live. Click Edit to make changes.</p>
@@ -2128,12 +2928,14 @@ export default function UploadWizard() {
                   { title: 'Publication', to: 2, rows: [
                     ['Year',      fd.pubYear || '—'],
                     ['Publisher', fd.publisher || '—'],
-                    ['Pages',     fd.pageCount || '—'],
-                    ['ISBN-13',   fd.isbnOption === 'own' ? fd.isbn : 'Not provided'],
+                    ['ISBN-13',   (fd.isbnOption === 'own' || fd.isbnOption === 'register') ? fd.isbn : 'Not provided'],
+                    ['Release timing', releaseSummary],
                   ]},
                   { title: 'Manuscript', to: 3, rows: [
-                    ['File',    fd.manuscriptFile?.name || '—'],
+                    ['File',    manuscriptFileName || '—'],
                     ['Formats', fd.formats.join(', ') || '—'],
+                    ['Trim size', selectedTrim.label],
+                    ['Page count', pageCountDisplay || '—'],
                   ]},
                   { title: 'Cover & Pricing', to: 5, rows: [
                     ['Cover',     fd.coverFile?.name || `${selectedTemplate.name} template${fd.coverArtPreview ? ' + artwork' : ''}`],
@@ -2149,6 +2951,9 @@ export default function UploadWizard() {
                   { title: 'Book Structure', to: 7, rows: [
                     ['Front Matter', FM_ITEMS.filter(i => fd.frontMatter[i.key]?.enabled).map(i => i.label).join(', ') || 'None'],
                     ['Back Matter',  BM_ITEMS.filter(i => fd.backMatter[i.key]?.enabled).map(i => i.label).join(', ') || 'None'],
+                  ]},
+                  { title: 'Marketing Kit', to: 8, rows: [
+                    ['Mockups', MARKETING_FORMATS.map(f => f.label).join(', ')],
                   ]},
                 ].map(s => (
                   <div key={s.title} className="wz-review-block">
@@ -2176,19 +2981,85 @@ export default function UploadWizard() {
               )}
 
               <div className="wz-publish-cta">
+                <div className="wz-release-panel">
+                  <div className="wz-release-head">
+                    <span>Release timing</span>
+                    <small>Most authors schedule a release so there is time for proofing, reviews, and launch prep.</small>
+                  </div>
+
+                  <div className="wz-release-options" role="radiogroup" aria-label="Release timing">
+                    {[
+                      {
+                        value: 'schedule',
+                        title: 'Schedule release',
+                        text: 'Keep the book private now and prepare a launch date.',
+                      },
+                      {
+                        value: 'draft',
+                        title: 'Keep as draft',
+                        text: 'Save everything privately and decide later from your dashboard.',
+                      },
+                      {
+                        value: 'now',
+                        title: 'Publish today',
+                        text: 'Make the book visible immediately after this step.',
+                      },
+                    ].map(option => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`wz-release-option ${releasePlan === option.value ? 'active' : ''}`}
+                        role="radio"
+                        aria-checked={releasePlan === option.value}
+                        onClick={() => setFd(p => ({ ...p, releasePlan: option.value }))}
+                      >
+                        <span className="wz-radio-dot" />
+                        <strong>{option.title}</strong>
+                        <small>{option.text}</small>
+                      </button>
+                    ))}
+                  </div>
+
+                  {releasePlan === 'schedule' && (
+                    <div className="wz-release-date-row">
+                      <label htmlFor="release-date">Release date</label>
+                      <input
+                        id="release-date"
+                        type="date"
+                        value={releaseDate}
+                        min={minReleaseDate}
+                        onChange={e => setFd(p => ({ ...p, releaseDate: e.target.value }))}
+                      />
+                      <span className={releaseDateInvalid ? 'is-error' : ''}>
+                        {releaseDateInvalid
+                          ? `Choose a date at least ${RELEASE_LEAD_DAYS} days from today.`
+                          : `Scheduled for ${formatDateInput(releaseDate)}.`}
+                      </span>
+                    </div>
+                  )}
+
+                  {releasePlan === 'now' && (
+                    <div className="wz-release-warning">
+                      Publishing today makes the listing visible right away. Use this only when the manuscript, cover, links, and metadata are final.
+                    </div>
+                  )}
+                </div>
+
                 <div className="wz-publish-choice">
-                  <button type="button" className="btn btn-outline wz-draft-btn" onClick={() => handlePublish(false)} disabled={publishing}>
-                    Save as Draft
-                  </button>
-                  <button type="button" className="btn btn-primary wz-publish-btn" onClick={() => handlePublish(true)}
-                    disabled={publishing || layoutIssues.some(i => i.severity === 'error')}
+                  <button type="button" className="btn btn-primary wz-publish-btn" onClick={() => handlePublish(releasePlan)}
+                    disabled={publishing || releaseDateInvalid || layoutIssues.some(i => i.severity === 'error')}
                     title={layoutIssues.some(i => i.severity === 'error') ? 'Fix errors in the Manuscript step before publishing' : undefined}>
-                    {publishing ? 'Publishing…' : 'Publish Now →'}
+                    {publishing
+                      ? 'Saving…'
+                      : releasePlan === 'now'
+                        ? 'Publish today →'
+                        : releasePlan === 'draft'
+                          ? 'Save as draft →'
+                          : 'Schedule release →'}
                   </button>
                 </div>
                 <p className="wz-publish-note">
-                  <strong>Publish Now</strong> makes your book immediately visible to readers.{' '}
-                  <strong>Save as Draft</strong> keeps it private — you can publish from your dashboard anytime.
+                  Scheduled books stay private while you review proofs, gather early readers, and finish launch prep. You can still publish immediately when everything is final.
                 </p>
               </div>
             </div>
@@ -2197,7 +3068,7 @@ export default function UploadWizard() {
           {/* ── Navigation ── */}
           <div className="wz-nav">
             {step > 0 && <button type="button" className="btn btn-outline" onClick={goBack}>← Back</button>}
-            {step < 8 && <button type="button" className="btn btn-primary" onClick={goNext}>Continue →</button>}
+            {step < 9 && <button type="button" className="btn btn-primary" onClick={goNext}>Continue →</button>}
           </div>
         </div>
       </div>

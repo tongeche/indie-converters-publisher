@@ -2,35 +2,47 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
 import { fetchBooks, fetchBlogs } from '../lib/api';
-import mainHeroImg    from '../assets/main-hero.png';
-import browseHeroImg  from '../assets/browse-hero.png';
-import hireFreelancerImg  from '../assets/hire-freelancer.png';
-import imgAche   from '../assets/moods/Ache.png';
-import imgDrift  from '../assets/moods/Drift.png';
-import imgHaunt  from '../assets/moods/haunt.png';
-import imgGasp   from '../assets/moods/Gasp.png';
-import imgBurn   from '../assets/moods/Burn.png';
-import imgWonder from '../assets/moods/Wonder.png';
-import imgEscape from '../assets/moods/Escape.png';
+import mainHeroImg    from '../assets/main-hero.webp';
+import browseHeroImg  from '../assets/browse-hero.webp';
+import imgGhostwriting        from '../assets/services/ghostwriting.webp';
+import imgDevelopmentalEditing from '../assets/services/developmental-editing.webp';
+import imgCoverDesign         from '../assets/services/cover-design.webp';
+import imgEpubFormatting      from '../assets/services/epub-formatting.webp';
+import imgAche   from '../assets/moods/Ache.webp';
+import imgDrift  from '../assets/moods/Drift.webp';
+import imgHaunt  from '../assets/moods/haunt.webp';
+import imgGasp   from '../assets/moods/Gasp.webp';
+import imgBurn   from '../assets/moods/Burn.webp';
+import imgWonder from '../assets/moods/Wonder.webp';
+import imgEscape from '../assets/moods/Escape.webp';
 import './Landing.css';
 
 const HERO_DOTS = Array.from({ length: 56 }, (_, index) => index);
+
+const IconGrid   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="22" height="22"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>;
+const IconBrief  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="22" height="22"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>;
+const IconTag    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="22" height="22"><path d="M20.59 13.41 12 22l-9-9 8.59-8.59A2 2 0 0 1 13 4h6a1 1 0 0 1 1 1v6a2 2 0 0 1-.41 1.41z"/><circle cx="16.5" cy="7.5" r="1"/></svg>;
+const IconChat   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="22" height="22"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>;
+
+const FREELANCE_FEATURES = [
+  { Icon: IconGrid,  desc: 'Ghostwriters, editors, cover designers and formatters — all in one place.' },
+  { Icon: IconBrief, desc: "Post a brief once. Freelancers with real profiles reach out to you." },
+  { Icon: IconTag,   desc: "See real rates and skills upfront on every freelancer's profile." },
+  { Icon: IconChat,  desc: 'Contact freelancers directly — no bidding wars, no middleman.' },
+];
+
+const HIRE_SERVICES = [
+  { label: 'Ghostwriting',            slug: 'ghostwriting', img: imgGhostwriting },
+  { label: 'Editing',                 slug: 'editing',      img: imgDevelopmentalEditing },
+  { label: 'Cover Design',             slug: 'cover-design', img: imgCoverDesign },
+  { label: 'EPUB Formatting',          slug: 'formatting',   img: imgEpubFormatting },
+];
 
 const FEATURE_FALLBACK_BG = 'linear-gradient(145deg, #1B1330 0%, #2E1180 55%, #441CB2 100%)';
 
 function pillarLabel(pillar) {
   if (!pillar) return 'Blog';
   return pillar.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-}
-
-function fmtDate(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function truncate(str, n) {
-  if (!str) return '';
-  return str.length > n ? str.slice(0, n).trimEnd() + '…' : str;
 }
 
 function TiltCard({ children, className, style }) {
@@ -52,7 +64,7 @@ function TiltCard({ children, className, style }) {
     </div>
   );
 }
-const TICKER_WORDS = ['finding.', 'publishing.', 'reading.'];
+const TICKER_WORDS = ['publishing.', 'finding.', 'reading.'];
 
 function HeroTicker() {
   const [cur, setCur]        = useState(0);
@@ -80,6 +92,61 @@ function HeroTicker() {
         </span>
       )}
     </span>
+  );
+}
+
+const BRAND_QUOTES = [
+  'Every book deserves a clean file, a real cover, and a chance to be found.',
+  "Self-publishing isn't a compromise — it's a different kind of craft.",
+  'The best tools get out of the way and let the writing lead.',
+  'An indie author with the right files can reach any reader, anywhere.',
+];
+
+function QuoteRotator() {
+  const [idx, setIdx]       = useState(0);
+  const [fading, setFading] = useState(false);
+  const nextIdxRef = useRef(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      nextIdxRef.current = (idx + 1) % BRAND_QUOTES.length;
+      setFading(true);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [idx]);
+
+  function onTransitionEnd(e) {
+    if (e.propertyName !== 'opacity' || !fading) return;
+    setIdx(nextIdxRef.current);
+    setFading(false);
+  }
+
+  function goTo(i) {
+    if (i === idx || fading) return;
+    nextIdxRef.current = i;
+    setFading(true);
+  }
+
+  return (
+    <div className="quote-rotator">
+      <blockquote
+        className={`quote-text${fading ? ' quote-text--fade' : ''}`}
+        onTransitionEnd={onTransitionEnd}
+      >
+        “{BRAND_QUOTES[idx]}”
+      </blockquote>
+      <div className="quote-dots">
+        {BRAND_QUOTES.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            className={`quote-dot${i === idx ? ' quote-dot--active' : ''}`}
+            aria-label={`Show quote ${i + 1}`}
+            onClick={() => goTo(i)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -273,6 +340,12 @@ export default function Landing() {
     return () => obs.disconnect();
   }, [blogs]);
 
+  function scrollJt(dir) {
+    const el = jtRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' });
+  }
+
   const withCovers = allBooks.filter(b => b.coverUrl);
   const featured = withCovers.slice(0, 5);
 
@@ -312,12 +385,12 @@ export default function Landing() {
           </h1>
 
           <p className="hero-sub">
-            We help readers find good books and give authors a simple way to bring their work online.
+            We give authors a simple way to bring their work online, and help readers find good books.
           </p>
 
           <div className="hero-ctas">
-            <Link to="/browse" className="btn hero-btn-primary">Browse Books</Link>
-            <Link to="/upload" className="hero-text-link">Start Publishing →</Link>
+            <Link to="/upload" className="btn hero-btn-primary">Start Publishing</Link>
+            <Link to="/browse" className="hero-text-link">Browse Books →</Link>
           </div>
         </div>
       </section>
@@ -352,7 +425,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Browse CTA (browse-hero.png) ── */}
+      {/* ── Browse CTA (browse-hero.webp) ── */}
       <section className="browse-cta" style={{ backgroundImage: `url(${browseHeroImg})` }}>
         <div className="browse-cta-overlay" />
         <div className="container browse-cta-content">
@@ -445,26 +518,32 @@ export default function Landing() {
       </section>
 
       {/* ── Hire a Freelancer ── */}
-      <section className="hire-section">
-        <div className="hire-card">
-
-          <div className="hire-content">
-            <span className="eyebrow hire-eyebrow">Hire a Freelancer</span>
-            <h2 className="hire-heading">Need help with your book?</h2>
-            <p className="hire-sub">From cover design to ghostwriting — find skilled professionals who understand indie publishing.</p>
-            <ul className="hire-services">
-              {['Ghostwriting', 'Developmental Editing', 'Cover Design', 'EPUB Formatting'].map(s => (
-                <li key={s}>
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"><path d="M3 8l3 3 7-7"/></svg>
-                  {s}
-                </li>
-              ))}
-            </ul>
-            <Link to="/hire" className="btn hire-btn">Find a Freelancer →</Link>
+      <section className="ff-section">
+        <div className="container">
+          <div className="ff-header">
+            <h2 className="ff-heading">Need a little hand?</h2>
+            <Link to="/hire/post" className="btn ff-join-btn">Post a Brief →</Link>
+          </div>
+          <div className="ff-divider" />
+          <div className="ff-grid">
+            {FREELANCE_FEATURES.map(({ Icon, desc }) => (
+              <div className="ff-item" key={desc}>
+                <div className="ff-icon"><Icon /></div>
+                <p className="ff-desc">{desc}</p>
+              </div>
+            ))}
           </div>
 
-          <div className="hire-image-panel" style={{ backgroundImage: `url(${hireFreelancerImg})` }} />
+          <div className="hire-svc-grid">
+            {HIRE_SERVICES.map(s => (
+              <Link key={s.slug} to={`/hire/browse?service=${s.slug}`} className="hire-svc-card">
+                <span className="hire-svc-title">{s.label}</span>
+                <div className="hire-svc-img" style={{ backgroundImage: `url(${s.img})` }} />
+              </Link>
+            ))}
+          </div>
 
+          <Link to="/hire/browse" className="hire-browse-all">Browse all freelancers →</Link>
         </div>
       </section>
 
@@ -475,66 +554,45 @@ export default function Landing() {
             <div className="jt-header">
               <div>
                 <div className="eyebrow">From the Blog</div>
-                <h2 className="jt-heading">Stories about stories.</h2>
+                <h2 className="jt-heading">Your story matters.</h2>
               </div>
-              <Link to="/blog" className="jt-see-all">Read the blog →</Link>
+              <div className="jt-header-actions">
+                <Link to="/blog" className="jt-see-all">Read the blog →</Link>
+                <div className="jt-arrows">
+                  <button type="button" className="jt-arrow" aria-label="Scroll left" onClick={() => scrollJt(-1)}>‹</button>
+                  <button type="button" className="jt-arrow" aria-label="Scroll right" onClick={() => scrollJt(1)}>›</button>
+                </div>
+              </div>
             </div>
-            <div className="jt-grid" ref={jtRef}>
-
-              {/* Feature card — latest post */}
-              {blogs[0] && (
-                <Link to={`/blog/${blogs[0].slug}`} className="jcard-link">
-                  <TiltCard className="jcard jcard--feature">
+            <div className="jt-track" ref={jtRef}>
+              {blogs.map(b => (
+                <Link to={`/blog/${b.slug}`} key={b.slug} className="jt-card-link" title={b.title} aria-label={b.title}>
+                  <TiltCard className="jcard jt-card">
                     <div
-                      className="jcard-bg"
+                      className="jt-card-bg"
                       style={
-                        blogs[0].hero_image_url
-                          ? { backgroundImage: `url(${blogs[0].hero_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center top' }
+                        b.hero_image_url
+                          ? { backgroundImage: `url(${b.hero_image_url})` }
                           : { background: FEATURE_FALLBACK_BG }
                       }
                     />
-                    <div className="jcard-overlay" />
-                    <div className="jcard-body">
-                      <span className="jcard-tag">{pillarLabel(blogs[0].pillar)}</span>
-                      <h3 className="jcard-title">{blogs[0].title}</h3>
-                      <p className="jcard-excerpt">{truncate(blogs[0].excerpt, 130)}</p>
-                      <div className="jcard-meta">
-                        <span>IC Journal</span>
-                        <span className="jcard-dot">·</span>
-                        <span>{fmtDate(blogs[0].published_at)}</span>
-                      </div>
-                    </div>
-                  </TiltCard>
-                </Link>
-              )}
-
-              {/* Quote card — second post excerpt as pull quote */}
-              {blogs[1] && (
-                <Link to={`/blog/${blogs[1].slug}`} className="jcard-link">
-                  <TiltCard className="jcard jcard--quote">
-                    <span className="jcard-quotemark">"</span>
-                    <blockquote className="jcard-quote-text">{truncate(blogs[1].excerpt, 150)}</blockquote>
-                    <cite className="jcard-quote-attr">— {blogs[1].title}</cite>
-                  </TiltCard>
-                </Link>
-              )}
-
-              {/* Standard cards — remaining posts */}
-              {blogs.slice(2).map(b => (
-                <Link to={`/blog/${b.slug}`} key={b.slug} className="jcard-link">
-                  <TiltCard className="jcard jcard--std">
-                    <span className="jcard-tag jcard-tag--ink">{pillarLabel(b.pillar)}</span>
-                    <h3 className="jcard-title jcard-title--ink">{b.title}</h3>
-                    <p className="jcard-excerpt jcard-excerpt--ink">{truncate(b.excerpt, 110)}</p>
-                    <span className="jcard-time">{fmtDate(b.published_at)}</span>
+                    <div className="jt-card-overlay" />
+                    <span className="jt-card-tag">{pillarLabel(b.pillar)}</span>
                   </TiltCard>
                 </Link>
               ))}
-
             </div>
           </div>
         </section>
       )}
+
+      {/* ── Quote ── */}
+      <section className="section quote-section">
+        <div className="container quote-container">
+          <div className="eyebrow quote-eyebrow">In Our Words</div>
+          <QuoteRotator />
+        </div>
+      </section>
     </div>
   );
 }

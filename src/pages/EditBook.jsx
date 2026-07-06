@@ -6,6 +6,13 @@ import { fetchBookForEdit, updateBook, updateBookGenres, upsertBuyLink } from '.
 import './EditBook.css';
 
 const FORMATS   = ['eBook', 'Paperback', 'Hardcover', 'Audiobook'];
+const TRIM_SIZES = [
+  { id: '5x8', label: '5 x 8 in' },
+  { id: '5_5x8_5', label: '5.5 x 8.5 in' },
+  { id: '6x9', label: '6 x 9 in' },
+  { id: '7x10', label: '7 x 10 in' },
+  { id: '8_5x11', label: '8.5 x 11 in' },
+];
 const PLATFORMS = [
   { slug: 'own',      label: 'My own website' },
   { slug: 'gumroad',  label: 'Gumroad' },
@@ -64,6 +71,7 @@ export default function EditBook() {
         keywords:      bk.keywords || [],
         pubYear:       bk.pub_year ? String(bk.pub_year) : '',
         pageCount:     bk.page_count ? String(bk.page_count) : '',
+        trimSize:      bk.trim_size || '5x8',
         publisherName: bk.publisher_name || '',
         isbn13:        bk.isbn_13 || '',
         formats:       bk.formats || ['eBook'],
@@ -152,6 +160,7 @@ export default function EditBook() {
         formats:        fd.formats,
         pub_year:       fd.pubYear   ? parseInt(fd.pubYear,   10) : null,
         page_count:     fd.pageCount ? parseInt(fd.pageCount, 10) : null,
+        trim_size:      fd.trimSize || null,
         publisher_name: fd.publisherName.trim() || null,
         isbn_13:        fd.isbn13.replace(/[^0-9]/g, '') || null,
         price:          fd.isFree ? 0 : (fd.price ? parseFloat(fd.price) : null),
@@ -315,6 +324,14 @@ export default function EditBook() {
               <div className="eb-field eb-field--sm">
                 <label>ISBN-13 <span className="eb-opt">optional</span></label>
                 <input value={fd.isbn13} onChange={e => set('isbn13', e.target.value)} maxLength={17} placeholder="978-…" />
+              </div>
+            </div>
+            <div className="eb-row">
+              <div className="eb-field eb-field--sm">
+                <label>Trim size</label>
+                <select value={fd.trimSize} onChange={e => set('trimSize', e.target.value)}>
+                  {TRIM_SIZES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                </select>
               </div>
             </div>
           </section>

@@ -1,10 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import './ComingSoon.css';
 
-const LABELS = {
-  '/hire/packages':       { eyebrow: 'Hire Freelancer', title: 'Explore Packages', back: '/hire' },
-  '/get-hired/services':  { eyebrow: 'Get Hired', title: 'Offer a Service', back: '/get-hired' },
-};
+const LABELS = {};
 
 export default function ComingSoon() {
   const { pathname } = useLocation();

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import publishBannerImg from '../assets/publish CTA banner.png';
+import publishBannerImg from '../assets/publish CTA banner.webp';
 import './Publish.css';
 
 const STEPS = [

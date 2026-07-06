@@ -280,6 +280,7 @@
   letter-spacing: 0.04em;
 }
 .dash-status--pub   { background: rgba(52,199,89,0.12); color: #1a7a35; }
+.dash-status--scheduled { background: rgba(184,140,61,0.14); color: #7c551c; }
 .dash-status--draft { background: rgba(0,0,0,0.06);     color: #8e8c9a; }
 
 .dash-row-price, .dash-row-earn { font-size: 0.82rem; color: #3a3a3c; }
@@ -337,6 +338,27 @@
 .dash-table tbody tr:hover td { background: #faf9ff; }
 .dash-table-book  { font-family: 'Fraunces', serif; font-weight: 600; color: var(--ink); }
 .dash-table-empty { text-align: center; color: #9e9caa; padding: 40px !important; font-style: italic; }
+
+.dash-brief-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dash-brief-picker select {
+  padding: 6px 10px;
+  border: 1.5px solid #e0dced;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  background: #fff;
+  max-width: 220px;
+}
+.dash-brief-error {
+  color: #c0392b;
+  font-size: 0.82rem;
+  padding: 12px 18px 0;
+}
 
 .dash-chart-placeholder {
   display: flex;

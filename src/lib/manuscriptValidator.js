@@ -1,8 +1,15 @@
 import mammoth from 'mammoth/mammoth.browser';
 
-export function validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize }) {
+function estimatePageCount(wordCount, wordsPerPage = 250) {
+  const words = Number(wordCount) || 0;
+  const pageWords = Math.max(1, Number(wordsPerPage) || 250);
+  if (words <= 0) return 0;
+  return Math.max(1, Math.round(words / pageWords));
+}
+
+export function validateManuscript({ headings = [], wordCount = 0, paragraphCount = 0, maxBlankRun = 0, fileSize = 0, wordsPerPage = 250 }) {
   const issues = [];
-  const est = Math.max(1, Math.round(wordCount / 250));
+  const est = estimatePageCount(wordCount, wordsPerPage);
 
   if (fileSize > 50 * 1024 * 1024) {
     issues.push({ type: 'file-too-large', severity: 'error',
@@ -65,7 +72,8 @@ export function validateManuscript({ headings, wordCount, paragraphCount, maxBla
   return issues.sort((a, b) => order[a.severity] - order[b.severity]);
 }
 
-export function analyseHtml(html, fileSize) {
+export function analyseHtml(html, fileSize, options = {}) {
+  const wordsPerPage = options.wordsPerPage || 250;
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const headings = [];
@@ -87,11 +95,20 @@ export function analyseHtml(html, fileSize) {
   }
   const wordCount      = doc.body.textContent.trim().split(/\s+/).filter(Boolean).length;
   const paragraphCount = doc.querySelectorAll('p').length;
-  const estimatedPages = Math.max(1, Math.round(wordCount / 250));
-  return { headings, wordCount, paragraphCount, estimatedPages, issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize }) };
+  const estimatedPages = estimatePageCount(wordCount, wordsPerPage);
+  return {
+    headings,
+    wordCount,
+    paragraphCount,
+    maxBlankRun,
+    fileSize,
+    estimatedPages,
+    issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize, wordsPerPage }),
+  };
 }
 
-export function analyseTxt(text, fileSize) {
+export function analyseTxt(text, fileSize, options = {}) {
+  const wordsPerPage = options.wordsPerPage || 250;
   const lines = text.split('\n');
   const headings = [];
   let headingIdx = -1, maxBlankRun = 0, blankRun = 0;
@@ -112,8 +129,16 @@ export function analyseTxt(text, fileSize) {
   });
   const wordCount      = text.trim().split(/\s+/).filter(Boolean).length;
   const paragraphCount = text.split(/\n{2,}/).filter(Boolean).length;
-  const estimatedPages = Math.max(1, Math.round(wordCount / 250));
-  return { headings, wordCount, paragraphCount, estimatedPages, issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize }) };
+  const estimatedPages = estimatePageCount(wordCount, wordsPerPage);
+  return {
+    headings,
+    wordCount,
+    paragraphCount,
+    maxBlankRun,
+    fileSize,
+    estimatedPages,
+    issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize, wordsPerPage }),
+  };
 }
 
 export async function analyseFile(file) {

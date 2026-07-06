@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { fetchOpenBriefs } from '../lib/api';
 import './GetHiredProjects.css';
 
+const IconArrow = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M5 12h14M12 5l7 7-7 7"/></svg>;
+
 const SERVICE_FILTERS = [
-  { slug: '',              label: 'All' },
+  { slug: '',              label: 'All services' },
   { slug: 'ghostwriting',  label: 'Ghostwriting' },
   { slug: 'editing',       label: 'Editing' },
   { slug: 'cover-design',  label: 'Cover Design' },
@@ -21,68 +23,111 @@ function formatBudget(min, max) {
   return null;
 }
 
+function initialsOf(name) {
+  return (name || '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
+}
+
 export default function GetHiredProjects() {
   const [searchParams, setSearchParams] = useSearchParams();
   const serviceType = searchParams.get('service') || '';
 
-  const [briefs,  setBriefs]  = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [allBriefs, setAllBriefs] = useState([]);
+  const [loading,   setLoading]   = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    fetchOpenBriefs({ serviceType: serviceType || undefined })
-      .then(setBriefs)
-      .finally(() => setLoading(false));
-  }, [serviceType]);
+    fetchOpenBriefs().then(setAllBriefs).finally(() => setLoading(false));
+  }, []);
+
+  const counts = useMemo(() => {
+    const c = {};
+    for (const b of allBriefs) c[b.service_type] = (c[b.service_type] || 0) + 1;
+    return c;
+  }, [allBriefs]);
+
+  const visible = useMemo(() => {
+    if (!serviceType) return allBriefs;
+    return allBriefs.filter(b => b.service_type === serviceType);
+  }, [allBriefs, serviceType]);
 
   function selectService(slug) {
     if (slug) setSearchParams({ service: slug });
     else setSearchParams({});
   }
 
+  const activeLabel = serviceType ? (SERVICE_LABELS[serviceType] || serviceType) : 'all services';
+
   return (
-    <div className="gh-page">
-      <div className="container gh-projects-header">
-        <span className="gh-hero-eyebrow">·· Get Hired</span>
-        <h1 className="gh-section-h2">Open projects</h1>
-        <p className="gh-section-sub">Real briefs posted by authors right now. Reach out directly — no bidding, no middleman.</p>
-      </div>
+    <div className="gp-page">
+      <div className="container gp-layout">
 
-      <div className="container">
-        <div className="gh-project-filters">
-          {SERVICE_FILTERS.map(({ slug, label }) => (
-            <button
-              key={slug || 'all'}
-              type="button"
-              className={`gh-project-filter-chip ${serviceType === slug ? 'is-active' : ''}`}
-              onClick={() => selectService(slug)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {loading ? (
-          <p className="gh-projects-empty">Loading…</p>
-        ) : briefs.length === 0 ? (
-          <p className="gh-projects-empty">No open briefs right now — check back soon.</p>
-        ) : (
-          <div className="gh-projects-grid">
-            {briefs.map(b => (
-              <a key={b.id} href={`mailto:${b.contact_email}`} className="gh-project-card">
-                <span className="gh-project-tag">{SERVICE_LABELS[b.service_type] || b.service_type}</span>
-                <h3 className="gh-project-title">{b.title}</h3>
-                <p className="gh-project-desc">{b.description}</p>
-                <div className="gh-project-meta">
-                  {formatBudget(b.budget_min, b.budget_max) && (
-                    <span className="gh-project-budget">{formatBudget(b.budget_min, b.budget_max)}</span>
-                  )}
-                  {b.timeline && <span className="gh-project-deadline">{b.timeline}</span>}
-                </div>
-              </a>
+        <aside className="gp-sidebar">
+          <h2 className="gp-sidebar-title">Browse by service</h2>
+          <nav className="gp-sidebar-nav">
+            {SERVICE_FILTERS.map(({ slug, label }) => (
+              <button
+                key={slug || 'all'}
+                type="button"
+                className={`gp-sidebar-item ${serviceType === slug ? 'is-active' : ''}`}
+                onClick={() => selectService(slug)}
+              >
+                <span className="gp-sidebar-item-label"><IconArrow />{label}</span>
+                <span className="gp-sidebar-count">{slug ? (counts[slug] || 0) : allBriefs.length}</span>
+              </button>
             ))}
-          </div>
-        )}
+          </nav>
+        </aside>
+
+        <main className="gp-main">
+          {loading ? (
+            <p className="gp-empty">Loading…</p>
+          ) : (
+            <>
+              <p className="gp-count-line">
+                {visible.length} open brief{visible.length === 1 ? '' : 's'} for <strong>{activeLabel}</strong>
+              </p>
+
+              {visible.length === 0 ? (
+                <p className="gp-empty">No open briefs for this service right now — check back soon.</p>
+              ) : (
+                <div className="gp-grid">
+                  {visible.map(b => {
+                    const budget = formatBudget(b.budget_min, b.budget_max);
+                    return (
+                      <div key={b.id} className="gp-card">
+                        <Link to={`/get-hired/projects/${b.id}`} className="gp-card-link">
+                          <div className="gp-card-cover">
+                            <span className="gp-card-cover-tag">{SERVICE_LABELS[b.service_type] || b.service_type}</span>
+                          </div>
+
+                          <div className="gp-card-body">
+                            <div className="gp-card-top">
+                              <div className="gp-card-avatar">{initialsOf(b.contact_name)}</div>
+                              <span className="gp-card-poster">{b.contact_name}</span>
+                            </div>
+
+                            <h3 className="gp-card-title">{b.title}</h3>
+                            <p className="gp-card-desc">{b.description}</p>
+
+                            <div className="gp-card-meta-row">
+                              {budget && <span className="gp-card-budget">{budget}</span>}
+                              {b.timeline && <span className="gp-card-timeline">{b.timeline}</span>}
+                            </div>
+                          </div>
+                        </Link>
+
+                        <div className="gp-card-footer">
+                          <span className="gp-card-footer-hint">Reach out directly</span>
+                          <a href={`mailto:${b.contact_email}`} className="btn btn-primary btn-sm">Contact</a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </main>
+
       </div>
     </div>
   );

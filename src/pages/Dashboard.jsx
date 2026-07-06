@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { fetchMyBriefs, markBriefFilled, fetchFreelancers } from '../lib/api';
 import './Dashboard.css';
 
 /* ── currencies ─────────────────────────────────────────────── */
@@ -20,10 +21,26 @@ const CURRENCIES = [
   { code: 'JPY', symbol: '¥',   name: 'Japanese Yen' },
 ];
 
+function formatDashboardDate(value) {
+  if (!value) return '';
+  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function bookStatus(book) {
+  if (book.is_published) return { label: 'Published', className: 'dash-status--pub' };
+  if (book.pub_date) return { label: 'Scheduled', className: 'dash-status--scheduled' };
+  return { label: 'Draft', className: 'dash-status--draft' };
+}
+
 /* ── icons ───────────────────────────────────────────────────── */
 function IconBooks()     { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>; }
 function IconCoin()      { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2m0 8v2M9.17 9.17A4 4 0 0 1 16 12a4 4 0 0 1-6.83 2.83"/></svg>; }
 function IconChart()     { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6"  y1="20" x2="6"  y2="14"/></svg>; }
+function IconBriefcase() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>; }
 function IconUpload()    { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
 function IconUser()      { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function IconSignOut()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>; }
@@ -47,7 +64,7 @@ export default function Dashboard() {
   useEffect(() => {
     supabase
       .from('books')
-      .select('id, title, slug, cover_url, pub_year, manuscript_path, price, is_published, view_count, created_at, book_retailer_links(url, retailers(slug, label))')
+      .select('id, title, slug, cover_url, pub_date, pub_year, manuscript_path, price, is_published, view_count, created_at, book_retailer_links(url, retailers(slug, label))')
       .eq('author_user_id', user.id)
       .order('created_at', { ascending: false })
       .then(async ({ data }) => {
@@ -147,6 +164,12 @@ export default function Dashboard() {
           >
             <IconChart /> Reports
           </button>
+          <button
+            className={`dash-nav-link ${view === 'briefs' ? 'dash-nav-link--active' : ''}`}
+            onClick={() => switchView('briefs')}
+          >
+            <IconBriefcase /> My Briefs
+          </button>
 
           <span className="dash-nav-divider" />
           <Link to="/upload" className="dash-nav-link">
@@ -178,6 +201,7 @@ export default function Dashboard() {
           {view === 'books'    && <BooksView    books={books} loading={loading} selected={selected} openBook={openBook} saveCounts={saveCounts} />}
           {view === 'buylinks' && <BuyLinksView books={books} />}
           {view === 'reports'  && <ReportsView  books={books} saveCounts={saveCounts} />}
+          {view === 'briefs'   && <BriefsView   user={user} />}
           {view === 'profile'  && <ProfileView  user={user} />}
         </div>
 
@@ -236,35 +260,40 @@ function BooksView({ books, loading, selected, openBook, saveCounts }) {
             <span className="dash-col-price">Price</span>
             <span className="dash-col-earn">Earned</span>
           </div>
-          {books.map(book => (
-            <button
-              key={book.id}
-              className={`dash-book-row ${selected?.id === book.id ? 'dash-book-row--active' : ''}`}
-              onClick={() => openBook(book)}
-            >
-              <div className="dash-row-cover">
-                {book.cover_url
-                  ? <img src={book.cover_url} alt={book.title} />
-                  : <span className="dash-row-cover-ph">··</span>
-                }
-              </div>
-              <div className="dash-row-info">
-                <span className="dash-row-title">{book.title}</span>
-                {book.pub_year && <span className="dash-row-year">{book.pub_year}</span>}
-                {book.manuscript_path && (
-                  <span className="dash-row-ms-badge">manuscript</span>
-                )}
-              </div>
-              <span className={`dash-col-status dash-status ${book.is_published ? 'dash-status--pub' : 'dash-status--draft'}`}>
-                {book.is_published ? 'Published' : 'Draft'}
-              </span>
-              <span className="dash-col-price dash-row-price">
-                {book.price != null ? `$${Number(book.price).toFixed(2)}` : 'Free'}
-              </span>
-              <span className="dash-col-earn dash-row-earn">$0.00</span>
-              <span className="dash-row-arrow">›</span>
-            </button>
-          ))}
+          {books.map(book => {
+            const status = bookStatus(book);
+            return (
+              <button
+                key={book.id}
+                className={`dash-book-row ${selected?.id === book.id ? 'dash-book-row--active' : ''}`}
+                onClick={() => openBook(book)}
+              >
+                <div className="dash-row-cover">
+                  {book.cover_url
+                    ? <img src={book.cover_url} alt={book.title} />
+                    : <span className="dash-row-cover-ph">··</span>
+                  }
+                </div>
+                <div className="dash-row-info">
+                  <span className="dash-row-title">{book.title}</span>
+                  {book.pub_date
+                    ? <span className="dash-row-year">Release {formatDashboardDate(book.pub_date)}</span>
+                    : book.pub_year && <span className="dash-row-year">{book.pub_year}</span>}
+                  {book.manuscript_path && (
+                    <span className="dash-row-ms-badge">manuscript</span>
+                  )}
+                </div>
+                <span className={`dash-col-status dash-status ${status.className}`}>
+                  {status.label}
+                </span>
+                <span className="dash-col-price dash-row-price">
+                  {book.price != null ? `$${Number(book.price).toFixed(2)}` : 'Free'}
+                </span>
+                <span className="dash-col-earn dash-row-earn">$0.00</span>
+                <span className="dash-row-arrow">›</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </>
@@ -398,11 +427,144 @@ function ReportsView({ books, saveCounts }) {
   );
 }
 
+/* ── Briefs view ─────────────────────────────────────────────── */
+const BRIEF_SERVICE_LABELS = {
+  ghostwriting: 'Ghostwriting',
+  editing: 'Editing',
+  'cover-design': 'Cover Design',
+  formatting: 'Formatting',
+  other: 'Other',
+};
+
+function BriefsView({ user }) {
+  const [briefs,      setBriefs]      = useState([]);
+  const [freelancers, setFreelancers] = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [pickingId,   setPickingId]   = useState(null);
+  const [pickValue,   setPickValue]   = useState('');
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState('');
+
+  useEffect(() => {
+    Promise.all([
+      fetchMyBriefs(user.id, user.email),
+      fetchFreelancers(),
+    ]).then(([b, f]) => {
+      setBriefs(b);
+      setFreelancers(f);
+      setLoading(false);
+    });
+  }, [user.id, user.email]);
+
+  function startPicking(briefId) {
+    setError('');
+    setPickValue('');
+    setPickingId(briefId);
+  }
+
+  async function confirmFilled(briefId) {
+    setSaving(true);
+    setError('');
+    try {
+      await markBriefFilled(briefId, pickValue || null);
+      const refreshed = await fetchMyBriefs(user.id, user.email);
+      setBriefs(refreshed);
+      setPickingId(null);
+    } catch (e) {
+      setError(e.message || 'Could not update this brief.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <header className="dash-header">
+        <div>
+          <h1 className="dash-title">My Briefs</h1>
+          <p className="dash-subtitle">Projects you've posted at /hire/post. Mark one filled once you've hired someone.</p>
+        </div>
+      </header>
+
+      {loading ? (
+        <p className="dash-table-empty">Loading…</p>
+      ) : briefs.length === 0 ? (
+        <div className="dash-empty">
+          <div className="dash-empty-icon">··</div>
+          <h2>You haven't posted any briefs yet.</h2>
+          <p>Describe a project and get matched with freelancers who can help.</p>
+          <Link to="/hire/post" className="btn btn-primary">Post a brief</Link>
+        </div>
+      ) : (
+        <div className="dash-table-wrap">
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Hired</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {briefs.map(b => (
+                <tr key={b.id}>
+                  <td className="dash-table-book">{b.title}</td>
+                  <td>{BRIEF_SERVICE_LABELS[b.service_type] || b.service_type}</td>
+                  <td>
+                    <span className={`dash-status ${b.status === 'filled' ? 'dash-status--pub' : 'dash-status--draft'}`}>
+                      {b.status === 'filled' ? 'Filled' : 'Open'}
+                    </span>
+                  </td>
+                  <td>{b.freelancers?.display_name || '—'}</td>
+                  <td>
+                    {b.status === 'open' && pickingId !== b.id && (
+                      <button type="button" className="dash-table-edit-link" onClick={() => startPicking(b.id)}>
+                        Mark as filled →
+                      </button>
+                    )}
+                    {b.status === 'open' && pickingId === b.id && (
+                      <div className="dash-brief-picker">
+                        <select value={pickValue} onChange={e => setPickValue(e.target.value)}>
+                          <option value="">Close without crediting</option>
+                          {freelancers.map(f => (
+                            <option key={f.id} value={f.id}>
+                              {f.display_name} — {BRIEF_SERVICE_LABELS[f.service_type] || f.service_type}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={saving}
+                          onClick={() => confirmFilled(b.id)}
+                        >
+                          {saving ? 'Saving…' : 'Confirm'}
+                        </button>
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setPickingId(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {error && <p className="dash-brief-error">{error}</p>}
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ── Book drawer ─────────────────────────────────────────────── */
 function BookDrawer({ book, preview, saves, onClose, onDelete }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const ext = book.manuscript_path?.split('.').pop().toLowerCase();
+  const status = bookStatus(book);
 
   async function doDelete() {
     setDeleting(true);
@@ -428,11 +590,13 @@ function BookDrawer({ book, preview, saves, onClose, onDelete }) {
 
       {/* Title / status */}
       <div className="dash-drawer-info">
-        <span className={`dash-status ${book.is_published ? 'dash-status--pub' : 'dash-status--draft'}`}>
-          {book.is_published ? 'Published' : 'Draft'}
+        <span className={`dash-status ${status.className}`}>
+          {status.label}
         </span>
         <h2 className="dash-drawer-title">{book.title}</h2>
-        {book.pub_year && <p className="dash-drawer-year">{book.pub_year}</p>}
+        {book.pub_date
+          ? <p className="dash-drawer-year">Release {formatDashboardDate(book.pub_date)}</p>
+          : book.pub_year && <p className="dash-drawer-year">{book.pub_year}</p>}
       </div>
 
       {/* Quick stats */}

@@ -6,7 +6,7 @@ export async function fetchBookForEdit(slug, userId) {
     .from('books')
     .select(`
       id, slug, title, subtitle, description, cover_url, formats, keywords,
-      pub_year, page_count, isbn_13, language, publisher_name, price,
+      pub_year, page_count, trim_size, isbn_13, language, publisher_name, price,
       front_matter, back_matter, is_published,
       books_genres ( genres ( slug, label ) ),
       book_retailer_links ( url, retailers ( slug, label ) )
@@ -64,8 +64,15 @@ export async function createHireBrief(brief) {
 /* ── Hire: browse freelancers ── */
 export async function fetchFreelancers({ serviceType } = {}) {
   let q = supabase.from('freelancers').select('*').order('created_at', { ascending: false });
-  if (serviceType) q = q.eq('service_type', serviceType);
+  if (serviceType) q = q.contains('service_types', [serviceType]);
   const { data, error } = await q;
+  if (error) throw error;
+  return data;
+}
+
+/* ── Hire: single freelancer detail ── */
+export async function fetchFreelancerById(id) {
+  const { data, error } = await supabase.from('freelancers').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -77,6 +84,31 @@ export async function fetchOpenBriefs({ serviceType } = {}) {
   const { data, error } = await q;
   if (error) throw error;
   return data;
+}
+
+export async function fetchBriefById(id) {
+  const { data, error } = await supabase.from('hire_briefs').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/* ── Hire: manage my posted briefs ── */
+export async function fetchMyBriefs(userId, userEmail) {
+  const { data, error } = await supabase
+    .from('hire_briefs')
+    .select('*, freelancers(display_name)')
+    .or(`user_id.eq.${userId},and(user_id.is.null,contact_email.eq.${userEmail})`)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function markBriefFilled(briefId, freelancerId) {
+  const { error } = await supabase.rpc('mark_brief_filled', {
+    p_brief_id: briefId,
+    p_freelancer_id: freelancerId || null,
+  });
+  if (error) throw error;
 }
 
 /* ── Get Hired: freelancer profile ── */
@@ -99,7 +131,7 @@ export async function fetchSavedBooks(userId) {
       created_at,
       books!inner (
         id, slug, title, description, cover_url, rating, formats, keywords,
-        pub_year, page_count, isbn_13, language, publisher_name,
+        pub_year, page_count, trim_size, isbn_13, language, publisher_name,
         books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
         books_genres ( genres ( slug, label ) ),
         book_retailer_links ( url, retailers ( slug, label ) )
@@ -149,6 +181,7 @@ export async function checkSaved(bookId, userId) {
 export async function fetchBooks({ genres = [], query, sort = 'newest', formats = [], language, limit = 24, offset = 0 } = {}) {
   const SELECT = `
     id, slug, title, description, cover_url, rating, formats, keywords, pub_year, price, language,
+    trim_size,
     books_authors ( position, authors ( slug, display_name ) ),
     books_genres ( genres ( slug, label ) )
   `;
@@ -233,7 +266,7 @@ export async function fetchBook(slug) {
     .from('books')
     .select(`
       id, slug, title, subtitle, description, cover_url, rating, formats, keywords,
-      pub_year, page_count, isbn_13, language, publisher_name,
+      pub_year, page_count, trim_size, isbn_13, language, publisher_name,
       books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
       books_genres ( genres ( slug, label ) ),
       book_retailer_links ( url, retailers ( slug, label ) )
@@ -310,7 +343,7 @@ export async function fetchRelatedBooks(currentSlug, genreSlugs = [], pubYear = 
   const { data, error } = await supabase
     .from('books')
     .select(`
-      id, slug, title, description, cover_url, rating, formats, keywords, pub_year,
+      id, slug, title, description, cover_url, rating, formats, keywords, pub_year, trim_size,
       books_authors ( position, authors ( slug, display_name ) ),
       books_genres ( genres ( slug, label ) )
     `)
@@ -377,6 +410,7 @@ function normaliseBook(b) {
     price: b.price || null,
     pubYear: b.pub_year || null,
     pageCount: b.page_count || null,
+    trimSize: b.trim_size || null,
     isbn: b.isbn_13 || null,
     language: b.language || null,
     publisher: b.publisher_name || null,

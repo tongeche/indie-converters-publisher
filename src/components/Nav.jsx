@@ -12,7 +12,6 @@ const IconNews     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentC
 const IconHelp     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>;
 const IconBrief    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>;
 const IconUserOk   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>;
-const IconStar     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
 const IconSearch   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
 const IconLearn    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>;
 const Chevron      = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" width="11" height="11" className="nav-chevron"><path d="M4 6l4 4 4-4"/></svg>;
@@ -42,7 +41,6 @@ const NAV = [
     dropdown: [
       { to: '/hire/post',      label: 'Post a Brief',        desc: 'Tell us what you need — we match you with the right talent', Icon: IconBrief   },
       { to: '/hire/browse',    label: 'Browse Freelancers',  desc: 'Find ghostwriters, editors and cover designers',             Icon: IconSearch  },
-      { to: '/hire/packages',  label: 'Explore Packages',    desc: 'Fixed-price services you can book in minutes',               Icon: IconStar    },
     ],
     footer: { label: 'Learn how hiring works →', to: '/hire' },
   },
@@ -51,7 +49,6 @@ const NAV = [
     dropdown: [
       { to: '/get-hired/projects', label: 'Browse Projects', desc: 'Find editing, writing and design briefs from authors',   Icon: IconSearch  },
       { to: '/get-hired/profile',  label: 'Create Profile',  desc: 'Showcase your work and get discovered by indie authors', Icon: IconUserOk  },
-      { to: '/get-hired/services', label: 'Offer a Service', desc: 'Let authors book your skills directly',                  Icon: IconBrief   },
     ],
     footer: { label: 'Learn how getting hired works →', to: '/get-hired' },
   },

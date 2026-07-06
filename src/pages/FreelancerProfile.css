@@ -1,0 +1,257 @@
+/* ══════════════════════════════════════
+   FREELANCER DETAIL PROFILE
+   ══════════════════════════════════════ */
+
+.fp-page {
+  min-height: 100vh;
+  background: var(--cream);
+}
+
+.fp-cover {
+  width: 100%;
+  height: 220px;
+  margin-top: 64px;
+  background: linear-gradient(135deg, var(--sand), var(--ochre));
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.fp-cover-fallback {
+  font-family: 'Fraunces', serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--clay);
+}
+
+.fp-body {
+  padding: 0 24px 96px;
+}
+
+.fp-back-link {
+  position: absolute;
+  top: 20px;
+  left: 24px;
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 7px 14px;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+}
+.fp-back-link:hover { color: var(--clay); }
+
+.fp-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 40px;
+}
+
+.fp-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.fp-header-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 24px;
+  margin-bottom: 16px;
+}
+
+.fp-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--clay);
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 4px solid var(--cream);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.fp-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.fp-top-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fp-name {
+  font-family: 'Fraunces', serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+.fp-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fp-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.fp-badge-service {
+  color: var(--clay);
+  background: var(--sand);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fp-badge-hired {
+  color: #1e7e34;
+  background: rgba(30, 126, 52, 0.1);
+}
+
+.fp-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  margin-bottom: 24px;
+}
+
+.fp-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fp-main-card {
+  background: #fff;
+  border: 1px solid var(--sand);
+  border-radius: 16px;
+  padding: 28px 32px;
+}
+
+.fp-section-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 28px 0 12px;
+}
+.fp-section-title:first-of-type { margin-top: 0; }
+
+.fp-bio {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.fp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fp-tag {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: #f4f2fa;
+  border: 1px solid var(--sand);
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+/* ── Side card ── */
+.fp-side {
+  width: 260px;
+  flex-shrink: 0;
+}
+
+.fp-side-card {
+  background: #fff;
+  border: 1px solid var(--sand);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 100px;
+}
+
+.fp-side-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.fp-price {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.fp-price-sub {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.fp-contact-btn {
+  width: 100%;
+  text-align: center;
+  border-radius: 10px;
+}
+
+/* ── Not found ── */
+.fp-notfound {
+  padding: 160px 24px 120px;
+  text-align: center;
+}
+.fp-notfound h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.6rem;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+.fp-notfound p {
+  color: var(--ink-soft);
+  margin-bottom: 24px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 720px) {
+  .fp-layout { flex-direction: column; }
+  .fp-side { width: 100%; }
+  .fp-side-card { position: static; }
+}

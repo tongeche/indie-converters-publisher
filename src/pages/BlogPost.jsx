@@ -38,6 +38,20 @@ const MD_COMPONENTS = {
   img: ({ src, alt }) => <BlogImage src={src} alt={alt} />,
 };
 
+// Guides are flat, image-free help articles — drop images entirely instead of placeholders
+const GUIDE_MD_COMPONENTS = {
+  ...MD_COMPONENTS,
+  img: () => null,
+  p: ({ node, children }) => {
+    const isImageOnly =
+      node.children.length === 1 &&
+      node.children[0].type === 'element' &&
+      node.children[0].tagName === 'img';
+    if (isImageOnly) return null;
+    return <p>{children}</p>;
+  },
+};
+
 function readingTime(body) {
   if (!body) return null;
   const words = body.trim().split(/\s+/).length;
@@ -50,10 +64,10 @@ function formatDate(iso) {
 }
 
 export default function BlogPost() {
-  const { slug }          = useParams();
-  const navigate          = useNavigate();
-  const [post, setPost]   = useState(null);
-  const [more, setMore]   = useState([]);
+  const { slug }             = useParams();
+  const navigate             = useNavigate();
+  const [post, setPost]      = useState(null);
+  const [others, setOthers]  = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -63,8 +77,8 @@ export default function BlogPost() {
       setPost(data);
       setLoading(false);
     });
-    fetchBlogs({ limit: 3 }).then(all => {
-      setMore(all.filter(p => p.slug !== slug).slice(0, 2));
+    fetchBlogs({ limit: 20 }).then(all => {
+      setOthers(all.filter(p => p.slug !== slug));
     });
   }, [slug]);
 
@@ -78,11 +92,64 @@ export default function BlogPost() {
   }
 
   const mins = readingTime(post.body);
+  const isGuide = post.pillar === 'Getting Started';
+  const more = (isGuide ? others.filter(p => p.pillar === 'Getting Started') : others).slice(0, 2);
 
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
 
   function copyLink() {
     navigator.clipboard.writeText(pageUrl).catch(() => {});
+  }
+
+  if (isGuide) {
+    return (
+      <div className="bpost-page">
+        <header className="bpost-guide-header">
+          <div className="container bpost-guide-layout">
+            <Link to="/help" className="bpost-back">← Help Center</Link>
+            <span className="bpost-guide-pillar">{post.pillar}</span>
+            <h1 className="bpost-guide-title">{post.title}</h1>
+            <div className="bpost-guide-meta">
+              <span>{formatDate(post.published_at)}</span>
+              {mins && <><span className="bpost-guide-dot">·</span><span>{mins} min read</span></>}
+            </div>
+          </div>
+        </header>
+
+        <main className="bpost-guide-main">
+          <div className="container bpost-guide-layout">
+            <article className="bpost-body bpost-guide-body">
+              {post.body
+                ? <ReactMarkdown remarkPlugins={[remarkGfm]} components={GUIDE_MD_COMPONENTS}>{post.body}</ReactMarkdown>
+                : (
+                  <div className="bpost-no-body">
+                    <p>Full article coming soon.</p>
+                    <Link to="/help" className="btn btn-primary">Back to Help Center</Link>
+                  </div>
+                )
+              }
+            </article>
+          </div>
+        </main>
+
+        {more.length > 0 && (
+          <section className="bpost-more">
+            <div className="container bpost-guide-layout">
+              <p className="bpost-more-label">More guides</p>
+              <div className="bpost-more-grid">
+                {more.map(p => (
+                  <Link key={p.id} to={`/blog/${p.slug}`} className="bpost-more-card">
+                    <span className="bpost-pillar">{p.pillar}</span>
+                    <h3 className="bpost-more-title">{p.title}</h3>
+                    <span className="bpost-date">{formatDate(p.published_at)}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
+    );
   }
 
   return (

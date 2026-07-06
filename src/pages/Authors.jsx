@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import authorsHeroImg from '../assets/authors-hero.png';
+import authorsHeroImg from '../assets/authors-hero.webp';
 import './Authors.css';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');

@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fetchBooks } from '../lib/api';
-import imgAche   from '../assets/moods/Ache.png';
-import imgDrift  from '../assets/moods/Drift.png';
-import imgHaunt  from '../assets/moods/haunt.png';
-import imgGasp   from '../assets/moods/Gasp.png';
-import imgBurn   from '../assets/moods/Burn.png';
-import imgWonder from '../assets/moods/Wonder.png';
-import imgEscape from '../assets/moods/Escape.png';
+import imgAche   from '../assets/moods/Ache.webp';
+import imgDrift  from '../assets/moods/Drift.webp';
+import imgHaunt  from '../assets/moods/haunt.webp';
+import imgGasp   from '../assets/moods/Gasp.webp';
+import imgBurn   from '../assets/moods/Burn.webp';
+import imgWonder from '../assets/moods/Wonder.webp';
+import imgEscape from '../assets/moods/Escape.webp';
 import './Moods.css';
 
 const MOODS = [

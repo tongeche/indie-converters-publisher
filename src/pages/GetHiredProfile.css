@@ -5,10 +5,42 @@
 .ghp-page {
   min-height: 100vh;
   background: var(--cream);
+  position: relative;
+  overflow: hidden;
+}
+
+.ghp-page::before,
+.ghp-page::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ghp-page::before {
+  top: -140px;
+  right: -120px;
+  width: 460px;
+  height: 460px;
+  background: radial-gradient(circle, rgba(68, 28, 178, 0.16) 0%, transparent 70%);
+}
+
+.ghp-page::after {
+  bottom: -180px;
+  left: -160px;
+  width: 520px;
+  height: 520px;
+  background: radial-gradient(circle, rgba(130, 102, 224, 0.14) 0%, transparent 70%);
 }
 
 .ghp-header {
-  padding: 140px 0 32px;
+  position: relative;
+  z-index: 1;
+  padding: 140px 24px 32px;
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto;
 }
 
 .ghp-eyebrow {
@@ -33,19 +65,114 @@
 .ghp-sub {
   font-size: 0.95rem;
   color: var(--ink-soft);
-  max-width: 520px;
+  max-width: 480px;
+  margin: 0 auto;
 }
 
 .ghp-body {
-  padding-bottom: 96px;
+  position: relative;
+  z-index: 1;
+  padding: 0 24px 96px;
 }
 
 .ghp-form {
-  max-width: 640px;
+  max-width: 680px;
+  margin: 0 auto;
   background: #fff;
   border: 1px solid var(--sand);
-  border-radius: 20px;
-  padding: 36px;
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 24px 64px rgba(68, 28, 178, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.ghp-form::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--clay), var(--ochre));
+}
+
+/* ── Cover image ── */
+.ghp-cover-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.ghp-cover-field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ghp-cover-preview {
+  width: 100%;
+  height: 140px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--sand), var(--ochre));
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--clay);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* ── Tags (skills / languages) ── */
+.ghp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--sand);
+  border-radius: 8px;
+  min-height: 44px;
+  background: #fff;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.ghp-tags:focus-within {
+  border-color: var(--clay);
+  box-shadow: 0 0 0 4px rgba(68, 28, 178, 0.08);
+}
+
+.ghp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--sand);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.ghp-tag button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 150ms;
+}
+.ghp-tag button:hover { color: var(--clay); }
+
+.ghp-tag-input {
+  border: none !important;
+  outline: none !important;
+  padding: 4px !important;
+  flex: 1;
+  min-width: 120px;
+  font-size: 0.85rem !important;
 }
 
 /* ── Photo ── */
@@ -129,13 +256,16 @@
   color: var(--ink);
   background: #fff;
   outline: none;
-  transition: border-color 150ms;
+  transition: border-color 150ms, box-shadow 150ms;
   font-family: inherit;
   width: 100%;
   box-sizing: border-box;
 }
 .ghp-field input:focus,
-.ghp-field textarea:focus { border-color: var(--clay); }
+.ghp-field textarea:focus {
+  border-color: var(--clay);
+  box-shadow: 0 0 0 4px rgba(68, 28, 178, 0.08);
+}
 
 .ghp-field textarea { resize: vertical; line-height: 1.6; }
 
@@ -172,6 +302,7 @@
 }
 
 .ghp-service-chip {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -183,15 +314,37 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 150ms, color 150ms, background 150ms;
+  transition: border-color 150ms, color 150ms, background 150ms, transform 150ms, box-shadow 150ms;
 }
 
-.ghp-service-chip:hover { border-color: var(--ochre); }
+.ghp-service-chip:hover {
+  border-color: var(--ochre);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(68, 28, 178, 0.08);
+}
 
 .ghp-service-chip.is-active {
   border-color: var(--clay);
   background: var(--sand);
   color: var(--clay);
+}
+
+.ghp-service-chip.is-active::after {
+  content: '✓';
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--clay);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(68, 28, 178, 0.3);
 }
 
 /* ── Actions ── */
