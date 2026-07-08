@@ -77,19 +77,24 @@ export function analyseHtml(html, fileSize, options = {}) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const headings = [];
+  const blocks = [];
   let headingIdx = -1, maxBlankRun = 0, blankRun = 0;
   for (const el of [...doc.body.children]) {
     const tag = el.tagName;
     if (/^H[1-4]$/.test(tag)) {
-      headings.push({ level: parseInt(tag[1]), text: el.textContent.trim(), index: headings.length, words: 0 });
+      const level = parseInt(tag[1]);
+      const text = el.textContent.trim();
+      headings.push({ level, text, index: headings.length, words: 0 });
+      blocks.push({ type: 'heading', level, text });
       headingIdx = headings.length - 1; blankRun = 0;
     } else if (tag === 'P' && !el.textContent.trim()) {
       blankRun++; if (blankRun > maxBlankRun) maxBlankRun = blankRun;
     } else {
       blankRun = 0;
-      if (headingIdx >= 0) {
-        const t = el.textContent.trim();
-        if (t) headings[headingIdx].words += t.split(/\s+/).filter(Boolean).length;
+      const t = el.textContent.trim();
+      if (t) {
+        if (headingIdx >= 0) headings[headingIdx].words += t.split(/\s+/).filter(Boolean).length;
+        blocks.push({ type: 'para', text: t });
       }
     }
   }
@@ -98,6 +103,7 @@ export function analyseHtml(html, fileSize, options = {}) {
   const estimatedPages = estimatePageCount(wordCount, wordsPerPage);
   return {
     headings,
+    blocks,
     wordCount,
     paragraphCount,
     maxBlankRun,
@@ -109,29 +115,34 @@ export function analyseHtml(html, fileSize, options = {}) {
 
 export function analyseTxt(text, fileSize, options = {}) {
   const wordsPerPage = options.wordsPerPage || 250;
-  const lines = text.split('\n');
+  const paragraphs = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   const headings = [];
-  let headingIdx = -1, maxBlankRun = 0, blankRun = 0;
-  lines.forEach((line, i) => {
-    const t = line.trim();
-    if (!t) { blankRun++; if (blankRun > maxBlankRun) maxBlankRun = blankRun; return; }
-    blankRun = 0;
-    if (t.length <= 80) {
-      const prevEmpty = i === 0 || !lines[i - 1]?.trim();
-      const nextEmpty = i >= lines.length - 1 || !lines[i + 1]?.trim();
-      if (prevEmpty && nextEmpty && t.length > 2) {
-        const isAllCaps = t === t.toUpperCase() && /[A-Z]/.test(t);
-        headings.push({ level: isAllCaps ? 1 : 2, text: t, index: headings.length, words: 0 });
-        headingIdx = headings.length - 1; return;
-      }
+  const blocks = [];
+  let headingIdx = -1;
+  paragraphs.forEach(p => {
+    const isSingleLine = !p.includes('\n');
+    if (isSingleLine && p.length > 2 && p.length <= 80) {
+      const isAllCaps = p === p.toUpperCase() && /[A-Z]/.test(p);
+      const level = isAllCaps ? 1 : 2;
+      headings.push({ level, text: p, index: headings.length, words: 0 });
+      blocks.push({ type: 'heading', level, text: p });
+      headingIdx = headings.length - 1;
+      return;
     }
-    if (headingIdx >= 0) headings[headingIdx].words += t.split(/\s+/).filter(Boolean).length;
+    if (headingIdx >= 0) headings[headingIdx].words += p.split(/\s+/).filter(Boolean).length;
+    blocks.push({ type: 'para', text: p });
+  });
+  let maxBlankRun = 0, blankRun = 0;
+  text.split('\n').forEach(line => {
+    if (!line.trim()) { blankRun++; if (blankRun > maxBlankRun) maxBlankRun = blankRun; }
+    else blankRun = 0;
   });
   const wordCount      = text.trim().split(/\s+/).filter(Boolean).length;
-  const paragraphCount = text.split(/\n{2,}/).filter(Boolean).length;
+  const paragraphCount = paragraphs.length;
   const estimatedPages = estimatePageCount(wordCount, wordsPerPage);
   return {
     headings,
+    blocks,
     wordCount,
     paragraphCount,
     maxBlankRun,
