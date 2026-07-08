@@ -7,7 +7,6 @@ import Landing from './pages/Landing';
 import Browse from './pages/Browse';
 import BookDetail from './pages/BookDetail';
 import AuthorProfile from './pages/AuthorProfile';
-import Authors from './pages/Authors';
 import Moods from './pages/Moods';
 import Blog from './pages/News';
 import Publish from './pages/Publish';
@@ -33,6 +32,7 @@ import SavedBooks from './pages/SavedBooks';
 import ComingSoon from './pages/ComingSoon';
 import CheckVerify from './pages/CheckVerify';
 import PrintCoverCalculator from './pages/PrintCoverCalculator';
+import RevenueCalculatorPage from './pages/RevenueCalculatorPage';
 
 export default function App() {
   return (
@@ -44,7 +44,6 @@ export default function App() {
           <Route path="/browse"     element={<Browse />}       />
           <Route path="/book/:id"   element={<BookDetail />}   />
           <Route path="/author/:id" element={<AuthorProfile />} />
-          <Route path="/authors"    element={<Authors />}      />
           <Route path="/moods"      element={<Moods />}        />
           <Route path="/blog"       element={<Blog />}         />
           <Route path="/blog/:slug" element={<BlogPost />}     />
@@ -68,6 +67,7 @@ export default function App() {
           } />
           <Route path="/check"               element={<CheckVerify />} />
           <Route path="/tools/print-cover-calculator" element={<PrintCoverCalculator />} />
+          <Route path="/tools/revenue-calculator" element={<RevenueCalculatorPage />} />
           <Route path="/hire"                element={<Hire />}        />
           <Route path="/hire/post"           element={<PostBrief />}   />
           <Route path="/hire/browse"         element={<HireBrowse />}  />

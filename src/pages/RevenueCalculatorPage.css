@@ -1,0 +1,45 @@
+.rcp-page {
+  background: linear-gradient(180deg, #FCFBFF 0%, #FFFFFF 46%, #F8F6FE 100%);
+  min-height: 100vh;
+}
+
+.rcp-hero {
+  border-bottom: 1px solid rgba(68, 28, 178, 0.08);
+  background: #fff;
+}
+
+.rcp-hero-inner {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+  padding-top: 64px;
+  padding-bottom: 42px;
+}
+
+.rcp-hero h1 {
+  max-width: 680px;
+  color: var(--ink);
+  font-size: clamp(2.2rem, 6vw, 3.6rem);
+  letter-spacing: 0;
+}
+
+.rcp-hero p {
+  max-width: 640px;
+  margin-top: 16px;
+  color: var(--ink-soft);
+  font-size: 1.06rem;
+  line-height: 1.7;
+}
+
+.rcp-tool {
+  padding-top: 38px;
+  padding-bottom: 80px;
+}
+
+@media (max-width: 720px) {
+  .rcp-hero-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
