@@ -2,8 +2,9 @@ import { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { fetchMyBriefs, markBriefFilled, fetchFreelancers } from '../lib/api';
+import { fetchMyBriefs, markBriefFilled, fetchFreelancers, checkIsEditor } from '../lib/api';
 import SEO from '../components/SEO';
+import EditorPricesView from '../components/EditorPricesView';
 import './Dashboard.css';
 
 /* ── currencies ─────────────────────────────────────────────── */
@@ -58,6 +59,7 @@ export default function Dashboard() {
   const [selected, setSelected] = useState(null);
   const [preview, setPreview]   = useState({ loading: false, text: null, url: null });
   const [saveCounts, setSaveCounts] = useState({}); // bookId → count
+  const [isEditor, setIsEditor] = useState(false);
 
   const name     = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Author';
   const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -83,6 +85,10 @@ export default function Dashboard() {
           setSaveCounts(counts);
         }
       });
+  }, [user.id]);
+
+  useEffect(() => {
+    checkIsEditor(user.id).then(setIsEditor);
   }, [user.id]);
 
   async function handleSignOut() {
@@ -183,6 +189,19 @@ export default function Dashboard() {
           >
             <IconUser /> Profile
           </button>
+
+          {isEditor && (
+            <>
+              <span className="dash-nav-divider" />
+              <span className="dash-nav-label">Editor</span>
+              <button
+                className={`dash-nav-link ${view === 'editorPrices' ? 'dash-nav-link--active' : ''}`}
+                onClick={() => switchView('editorPrices')}
+              >
+                <IconCoin /> Catalogue Prices
+              </button>
+            </>
+          )}
         </nav>
 
         <div className="dash-sidebar-footer">
@@ -205,6 +224,7 @@ export default function Dashboard() {
           {view === 'reports'  && <ReportsView  books={books} saveCounts={saveCounts} />}
           {view === 'briefs'   && <BriefsView   user={user} />}
           {view === 'profile'  && <ProfileView  user={user} />}
+          {view === 'editorPrices' && isEditor && <EditorPricesView />}
         </div>
 
         {selected && (

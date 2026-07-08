@@ -184,7 +184,7 @@ export function calculateRoyaltyEstimates({
   const listPrice = parseRoyaltyPrice(price);
   const selectedFormats = formats.length ? formats : ['eBook'];
   const hasWideDistribution = distributionChannels.some(id => id !== 'amazon');
-  const hasAmazon = distributionChannels.length === 0 || distributionChannels.includes('amazon');
+  const hasAmazon = distributionChannels.includes('amazon');
   const warnings = [];
 
   if (isFree) {

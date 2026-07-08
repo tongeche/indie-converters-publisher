@@ -6,6 +6,7 @@ import { calculateRoyaltyEstimates, formatRoyaltyMoney } from '../lib/royaltyCal
 import { calculatePrintCover, formatInches as formatCoverInches, TRIM_SIZE_OPTIONS } from '../lib/printCoverCalculator';
 import { useAuth } from '../context/AuthContext';
 import SEO from '../components/SEO';
+import RetailerLinksEditor, { RETAILER_OPTIONS } from '../components/RetailerLinksEditor';
 import { supabase } from '../lib/supabase';
 import './UploadWizard.css';
 
@@ -16,11 +17,12 @@ const WIZARD_STEPS = [
   { label: 'Publication',     group: 'Details'   },
   { label: 'Manuscript',      group: 'Files'     },
   { label: 'Reading Style',   group: 'Files'     },
-  { label: 'Cover & Pricing', group: 'Publish'   },
+  { label: 'Cover',           group: 'Publish'   },
+  { label: 'Pricing',         group: 'Publish'   },
   { label: 'Distribution',    group: 'Publish'   },
-  { label: 'Book Structure',  group: 'Structure' },
-  { label: 'Marketing Kit',   group: 'Launch'    },
-  { label: 'Review',          group: 'Review'    },
+  { label: 'Front & Back Matter', group: 'Structure' },
+  { label: 'Book Structure',      group: 'Structure' },
+  { label: 'Review',              group: 'Review'    },
 ];
 
 const FM_ITEMS = [
@@ -34,7 +36,7 @@ const FM_ITEMS = [
   { key: 'toc',
     label: 'Table of Contents',
     tip: 'Auto-generated from your manuscript chapter headings. Editable before publishing — rename entries or exclude sub-sections.',
-    required: false,
+    required: true,
     isToc: true,
   },
   { key: 'dedication',
@@ -164,6 +166,12 @@ const AUDIENCES = [
   { value: 'middle-grade',label: 'Middle Grade', sub: '8–12'  },
   { value: 'children',    label: 'Children',     sub: 'Under 8' },
 ];
+const STORY_TONES = [
+  { id: 'clear',    label: 'Clear',    note: 'Simple catalogue copy' },
+  { id: 'warm',     label: 'Warm',     note: 'Personal and inviting' },
+  { id: 'literary', label: 'Literary', note: 'More atmospheric' },
+  { id: 'bold',     label: 'Bold',     note: 'Sharper launch copy' },
+];
 const FORMATS = ['eBook','Paperback','Hardcover','Audiobook'];
 const RELEASE_LEAD_DAYS = 7;
 const DEFAULT_RELEASE_LEAD_DAYS = 14;
@@ -184,6 +192,95 @@ function formatDateInput(value) {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+function titleCaseWords(value = '') {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(word => (/^[ivxlcdm]+$/i.test(word) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+    .join(' ');
+}
+
+// Formats text already known to be a chapter heading (from analyseHtml/analyseTxt's
+// structured parse — see msPages) into a kicker + title pair for display. Unlike the
+// old parseChapterHeading, this never discards a real heading: if it doesn't match the
+// "Chapter N — Title" shape (Prologue, a custom section title, etc.), the full text
+// still renders, just without a separate kicker line.
+function formatChapterHeading(value = '') {
+  const text = value.trim().replace(/\s+/g, ' ');
+  const numberWords = [
+    'one','two','three','four','five','six','seven','eight','nine','ten',
+    'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen',
+    'eighteen','nineteen','twenty','twenty one','twenty two','twenty three',
+    'twenty four','twenty five','thirty','forty','fifty',
+  ].join('|');
+  const match = text.match(new RegExp(`^(chapter|part|book)\\s+([ivxlcdm\\d]+|${numberWords})(?:\\s*[-:–—]\\s*(.+))?$`, 'i'));
+  if (!match) return { label: '', title: text };
+  const [, kind, marker, title] = match;
+  return {
+    label: `${titleCaseWords(kind)} ${titleCaseWords(marker)}`,
+    title: title?.trim() || '',
+  };
+}
+
+function cleanStoryInput(value = '') {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function ensureSentence(value = '') {
+  const text = cleanStoryInput(value);
+  if (!text) return '';
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function buildStoryDraft(fd, { authorName, genreLabel, audienceLabel } = {}) {
+  const title = cleanStoryInput(fd.title) || 'This book';
+  const subtitle = cleanStoryInput(fd.subtitle);
+  const genre = cleanStoryInput(genreLabel).toLowerCase();
+  const workLabel = genre ? `work of ${genre}` : 'indie book';
+  const premise = ensureSentence(fd.storyPremise);
+  const reader = cleanStoryInput(fd.storyReader);
+  const promise = ensureSentence(fd.storyPromise);
+  const themes = cleanStoryInput(fd.storyThemes);
+  const audience = reader || (audienceLabel ? `${audienceLabel.toLowerCase()} readers` : 'curious readers');
+  const author = cleanStoryInput(authorName) || 'the author';
+
+  const fallbackPremise = subtitle
+    ? `${title} is a ${workLabel} about ${subtitle.charAt(0).toLowerCase()}${subtitle.slice(1)}.`
+    : `${title} is a ${workLabel} for readers looking for a fresh independent voice.`;
+  const themeLine = themes ? `It moves through ${themes}.` : '';
+  const promiseLine = promise || `It gives readers a clear way into ${genre || 'the story'} and the questions behind it.`;
+
+  if (fd.storyTone === 'warm') {
+    return [
+      premise || fallbackPremise,
+      `Written for ${audience}, ${title} invites readers into a thoughtful reading experience from ${author}. ${themeLine}`.trim(),
+      `${promiseLine} Read it if you want a book that feels direct, personal, and made with care.`,
+    ].filter(Boolean).join('\n\n');
+  }
+
+  if (fd.storyTone === 'literary') {
+    return [
+      premise || `${title} opens with a question and follows it into a ${workLabel}.`,
+      `${themeLine || `It is shaped by voice, atmosphere, and the quiet pressure of change.`} For ${audience}, the book offers room to sit with what lingers after the final page.`,
+      promiseLine,
+    ].filter(Boolean).join('\n\n');
+  }
+
+  if (fd.storyTone === 'bold') {
+    return [
+      premise || fallbackPremise,
+      `${title} is for ${audience} who want ${themes || 'a confident idea, a memorable story, and a reason to keep turning pages'}.`,
+      `${promiseLine} Start here if you want an indie book with a clear point of view.`,
+    ].filter(Boolean).join('\n\n');
+  }
+
+  return [
+    premise || fallbackPremise,
+    `${title} is written for ${audience}. ${themeLine}`.trim(),
+    promiseLine,
+  ].filter(Boolean).join('\n\n');
 }
 
 const ISBN_REGISTRY_OPTIONS = [
@@ -277,12 +374,6 @@ const COVER_DEVICE_PREVIEWS = [
   { id: 'phone', label: 'Phone' },
 ];
 
-const MARKETING_FORMATS = [
-  { id: 'square', label: 'Square post', size: '1080 x 1080', width: 1080, height: 1080 },
-  { id: 'story', label: 'Story / reel', size: '1080 x 1920', width: 1080, height: 1920 },
-  { id: 'banner', label: 'Wide banner', size: '1600 x 900', width: 1600, height: 900 },
-];
-
 const GENRE_KEYWORDS = {
   fiction:          ['coming-of-age', 'family saga', 'identity', 'loss', 'redemption', 'diaspora', 'debut novel', 'contemporary', 'character-driven'],
   nonfiction:       ['essay collection', 'personal narrative', 'social commentary', 'cultural criticism', 'investigative', 'research-based', 'memoir-adjacent'],
@@ -304,6 +395,25 @@ const GENRE_KEYWORDS = {
   children:         ['picture book', 'adventure', 'animals', 'friendship', 'diversity', 'imagination', 'humor', 'school life'],
 };
 
+// Advisory-only signal words for the mature-content suggestion in Step 1 —
+// this never blocks or auto-sets anything, it just surfaces a dismissible
+// suggestion so the author can confirm (or ignore) the mature-content toggle.
+const MATURE_CONTENT_SIGNALS = {
+  'sexual content':               ['explicit sex', 'graphic sex scene', 'explicit sexual content', 'erotic scene', 'bdsm'],
+  'graphic violence':             ['graphic violence', 'brutal torture', 'graphic gore', 'sadistic violence', 'torture scene'],
+  'self-harm or substance abuse': ['self-harm', 'suicide attempt', 'drug abuse', 'substance abuse', 'overdose'],
+  'strong language':              ['fuck', 'shit', 'bitch', 'asshole', 'bastard', 'cunt', 'motherfucker'],
+};
+
+function detectMatureContentSignals(text = '') {
+  const lower = text.toLowerCase();
+  return Object.entries(MATURE_CONTENT_SIGNALS)
+    .filter(([, terms]) => terms.some(term => (
+      new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(lower)
+    )))
+    .map(([category]) => category);
+}
+
 const PREVIEW_THEMES = [
   { id: 'light', name: 'Light', bg: '#ffffff',  text: '#1B1330', hdr: '#f6f6f2', border: '#e5e5df' },
   { id: 'sepia', name: 'Sepia', bg: '#f8f1e3',  text: '#3d2b1f', hdr: '#ede3cc', border: '#d8c9a8' },
@@ -314,7 +424,6 @@ const PREVIEW_FONTS = [
   { id: 'fraunces', name: 'Serif',      css: "'Fraunces', Georgia, serif"         },
   { id: 'georgia',  name: 'Classic',    css: "Georgia, 'Times New Roman', serif"  },
   { id: 'inter',    name: 'Modern',     css: "'Inter', system-ui, sans-serif"     },
-  { id: 'mono',     name: 'Typewriter', css: "'Courier New', Courier, monospace"  },
 ];
 const PREVIEW_SIZES = [
   { id: 'sm', label: 'Aa', size: '0.88rem', lh: '1.72' },
@@ -350,6 +459,30 @@ const BOOK_STYLES = [
     theme: 'light', font: 'georgia', size: 'sm', spacing: 'compact',
   },
 ];
+
+// Maps each genre slug (see GENRE_KEYWORDS) to the BOOK_STYLES id whose
+// "bestFor" affinity fits it, so Reading Style can default sensibly instead
+// of always opening on Indie Romance regardless of the book's genre.
+const GENRE_STYLE_MAP = {
+  romance: 'indie-romance',
+  memoir: 'indie-romance',
+  fantasy: 'indie-fantasy',
+  horror: 'indie-fantasy',
+  'sci-fi': 'indie-fantasy',
+  'science-fiction': 'indie-fantasy',
+  mystery: 'indie-fantasy',
+  thriller: 'indie-fantasy',
+  'young-adult': 'indie-fantasy',
+  fiction: 'indie-classic',
+  nonfiction: 'indie-classic',
+  literary: 'indie-classic',
+  historical: 'indie-classic',
+  biography: 'indie-classic',
+  'self-help': 'indie-classic',
+  business: 'indie-classic',
+  poetry: 'indie-classic',
+  children: 'indie-classic',
+};
 
 const SAMPLE_TEXT = [
   { type: 'chapter', text: 'Chapter One' },
@@ -756,167 +889,6 @@ function sameTocEntries(a = [], b = []) {
   });
 }
 
-function marketingTagline(fd, genreLabel) {
-  const subtitle = fd.subtitle?.trim();
-  if (subtitle) return subtitle;
-
-  const description = fd.description?.replace(/\s+/g, ' ').trim();
-  if (description) {
-    const firstSentence = description.match(/[^.!?]+[.!?]/)?.[0] || description;
-    return firstSentence.replace(/\s+/g, ' ').trim();
-  }
-
-  return `A new indie ${String(genreLabel || 'book').toLowerCase()} release for curious readers.`;
-}
-
-function marketingAvailabilityCopy(fd, genreLabel) {
-  const genre = String(genreLabel || 'book').toLowerCase();
-  return {
-    label: fd.isFree ? 'Read free' : 'Available now',
-    headline: fd.isFree ? `Start the new indie ${genre} release` : `Read the new indie ${genre} release`,
-    subline: 'Find it on the author catalogue and selected book platforms.',
-    cta: fd.isFree ? 'Read free' : 'Get the book',
-  };
-}
-
-function buildMarketingMockupSvg({ format, coverHref, fd, authorName, genreLabel }) {
-  const palette = coverPalette(fd.coverPalette);
-  const title = fd.title?.trim() || 'Your Book Title';
-  const kicker = genreLabel || 'Indie book';
-  const tagline = marketingTagline(fd, genreLabel);
-  const availability = marketingAvailabilityCopy(fd, genreLabel);
-  const safeCover = escapeXml(coverHref);
-  const id = `cover-${format.id}`;
-  const accent = palette.accent || '#E6C65A';
-  const ink = '#FFF8EA';
-  const mutedInk = '#D9CBFF';
-  const layouts = {
-    square: {
-      card: [32, 20, 1016, 1040, 52],
-      release: [96, 120],
-      pill: [790, 84, 190, 52],
-      cover: [108, 228, 350, 560],
-      title: [528, 318, 78, 12, 3],
-      panel: [96, 732, 888, 150],
-      button: [96, 928, 320, 74],
-      footer: [96, 1040],
-      dots: [912, 1040],
-    },
-    story: {
-      card: [36, 32, 1008, 1856, 56],
-      release: [96, 144],
-      pill: [790, 104, 190, 52],
-      cover: [112, 280, 360, 576],
-      title: [548, 372, 76, 12, 3],
-      panel: [96, 1008, 888, 190],
-      button: [96, 1272, 330, 76],
-      footer: [96, 1808],
-      dots: [912, 1808],
-    },
-    banner: {
-      card: [32, 24, 1536, 852, 48],
-      release: [112, 122],
-      pill: [1282, 82, 210, 54],
-      cover: [120, 198, 310, 496],
-      title: [500, 276, 84, 16, 2],
-      panel: [500, 618, 850, 120],
-      button: [500, 768, 300, 70],
-      footer: [112, 838],
-      dots: [1410, 838],
-    },
-  };
-  const layout = layouts[format.id] || layouts.square;
-  const [cardX, cardY, cardW, cardH, cardR] = layout.card;
-  const [cx, cy, cw, ch] = layout.cover;
-  const [tx, ty, titleSize, titleChars, titleMaxLines] = layout.title;
-  const [panelX, panelY, panelW, panelH] = layout.panel;
-  const [buttonX, buttonY, buttonW, buttonH] = layout.button;
-  const [footerX, footerY] = layout.footer;
-  const [dotsX, dotsY] = layout.dots;
-  const [pillX, pillY, pillW, pillH] = layout.pill;
-  const [releaseX, releaseY] = layout.release;
-  const titleLines = wrapSvgText(title, titleChars, titleMaxLines);
-  const titleBlock = svgTextBlock(titleLines, tx, ty, {
-    fill: ink,
-    size: titleSize,
-    weight: 800,
-    family: 'Georgia, serif',
-    lineHeight: 1.06,
-  });
-  const titleBottom = ty + Math.max(0, titleLines.length - 1) * titleSize * 1.06;
-  const bylineY = titleBottom + (format.id === 'banner' ? 54 : 64);
-  const ruleY = bylineY + (format.id === 'banner' ? 58 : 66);
-  const taglineY = ruleY + (format.id === 'banner' ? 58 : 68);
-  const taglineBlock = svgTextBlock(wrapSvgText(tagline, format.id === 'banner' ? 38 : 28, 2), tx, taglineY, {
-    fill: ink,
-    size: format.id === 'banner' ? 34 : 34,
-    weight: 800,
-    family: 'Arial, sans-serif',
-    lineHeight: 1.22,
-  });
-  const panelHeadlineLines = wrapSvgText(availability.headline, format.id === 'banner' ? 56 : 48, 1);
-  const panelHeadlineSize = format.id === 'banner' ? 30 : 34;
-  const panelHeadlineY = panelY + (format.id === 'banner' ? 72 : 82);
-  const panelHeadline = svgTextBlock(panelHeadlineLines, panelX + 44, panelHeadlineY, {
-    fill: ink,
-    size: panelHeadlineSize,
-    weight: 800,
-    family: 'Arial, sans-serif',
-    lineHeight: 1.16,
-  });
-  const panelSublineY = Math.min(
-    panelY + panelH - 28,
-    panelHeadlineY + panelHeadlineLines.length * panelHeadlineSize * 1.16 + 24
-  );
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${format.width}" height="${format.height}" viewBox="0 0 ${format.width} ${format.height}">
-    <defs>
-      <clipPath id="card-${format.id}">
-        <rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" rx="${cardR}" />
-      </clipPath>
-      <linearGradient id="bg-${format.id}" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#140D2E" />
-        <stop offset="0.54" stop-color="${palette.bg}" />
-        <stop offset="1" stop-color="#7D35EE" />
-      </linearGradient>
-      <filter id="shadow-${format.id}" x="-30%" y="-20%" width="160%" height="160%">
-        <feDropShadow dx="22" dy="34" stdDeviation="28" flood-color="#090515" flood-opacity="0.34" />
-      </filter>
-      <clipPath id="${id}">
-        <rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="18" />
-      </clipPath>
-    </defs>
-    <rect width="${format.width}" height="${format.height}" fill="#F4EFE8" />
-    <g clip-path="url(#card-${format.id})">
-      <rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" fill="url(#bg-${format.id})" />
-      <circle cx="${cardX + cardW * 0.88}" cy="${cardY + cardH * 0.18}" r="${Math.min(cardW, cardH) * 0.3}" fill="${palette.bg2}" opacity="0.18" />
-      <circle cx="${cardX + cardW * 0.15}" cy="${cardY + cardH * 0.96}" r="${Math.min(cardW, cardH) * 0.28}" fill="${accent}" opacity="0.13" />
-      <text x="${releaseX}" y="${releaseY}" fill="${mutedInk}" font-size="${format.id === 'banner' ? 28 : 30}" font-weight="800" font-family="Arial, sans-serif" letter-spacing="10">NEW RELEASE</text>
-      <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH / 2}" fill="${accent}" />
-      <text x="${pillX + pillW / 2}" y="${pillY + pillH * 0.66}" fill="#170C30" font-size="${format.id === 'banner' ? 24 : 22}" font-weight="900" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(kicker.toUpperCase())}</text>
-      <g filter="url(#shadow-${format.id})">
-        <rect x="${cx - 20}" y="${cy + 16}" width="${cw}" height="${ch}" rx="22" fill="#090515" opacity="0.25" />
-        <image href="${safeCover}" x="${cx}" y="${cy}" width="${cw}" height="${ch}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})" />
-        <rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="18" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="2" />
-      </g>
-      ${titleBlock}
-      <text x="${tx}" y="${bylineY}" fill="${ink}" font-size="${format.id === 'banner' ? 30 : 31}" font-weight="800" font-family="Arial, sans-serif">by ${escapeXml(authorName)}</text>
-      <rect x="${tx}" y="${ruleY}" width="${format.id === 'banner' ? 520 : 350}" height="4" fill="${mutedInk}" opacity="0.72" />
-      ${taglineBlock}
-      <rect x="${panelX}" y="${panelY}" width="${panelW}" height="${panelH}" rx="34" fill="#FFFFFF" opacity="0.17" />
-      <text x="${panelX + 44}" y="${panelY + 48}" fill="${accent}" font-size="${format.id === 'banner' ? 26 : 28}" font-weight="900" font-family="Arial, sans-serif" letter-spacing="6">${escapeXml(availability.label.toUpperCase())}</text>
-      ${panelHeadline}
-      <text x="${panelX + 44}" y="${panelSublineY}" fill="${ink}" opacity="0.72" font-size="${format.id === 'banner' ? 22 : 24}" font-family="Arial, sans-serif">${escapeXml(availability.subline)}</text>
-      <rect x="${buttonX}" y="${buttonY}" width="${buttonW}" height="${buttonH}" rx="${buttonH / 2}" fill="#FFFDF8" />
-      <text x="${buttonX + buttonW / 2}" y="${buttonY + buttonH * 0.62}" fill="${palette.bg}" font-size="${format.id === 'banner' ? 26 : 28}" font-weight="900" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(availability.cta)}</text>
-      <text x="${footerX}" y="${footerY}" fill="${ink}" opacity="0.72" font-size="${format.id === 'banner' ? 21 : 22}" font-weight="800" font-family="Arial, sans-serif">Indie Converters Author Catalogue</text>
-      <circle cx="${dotsX}" cy="${dotsY - 6}" r="8" fill="${accent}" />
-      <circle cx="${dotsX + 28}" cy="${dotsY - 6}" r="8" fill="${accent}" />
-      <circle cx="${dotsX + 56}" cy="${dotsY - 6}" r="8" fill="${accent}" />
-    </g>
-  </svg>`;
-}
-
 // ─── Keyword chip input ───────────────────────────────────────────────────────
 function KeywordInput({ keywords, onChange }) {
   const [input, setInput] = useState('');
@@ -973,13 +945,23 @@ export default function UploadWizard() {
   const [msStructure,  setMsStructure]  = useState(null);
   const [msPage,       setMsPage]       = useState(0);
   const [msSpread,     setMsSpread]     = useState(false);
+  const [pageTurnDir,  setPageTurnDir]  = useState('');
   const [msLoading,    setMsLoading]    = useState(false);
   const [authorProfile,setAuthorProfile]= useState(null);
   const [authorProfileLoading, setAuthorProfileLoading] = useState(() => Boolean(user?.id));
   const [coverPreviewDevice, setCoverPreviewDevice] = useState('desktop');
+  const [matureSuggestionDismissed, setMatureSuggestionDismissed] = useState(false);
+  const [bsPage,        setBsPage]        = useState(0);
+  const [bsPageTurnDir, setBsPageTurnDir] = useState('');
+  const [styleOpen,     setStyleOpen]     = useState(false);
   const fileRef  = useRef(null);
   const coverRef = useRef(null);
   const coverArtRef = useRef(null);
+  const pageTurnTimerRef = useRef(null);
+  const bsPageTurnTimerRef = useRef(null);
+  const bsTouchStartXRef = useRef(null);
+  const styleTouchedRef = useRef(false);
+  const styleDropdownRef = useRef(null);
 
   // Restore saved progress from localStorage on first load
   const [savedProgress, setSavedProgress] = useState(() => {
@@ -1001,7 +983,8 @@ export default function UploadWizard() {
   const [fd, setFd] = useState({
     title: '', subtitle: '', language: 'English', edition: '', series: '', seriesVolume: '',
     contributors: [],
-    description: '', audience: 'adult',
+    description: '', audience: 'adult', matureContent: false,
+    storyPremise: '', storyReader: '', storyPromise: '', storyThemes: '', storyTone: 'clear',
     genre: '', genreSecondary: '', keywords: [], tags: [],
     pubYear: String(new Date().getFullYear()), publisher: 'Self-published', pageCount: '',
     isbnOption: 'skip', isbn: '',
@@ -1011,9 +994,10 @@ export default function UploadWizard() {
     coverMode: 'template', coverTemplate: 'editorial', coverPalette: 'violet',
     coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '', coverArtPlacement: 'window',
     price: '', isFree: false, buyUrl: '', buyPlatform: 'own',
+    retailerLinks: [],
     releasePlan: 'schedule', releaseDate: dateInputFromNow(DEFAULT_RELEASE_LEAD_DAYS),
     bookStyle: 'indie-romance',
-    distributionChannels: ['amazon', 'apple', 'bn', 'kobo', 'google-play', 'scribd'],
+    distributionChannels: [],
     frontMatter: {
       copyright:   { enabled: true,  content: '' },
       toc:         { enabled: false, entries: [] },
@@ -1039,6 +1023,7 @@ export default function UploadWizard() {
       ? 'Short bio from your author profile'
       : '';
   const selectedTrim = TRIM_SIZES.find(t => t.id === fd.trimSize) || TRIM_SIZES[0];
+  const audienceLabel = AUDIENCES.find(a => a.value === fd.audience)?.label || '';
   const estimatedTrimPages = estimatePages(msStructure?.wordCount, selectedTrim.wordsPerPage);
   const resolvedSelectedPages = Number.parseInt(fd.pageCount, 10) || estimatedTrimPages;
   const pageCountDisplay = fd.pageCount || (estimatedTrimPages ? `~${estimatedTrimPages} estimated` : '');
@@ -1150,6 +1135,15 @@ export default function UploadWizard() {
     });
   }, [msStructure, fd.manuscriptFile?.size, selectedTrim.wordsPerPage]);
 
+  // Advisory mature-content scan — description is cheap and re-scanned live;
+  // the manuscript is scanned once per upload, not on every keystroke, since
+  // msText can be the whole book.
+  const descriptionMatureSignals = useMemo(() => detectMatureContentSignals(fd.description), [fd.description]);
+  const manuscriptMatureSignals  = useMemo(() => detectMatureContentSignals(msText || ''), [msText]);
+  const matureSignals = useMemo(() => (
+    [...new Set([...descriptionMatureSignals, ...manuscriptMatureSignals])]
+  ), [descriptionMatureSignals, manuscriptMatureSignals]);
+
   useEffect(() => {
     if (!hasPrintFormat || !msStructure?.wordCount) return;
     const current = trimChecks.find(check => check.trim.id === fd.trimSize);
@@ -1158,7 +1152,70 @@ export default function UploadWizard() {
     if (next) setFd(p => (p.trimSize === next.trim.id ? p : { ...p, trimSize: next.trim.id }));
   }, [fd.trimSize, hasPrintFormat, msStructure?.wordCount, trimChecks]);
 
+  // Auto-enable the Table of Contents once manuscript headings are detected —
+  // it's free to generate, so it should be "pre-filled" like the wizard promises.
+  // Only fires the first time (entries.length > 0 means the author already has
+  // a TOC state, whether auto-built or manually reset — don't override that).
+  useEffect(() => {
+    if (!msStructure?.headings?.length) return;
+    setFd(p => {
+      if (p.frontMatter.toc.entries.length > 0) return p;
+      const fmOffset = Object.values(p.frontMatter).filter(v => v.enabled).length + 1;
+      return {
+        ...p,
+        frontMatter: {
+          ...p.frontMatter,
+          toc: { enabled: true, entries: buildTocEntries(msStructure.headings, fmOffset, selectedTrim.wordsPerPage) },
+        },
+      };
+    });
+  }, [msStructure?.headings, selectedTrim.wordsPerPage]);
+
+  // Default Reading Style to whichever template's "bestFor" matches the chosen
+  // genre, instead of always opening on Indie Romance. Stops as soon as the
+  // author manually picks a style (or a saved draft is restored) — see
+  // styleTouchedRef.
+  useEffect(() => {
+    if (styleTouchedRef.current || !fd.genre) return;
+    const matchedId = GENRE_STYLE_MAP[fd.genre];
+    const matched = matchedId && BOOK_STYLES.find(s => s.id === matchedId);
+    if (!matched || matched.id === fd.bookStyle) return;
+    setFd(p => ({ ...p, bookStyle: matched.id, pTheme: matched.theme, pFont: matched.font, pSize: matched.size, pSpacing: matched.spacing }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fd.genre]);
+
   function up(key, val) { setFd(p => ({ ...p, [key]: val })); setStepError(''); }
+
+  // Toggling mature content on always pins the target audience to Adult (18+) —
+  // the two are linked by definition. Turning it off hands audience back to
+  // the author rather than guessing, since a book can be Adult without being mature.
+  function setMatureContent(value) {
+    setFd(p => ({ ...p, matureContent: value, audience: value ? 'adult' : p.audience }));
+    setStepError('');
+  }
+
+  function useStoryDraft({ append = false } = {}) {
+    if (!storyDraft.trim()) return;
+    setFd(p => {
+      const next = append && p.description.trim()
+        ? `${p.description.trim()}\n\n${storyDraft.trim()}`
+        : storyDraft.trim();
+      return { ...p, description: next.slice(0, 4000) };
+    });
+    setStepError('');
+  }
+
+  function clearStoryBuilder() {
+    setFd(p => ({
+      ...p,
+      storyPremise: '',
+      storyReader: '',
+      storyPromise: '',
+      storyThemes: '',
+      storyTone: 'clear',
+    }));
+    setStepError('');
+  }
 
   function toggleFormat(format, checked) {
     setStepError('');
@@ -1205,28 +1262,178 @@ export default function UploadWizard() {
 
   // ── Layout analysis ───────────────────────────────────────────
   function applyStyle(style) {
+    styleTouchedRef.current = true;
     setFd(p => ({ ...p, bookStyle: style.id, pTheme: style.theme, pFont: style.font, pSize: style.size, pSpacing: style.spacing }));
     setMsPage(0); setMsSpread(false);
   }
 
+  // Heading-aware pagination: walks the same structured blocks analyseHtml/
+  // analyseTxt already parsed (real <h1>-<h4> tags for .docx, blank-line
+  // isolation for .txt/.rtf), so a chapter heading always opens a fresh page
+  // and is never mistaken for an ordinary first sentence.
   const msPages = useMemo(() => {
-    if (!msText) return [];
-    const paras = msText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+    const blocks = msStructure?.blocks;
+    if (!blocks?.length) return [];
     const targetWords = selectedTrim.previewWords || 130;
     const pages = [];
-    let cur = [], wc = 0;
-    for (const p of paras) {
-      const w = p.split(/\s+/).length;
-      if (wc + w > targetWords && cur.length > 0) { pages.push(cur); cur = [p]; wc = w; }
-      else { cur.push(p); wc += w; }
+    let current = null;
+    let wc = 0;
+
+    function closeCurrent() {
+      if (current && (current.headingBlock || current.paras.length > 0)) pages.push(current);
     }
-    if (cur.length > 0) pages.push(cur);
+
+    for (const block of blocks) {
+      if (block.type === 'heading') {
+        closeCurrent();
+        current = { headingBlock: { level: block.level, text: block.text }, paras: [] };
+        wc = 0;
+        continue;
+      }
+      const w = block.text.split(/\s+/).length;
+      if (!current) current = { headingBlock: null, paras: [] };
+      if (wc + w > targetWords && current.paras.length > 0) {
+        closeCurrent();
+        current = { headingBlock: null, paras: [block.text] };
+        wc = w;
+      } else {
+        current.paras.push(block.text);
+        wc += w;
+      }
+    }
+    closeCurrent();
     return pages;
-  }, [msText, selectedTrim.previewWords]);
+  }, [msStructure?.blocks, selectedTrim.previewWords]);
+
+  function turnReadingPage(direction) {
+    if (!msPages.length || msLoading || pageTurnDir) return;
+    const targetPage = direction === 'next'
+      ? Math.min(msPages.length - 1, msPage + 1)
+      : Math.max(0, msPage - 1);
+    if (targetPage === msPage) return;
+
+    if (pageTurnTimerRef.current) window.clearTimeout(pageTurnTimerRef.current);
+    setPageTurnDir(direction);
+    pageTurnTimerRef.current = window.setTimeout(() => {
+      setMsPage(targetPage);
+      pageTurnTimerRef.current = window.setTimeout(() => {
+        setPageTurnDir('');
+        pageTurnTimerRef.current = null;
+      }, 360);
+    }, 180);
+  }
 
   useEffect(() => {
     setMsPage(0);
   }, [fd.trimSize]);
+
+  useEffect(() => () => {
+    if (pageTurnTimerRef.current) window.clearTimeout(pageTurnTimerRef.current);
+  }, []);
+
+  // ── Book Structure preview: the whole assembled book, cover → front matter → manuscript → back matter ──
+  const bookStructurePages = useMemo(() => {
+    const pages = [{ type: 'cover' }];
+
+    FM_ITEMS.forEach(item => {
+      const data = fd.frontMatter[item.key];
+      if (!data?.enabled) return;
+      if (item.isToc) {
+        const included = (data.entries || []).filter(e => e.include);
+        if (included.length > 0) pages.push({ type: 'toc', label: item.label, entries: included });
+        return;
+      }
+      if (data.content?.trim()) pages.push({ type: 'matter', label: item.label, content: data.content });
+    });
+
+    msPages.forEach(msPage => pages.push({ type: 'manuscript', headingBlock: msPage.headingBlock, paras: msPage.paras }));
+
+    BM_ITEMS.forEach(item => {
+      const data = fd.backMatter[item.key];
+      if (!data?.enabled) return;
+      if (data.content?.trim()) pages.push({ type: 'matter', label: item.label, content: data.content });
+    });
+
+    return pages;
+  }, [fd.frontMatter, fd.backMatter, msPages]);
+
+  // Jump-list targets: every front/back-matter page, the ToC page, and each
+  // detected chapter opening in the manuscript (continuation pages are skipped
+  // so the list stays short).
+  const bookStructureJumpTargets = useMemo(() => (
+    bookStructurePages
+      .map((page, index) => {
+        if (page.type === 'cover') return { index, label: 'Cover' };
+        if (page.type !== 'manuscript') return { index, label: page.label };
+        if (page.headingBlock) {
+          const heading = formatChapterHeading(page.headingBlock.text);
+          return { index, label: heading.label && heading.title ? `${heading.label}: ${heading.title}` : (heading.label || heading.title) };
+        }
+        const isFirstManuscriptPage = index === 0 || bookStructurePages[index - 1].type !== 'manuscript';
+        return isFirstManuscriptPage ? { index, label: 'Manuscript' } : null;
+      })
+      .filter(Boolean)
+  ), [bookStructurePages]);
+
+  function turnBookStructurePage(direction) {
+    if (!bookStructurePages.length || bsPageTurnDir) return;
+    const targetPage = direction === 'next'
+      ? Math.min(bookStructurePages.length - 1, bsPage + 1)
+      : Math.max(0, bsPage - 1);
+    if (targetPage === bsPage) return;
+
+    if (bsPageTurnTimerRef.current) window.clearTimeout(bsPageTurnTimerRef.current);
+    setBsPageTurnDir(direction);
+    bsPageTurnTimerRef.current = window.setTimeout(() => {
+      setBsPage(targetPage);
+      bsPageTurnTimerRef.current = window.setTimeout(() => {
+        setBsPageTurnDir('');
+        bsPageTurnTimerRef.current = null;
+      }, 360);
+    }, 180);
+  }
+
+  function jumpToBookStructurePage(index) {
+    if (bsPageTurnTimerRef.current) window.clearTimeout(bsPageTurnTimerRef.current);
+    setBsPageTurnDir('');
+    setBsPage(index);
+  }
+
+  // Swipe to turn pages on touch devices — this is the final read-through, so
+  // it should feel like flicking through a real book, not just tapping arrows.
+  function handleBsTouchStart(e) {
+    bsTouchStartXRef.current = e.touches[0].clientX;
+  }
+  function handleBsTouchEnd(e) {
+    const startX = bsTouchStartXRef.current;
+    bsTouchStartXRef.current = null;
+    if (startX === null) return;
+    const deltaX = e.changedTouches[0].clientX - startX;
+    if (Math.abs(deltaX) < 40) return;
+    if (deltaX < 0) turnBookStructurePage('next');
+    else turnBookStructurePage('prev');
+  }
+
+  // Keep bsPage in range if a front/back-matter item gets disabled while it's showing
+  useEffect(() => {
+    setBsPage(p => Math.min(p, Math.max(0, bookStructurePages.length - 1)));
+  }, [bookStructurePages.length]);
+
+  useEffect(() => () => {
+    if (bsPageTurnTimerRef.current) window.clearTimeout(bsPageTurnTimerRef.current);
+  }, []);
+
+  // Close the reading-style dropdown on outside click
+  useEffect(() => {
+    if (!styleOpen) return;
+    function handler(e) {
+      if (styleDropdownRef.current && !styleDropdownRef.current.contains(e.target)) {
+        setStyleOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [styleOpen]);
 
   useEffect(() => {
     if (!msStructure?.headings?.length) return;
@@ -1277,14 +1484,14 @@ export default function UploadWizard() {
 
   // Auto-fill matter + fetch manuscript text for Reading Style preview
   useEffect(() => {
-    if (step === 7 && !fd.frontMatter.copyright.content) {
+    if (step === 8 && !fd.frontMatter.copyright.content) {
       upMatter('frontMatter', 'copyright', 'content',
         FM_ITEMS[0].template(fd, authorName, fd.pubYear || String(new Date().getFullYear())));
     }
-    if (step === 7 && !fd.backMatter.aboutAuthor.content && !authorProfileLoading) {
+    if (step === 8 && !fd.backMatter.aboutAuthor.content && !authorProfileLoading) {
       upMatter('backMatter', 'aboutAuthor', 'content', authorProfileBio || BM_ITEMS[0].template(fd, authorName));
     }
-    if (step === 4 && fd.manuscriptPath && !msText && !msLoading) {
+    if ((step === 4 || step === 9) && fd.manuscriptPath && !msText && !msLoading) {
       const ext = fd.manuscriptPath.split('.').pop().toLowerCase();
       if (['txt', 'rtf'].includes(ext)) {
         setMsLoading(true);
@@ -1301,7 +1508,7 @@ export default function UploadWizard() {
 
   // Auto-save progress to localStorage on step change
   useEffect(() => {
-    if (step === 10) return;
+    if (step === 11) return;
     if (!fd.title && !fd.manuscriptPath) return;
     try {
       localStorage.setItem('ic_wizard_progress', JSON.stringify({
@@ -1314,100 +1521,29 @@ export default function UploadWizard() {
   }, [step]);
 
   const primaryGenreLabel = genres.find(g => g.slug === fd.genre)?.label || '';
-  const selectedTemplate = coverTemplate(fd.coverTemplate);
-  const marketingCoverHref = fd.coverDataUrl || fd.coverPreview || `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(buildTemplateCoverSvg({
-    title: fd.title,
-    subtitle: fd.subtitle,
-    author: authorName,
+  const storyDraft = useMemo(() => buildStoryDraft(fd, {
+    authorName,
     genreLabel: primaryGenreLabel,
-    templateId: fd.coverTemplate,
-    paletteId: fd.coverPalette,
-    artDataUrl: fd.coverArtDataUrl,
-    artPlacement: fd.coverArtPlacement,
-  }))}`;
+    audienceLabel,
+  }), [
+    fd.title,
+    fd.subtitle,
+    fd.storyPremise,
+    fd.storyReader,
+    fd.storyPromise,
+    fd.storyThemes,
+    fd.storyTone,
+    authorName,
+    primaryGenreLabel,
+    audienceLabel,
+  ]);
+  const selectedTemplate = coverTemplate(fd.coverTemplate);
   const stepGroups = WIZARD_STEPS.reduce((acc, item, index) => {
     const last = acc[acc.length - 1];
     if (last?.label === item.group) last.steps.push({ item, index });
     else acc.push({ label: item.group, steps: [{ item, index }] });
     return acc;
   }, []);
-
-  function downloadBlob(filename, blob) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  function downloadTextFile(filename, text, type = 'text/plain') {
-    downloadBlob(filename, new Blob([text], { type }));
-  }
-
-  function renderSvgToPng(svg, format) {
-    return new Promise((resolve, reject) => {
-      const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = format.width;
-          canvas.height = format.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, format.width, format.height);
-          canvas.toBlob(blob => {
-            URL.revokeObjectURL(url);
-            if (blob) resolve(blob);
-            else reject(new Error('Could not render mockup image.'));
-          }, 'image/png');
-        } catch (err) {
-          URL.revokeObjectURL(url);
-          reject(err);
-        }
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Could not load mockup image.'));
-      };
-      img.src = url;
-    });
-  }
-
-  function buildMarketingMockup(format) {
-    return buildMarketingMockupSvg({
-      format,
-      coverHref: marketingCoverHref,
-      fd,
-      authorName,
-      genreLabel: primaryGenreLabel,
-    });
-  }
-
-  function marketingMockupDataUrl(format) {
-    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(buildMarketingMockup(format))}`;
-  }
-
-  async function downloadMarketingMockup(format) {
-    const svg = buildMarketingMockup(format);
-    const filenameBase = `${slugify(fd.title || 'book') || 'book'}-${format.id}-mockup`;
-    try {
-      const pngBlob = await renderSvgToPng(svg, format);
-      downloadBlob(`${filenameBase}.png`, pngBlob);
-    } catch (err) {
-      console.warn('[marketing] PNG export failed, falling back to SVG:', err);
-      downloadTextFile(`${filenameBase}.svg`, svg, 'image/svg+xml');
-    }
-  }
-
-  function downloadAllMarketingMockups() {
-    MARKETING_FORMATS.forEach((format, index) => {
-      window.setTimeout(() => downloadMarketingMockup(format), index * 150);
-    });
-  }
 
   // ── Validation ────────────────────────────────────────────────
   function validate(s) {
@@ -1618,15 +1754,31 @@ export default function UploadWizard() {
         price: fd.isFree ? 0 : (fd.price ? parseFloat(fd.price) : null),
         front_matter: buildMatter(FM_ITEMS, fd.frontMatter), back_matter: buildMatter(BM_ITEMS, fd.backMatter),
         distribution_channels: fd.distributionChannels, draft_step: step,
+        audience: fd.audience, mature_content: fd.matureContent,
+        reading_style: { style: fd.bookStyle, theme: fd.pTheme, font: fd.pFont, size: fd.pSize, spacing: fd.pSpacing },
       };
+      let bookId = draftId;
       if (draftId) {
         await supabase.from('books').update(bookData).eq('id', draftId).eq('author_user_id', user.id);
       } else {
         const bookSlug = `draft-${slugify(fd.title)}-${Date.now()}`;
         const { data: book, error: be } = await supabase.from('books').insert({ slug: bookSlug, ...bookData }).select('id').single();
         if (be) throw new Error(be.message);
+        bookId = book.id;
         setDraftId(book.id);
         localStorage.setItem('ic_draft_id', book.id);
+      }
+      for (const rl of fd.retailerLinks.filter(l => l.url?.trim())) {
+        const { data: retailer } = await supabase.from('retailers').select('id').eq('slug', rl.retailer).maybeSingle();
+        if (!retailer) continue;
+        await supabase.from('book_retailer_links').upsert(
+          {
+            book_id: bookId, retailer_id: retailer.id, url: rl.url.trim(),
+            price: rl.price ? parseFloat(rl.price) : null,
+            source: 'author', price_updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'book_id,retailer_id' }
+        );
       }
       setDraftSaved(true);
       setTimeout(() => setDraftSaved(false), 2500);
@@ -1674,6 +1826,8 @@ export default function UploadWizard() {
         price: fd.isFree ? 0 : (fd.price ? parseFloat(fd.price) : null),
         front_matter: buildMatter(FM_ITEMS, fd.frontMatter), back_matter: buildMatter(BM_ITEMS, fd.backMatter),
         distribution_channels: fd.distributionChannels,
+        audience: fd.audience, mature_content: fd.matureContent,
+        reading_style: { style: fd.bookStyle, theme: fd.pTheme, font: fd.pFont, size: fd.pSize, spacing: fd.pSpacing },
       }).select('id').single();
       if (be) throw new Error(`Book: ${be.message}`);
 
@@ -1684,9 +1838,15 @@ export default function UploadWizard() {
         const { data: gr } = await supabase.from('genres').select('id').eq('slug', gs).maybeSingle();
         if (gr) await supabase.from('books_genres').insert({ book_id: book.id, genre_id: gr.id });
       }
-      if (fd.buyUrl) {
-        const { data: retailer } = await supabase.from('retailers').select('id').eq('slug', fd.buyPlatform).maybeSingle();
-        if (retailer) await supabase.from('book_retailer_links').insert({ book_id: book.id, retailer_id: retailer.id, url: fd.buyUrl });
+      for (const rl of fd.retailerLinks.filter(l => l.url?.trim())) {
+        const { data: retailer } = await supabase.from('retailers').select('id').eq('slug', rl.retailer).maybeSingle();
+        if (!retailer) continue;
+        const { error: rle } = await supabase.from('book_retailer_links').insert({
+          book_id: book.id, retailer_id: retailer.id, url: rl.url.trim(),
+          price: rl.price ? parseFloat(rl.price) : null,
+          source: 'author', price_updated_at: new Date().toISOString(),
+        });
+        if (rle) throw new Error(`Retailer link (${rl.retailer}): ${rle.message}`);
       }
 
       localStorage.removeItem('ic_draft_id');
@@ -1695,7 +1855,7 @@ export default function UploadWizard() {
       setSavedAsDraft(!isPublishingNow);
       setPublishOutcome(mode);
       setFinalReleaseDate(resolvedPubDate || '');
-      setStep(10);
+      setStep(11);
     } catch (err) { setPublishError(err.message); } finally { setPublishing(false); }
   }
 
@@ -1729,7 +1889,7 @@ export default function UploadWizard() {
   const pct    = Math.round((step / (WIZARD_STEPS.length - 1)) * 100);
 
   // ─────────────────── SUCCESS / DRAFT SCREEN ──────────────────
-  if (step === 10) {
+  if (step === 11) {
     return (
       <div className="wizard wizard--done">
         <SEO title="Upload Manuscript | IndieConverters" description="Upload and publish your manuscript." path="/upload" />
@@ -1851,6 +2011,7 @@ export default function UploadWizard() {
               </div>
               <div className="wz-resume-actions">
                 <button className="btn btn-primary btn-sm" onClick={() => {
+                  styleTouchedRef.current = true;
                   setFd(prev => ({ ...prev, ...savedProgress.fd, trimSize: savedProgress.fd?.trimSize || prev.trimSize }));
                   setStep(savedProgress.step || 0);
                   setSavedProgress(null);
@@ -1941,6 +2102,99 @@ export default function UploadWizard() {
               <h2>About Your Book</h2>
               <p className="wz-sub">Your back-cover copy and discoverability settings.</p>
               <div className="wz-fields">
+                <div className="wz-story-builder">
+                  <div className="wz-story-builder-head">
+                    <div>
+                      <span>Fast story builder</span>
+                      <h3>Draft the reader-facing copy</h3>
+                      <p>Answer what you know. We turn it into editable back-cover copy.</p>
+                    </div>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => useStoryDraft()}>
+                      Use draft
+                    </button>
+                  </div>
+
+                  <div className="wz-story-grid">
+                    <div className="wz-field">
+                      <label>Core premise <span className="opt">optional</span></label>
+                      <input
+                        type="text"
+                        value={fd.storyPremise}
+                        onChange={e => up('storyPremise', e.target.value)}
+                        placeholder="A family secret forces a daughter to redraw the map of home"
+                      />
+                    </div>
+                    <div className="wz-field">
+                      <label>Ideal reader <span className="opt">optional</span></label>
+                      <input
+                        type="text"
+                        value={fd.storyReader}
+                        onChange={e => up('storyReader', e.target.value)}
+                        placeholder="readers who like intimate literary fiction"
+                      />
+                    </div>
+                    <div className="wz-field">
+                      <label>Reader promise <span className="opt">optional</span></label>
+                      <input
+                        type="text"
+                        value={fd.storyPromise}
+                        onChange={e => up('storyPromise', e.target.value)}
+                        placeholder="A moving story about memory, identity, and belonging"
+                      />
+                    </div>
+                    <div className="wz-field">
+                      <label>Themes / mood <span className="opt">optional</span></label>
+                      <input
+                        type="text"
+                        value={fd.storyThemes}
+                        onChange={e => up('storyThemes', e.target.value)}
+                        placeholder="family, grief, courage, second chances"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="wz-story-tone-row" aria-label="Description tone">
+                    <span>Tone</span>
+                    <div>
+                      {STORY_TONES.map(tone => (
+                        <button
+                          key={tone.id}
+                          type="button"
+                          className={fd.storyTone === tone.id ? 'selected' : ''}
+                          onClick={() => up('storyTone', tone.id)}
+                        >
+                          <strong>{tone.label}</strong>
+                          <small>{tone.note}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="wz-story-draft">
+                    <div className="wz-story-draft-head">
+                      <span>Draft preview</span>
+                      <div>
+                        <button
+                          type="button"
+                          className="wz-text-link"
+                          onClick={() => useStoryDraft({ append: true })}
+                          disabled={!fd.description.trim()}
+                        >
+                          Append
+                        </button>
+                        <button type="button" className="wz-text-link" onClick={clearStoryBuilder}>
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div className="wz-story-draft-copy">
+                      {storyDraft.split('\n').filter(Boolean).map((paragraph, index) => (
+                        <p key={index}>{paragraph}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="wz-field wz-field--lg">
                   <label>
                     Description <span className="req">*</span>
@@ -1954,11 +2208,36 @@ export default function UploadWizard() {
                   <label>Target audience</label>
                   <div className="wz-audience-grid">
                     {AUDIENCES.map(a => (
-                      <button key={a.value} type="button" className={`wz-audience-btn ${fd.audience === a.value ? 'selected' : ''}`} onClick={() => up('audience', a.value)}>
+                      <button key={a.value} type="button"
+                        className={`wz-audience-btn ${fd.audience === a.value ? 'selected' : ''}`}
+                        disabled={fd.matureContent && a.value !== 'adult'}
+                        title={fd.matureContent && a.value !== 'adult' ? 'Not available while this book is marked as mature content' : undefined}
+                        onClick={() => up('audience', a.value)}>
                         <strong>{a.label}</strong><span>{a.sub}</span>
                       </button>
                     ))}
                   </div>
+
+                  <label className={`wz-toggle-card wz-mature-toggle ${fd.matureContent ? 'on' : ''}`}>
+                    <div>
+                      <strong>Contains mature content</strong>
+                      <span>Explicit sexual content, graphic violence, or strong language. Marking this sets the target audience to Adult (18+).</span>
+                    </div>
+                    <div className={`wz-toggle ${fd.matureContent ? 'on' : ''}`}
+                      onClick={() => setMatureContent(!fd.matureContent)} role="switch" aria-checked={fd.matureContent} />
+                  </label>
+
+                  {matureSignals.length > 0 && !fd.matureContent && !matureSuggestionDismissed && (
+                    <div className="wz-mature-suggestion">
+                      <span>
+                        Your description or manuscript mentions themes like <strong>{matureSignals.join(', ')}</strong> — consider marking this book as containing mature content.
+                      </span>
+                      <div className="wz-mature-suggestion-actions">
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setMatureContent(true)}>Mark as mature</button>
+                        <button type="button" className="wz-text-link" onClick={() => setMatureSuggestionDismissed(true)}>Dismiss</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2290,153 +2569,162 @@ export default function UploadWizard() {
             const currentPage = msPages[msPage] || null;
             const showMs = !!currentPage;
             const isLastPage = msPage >= msPages.length - 1;
+            const chapterHeading = currentPage?.headingBlock ? formatChapterHeading(currentPage.headingBlock.text) : null;
+            const pageParagraphs = showMs ? currentPage.paras : [];
+            const isChapterOpening = !showMs || !!chapterHeading || msPage === 0;
+            const runningHead = isChapterOpening
+              ? ''
+              : (msPage % 2 === 0 ? (fd.title || 'Your Book Title') : authorName);
+            const currentStyle = BOOK_STYLES.find(s => s.id === fd.bookStyle || s.legacyId === fd.bookStyle) || BOOK_STYLES[0];
             return (
               <div className="wz-step wz-step--preview wz-reading-step">
                 <div className="wz-reading-head">
                   <span className="wz-reading-kicker">Interior reading experience</span>
-                  <h2>Choose your default reader style</h2>
-                  <p className="wz-sub">Set a polished default for how your book opens on IndieConverters. Readers can still customise their own view.</p>
+                  <div className="wz-mobile-proofing-note">
+                    For the best interior proofing experience, switch to a tablet or desktop.
+                  </div>
                 </div>
 
-                <div className="wz-reading-layout">
-                  <section className="wz-reading-panel wz-reading-panel--templates">
-                    <div className="wz-reading-panel-head">
-                      <div>
-                        <span>Templates</span>
-                        <h3>IndieConverters interiors</h3>
+                <div className="wz-reading-controls">
+                  <div className="wz-style-dropdown" ref={styleDropdownRef}>
+                    <button
+                      type="button"
+                      className="wz-style-dropdown-btn"
+                      onClick={() => setStyleOpen(o => !o)}
+                      aria-expanded={styleOpen}
+                    >
+                      <span className="wz-style-dropdown-icon" style={{ background: currentStyle.cardBg, color: currentStyle.cardAccent }}>{currentStyle.icon}</span>
+                      <span>{currentStyle.title}</span>
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12" className={`wz-style-dropdown-chevron${styleOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
+                    </button>
+                    {styleOpen && (
+                      <div className="wz-style-dropdown-panel">
+                        {BOOK_STYLES.map(style => {
+                          const selected = fd.bookStyle === style.id || fd.bookStyle === style.legacyId;
+                          return (
+                            <button
+                              key={style.id}
+                              type="button"
+                              className={`wz-style-dropdown-option${selected ? ' active' : ''}`}
+                              onClick={() => { applyStyle(style); setStyleOpen(false); }}
+                            >
+                              <span className="wz-style-dropdown-icon" style={{ background: style.cardBg, color: style.cardAccent }}>{style.icon}</span>
+                              <span className="wz-style-dropdown-option-text">
+                                <strong>{style.title}</strong>
+                                <small>{style.tagline} — best for {style.bestFor}</small>
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
-                      <small>{selectedTrim.label}</small>
-                    </div>
+                    )}
+                  </div>
 
-                    <div className="wz-style-grid">
-                      {BOOK_STYLES.map(style => {
-                        const selected = fd.bookStyle === style.id || fd.bookStyle === style.legacyId;
-                        return (
-                          <button
-                            key={style.id}
-                            type="button"
-                            className={`wz-style-card ${selected ? 'selected' : ''}`}
-                            style={{
-                              '--style-bg': style.cardBg,
-                              '--style-border': style.cardBorder,
-                              '--style-accent': style.cardAccent,
-                              '--style-text': style.cardText,
-                              '--style-muted': style.cardMuted,
-                              '--style-font': style.sampleFont,
-                            }}
-                            onClick={() => applyStyle(style)}
-                          >
-                            <span className="wz-style-icon">{style.icon}</span>
-                            <span className="wz-style-name">{style.name}</span>
-                            <span className="wz-style-tagline">{style.tagline}</span>
-                            <span className="wz-style-best">{style.bestFor}</span>
-                            <p className="wz-style-sample">{style.detail}</p>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <details className="wz-finetune">
-                      <summary className="wz-finetune-summary">Fine-tune type settings</summary>
+                  <div className="wz-reading-controls-right">
+                    <small className="wz-reading-controls-meta">{showMs ? `Page ${msPage + 1} of ${msPages.length}` : 'Sample text'}</small>
+                    <button type="button" className="wz-reading-toolbtn" onClick={() => turnReadingPage('prev')} disabled={msPage === 0 || !!pageTurnDir} aria-label="Previous page">‹</button>
+                    <button type="button" className="wz-reading-toolbtn" onClick={() => turnReadingPage('next')} disabled={isLastPage || !showMs || !!pageTurnDir} aria-label="Next page">›</button>
+                    <details className="wz-finetune wz-finetune--icon">
+                      <summary className="wz-finetune-summary wz-finetune-gear wz-reading-toolbtn" aria-label="Fine-tune type settings">⚙</summary>
                       <div className="wz-preview-bar">
-                        <div className="wz-ctrl-group">
-                          <span className="wz-ctrl-label">Theme</span>
-                          <div className="wz-ctrl-row">
-                            {PREVIEW_THEMES.map(t => (
-                              <button key={t.id} type="button" className={`wz-theme-pill ${fd.pTheme === t.id ? 'active' : ''}`}
-                                style={{ background: t.bg, color: t.text, outlineColor: fd.pTheme === t.id ? t.text : 'transparent' }}
-                                onClick={() => up('pTheme', t.id)}>{t.name}</button>
-                            ))}
-                          </div>
+                      <div className="wz-ctrl-group">
+                        <span className="wz-ctrl-label">Theme</span>
+                        <div className="wz-ctrl-row">
+                          {PREVIEW_THEMES.map(t => (
+                            <button key={t.id} type="button" className={`wz-theme-pill ${fd.pTheme === t.id ? 'active' : ''}`}
+                              style={{ background: t.bg, color: t.text, outlineColor: fd.pTheme === t.id ? t.text : 'transparent' }}
+                              onClick={() => up('pTheme', t.id)}>{t.name}</button>
+                          ))}
                         </div>
-                        <div className="wz-ctrl-group">
-                          <span className="wz-ctrl-label">Typeface</span>
-                          <div className="wz-ctrl-row">
-                            {PREVIEW_FONTS.map(f => (
-                              <button key={f.id} type="button" className={`wz-font-pill ${fd.pFont === f.id ? 'active' : ''}`}
-                                style={{ fontFamily: f.css }} onClick={() => up('pFont', f.id)}>{f.name}</button>
-                            ))}
-                          </div>
+                      </div>
+                      <div className="wz-ctrl-group">
+                        <span className="wz-ctrl-label">Typeface</span>
+                        <div className="wz-ctrl-row">
+                          {PREVIEW_FONTS.map(f => (
+                            <button key={f.id} type="button" className={`wz-font-pill ${fd.pFont === f.id ? 'active' : ''}`}
+                              style={{ fontFamily: f.css }} onClick={() => up('pFont', f.id)}>{f.name}</button>
+                          ))}
                         </div>
-                        <div className="wz-ctrl-group">
-                          <span className="wz-ctrl-label">Size</span>
-                          <div className="wz-ctrl-row">
-                            {PREVIEW_SIZES.map((s, i) => (
-                              <button key={s.id} type="button" className={`wz-size-pill ${fd.pSize === s.id ? 'active' : ''}`}
-                                style={{ fontSize: `${0.78 + i * 0.15}rem` }} onClick={() => up('pSize', s.id)}>Aa</button>
-                            ))}
-                          </div>
+                      </div>
+                      <div className="wz-ctrl-group">
+                        <span className="wz-ctrl-label">Size</span>
+                        <div className="wz-ctrl-row">
+                          {PREVIEW_SIZES.map((s, i) => (
+                            <button key={s.id} type="button" className={`wz-size-pill ${fd.pSize === s.id ? 'active' : ''}`}
+                              style={{ fontSize: `${0.78 + i * 0.15}rem` }} onClick={() => up('pSize', s.id)}>Aa</button>
+                          ))}
                         </div>
-                        <div className="wz-ctrl-group">
-                          <span className="wz-ctrl-label">Spacing</span>
-                          <div className="wz-ctrl-row">
-                            {PREVIEW_SPACING.map(s => (
-                              <button key={s.id} type="button" className={`wz-spacing-pill ${fd.pSpacing === s.id ? 'active' : ''}`}
-                                onClick={() => up('pSpacing', s.id)}>{s.label}</button>
-                            ))}
-                          </div>
+                      </div>
+                      <div className="wz-ctrl-group">
+                        <span className="wz-ctrl-label">Spacing</span>
+                        <div className="wz-ctrl-row">
+                          {PREVIEW_SPACING.map(s => (
+                            <button key={s.id} type="button" className={`wz-spacing-pill ${fd.pSpacing === s.id ? 'active' : ''}`}
+                              onClick={() => up('pSpacing', s.id)}>{s.label}</button>
+                          ))}
                         </div>
+                      </div>
                       </div>
                     </details>
-                  </section>
+                  </div>
+                </div>
 
-                  <section className="wz-reading-panel wz-reading-panel--preview">
-                    <div className="wz-reading-panel-head">
-                      <div>
-                        <span>Preview</span>
-                        <h3>{showMs ? 'Your manuscript' : 'Sample reading page'}</h3>
+                <div className="wz-reading-stage">
+                  <div className="wz-book-reader">
+                    <div className={`wz-book-page ${pageTurnDir ? `is-page-turning is-page-turning-${pageTurnDir}` : ''}`} style={{ background: theme.bg, borderColor: theme.border, '--page-aspect': selectedTrim.aspect, '--page-width': selectedTrim.previewWidth }} tabIndex={0}
+                      onKeyDown={e => {
+                        if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) { e.preventDefault(); if (!isLastPage) turnReadingPage('next'); }
+                        if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) { e.preventDefault(); if (msPage > 0) turnReadingPage('prev'); }
+                      }}>
+                      <div className={`wz-book-page-hdr ${runningHead ? '' : 'is-empty'}`} style={{ borderColor: runningHead ? `${theme.text}08` : 'transparent' }}>
+                        {runningHead && (
+                          <span className="wz-book-running wz-book-running--center" style={{ fontFamily: fontCss, color: theme.text }}>
+                            {runningHead}
+                          </span>
+                        )}
                       </div>
-                      <small>{showMs ? `Page ${msPage + 1} of ${msPages.length}` : 'Sample text'}</small>
-                    </div>
-
-                    <div className="wz-book-reader">
-                      <button className="wz-book-arrow" onClick={() => setMsPage(p => Math.max(0, p - 1))} disabled={msPage === 0} aria-label="Previous page">‹</button>
-                      <div className="wz-book-page" style={{ background: theme.bg, borderColor: theme.border, '--page-aspect': selectedTrim.aspect, '--page-width': selectedTrim.previewWidth }} tabIndex={0}
-                        onKeyDown={e => {
-                          if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) { e.preventDefault(); if (!isLastPage) setMsPage(p => p + 1); }
-                          if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) { e.preventDefault(); if (msPage > 0) setMsPage(p => p - 1); }
-                        }}>
-                        <div className="wz-book-page-hdr" style={{ borderColor: `${theme.text}15` }}>
-                          <span className="wz-book-running" style={{ fontFamily: fontCss, color: theme.text }}>{msPage % 2 === 0 ? (fd.title || 'Your Book Title') : ''}</span>
-                          <span className="wz-book-running" style={{ fontFamily: fontCss, color: theme.text, textAlign: 'right' }}>{msPage % 2 !== 0 ? authorName : ''}</span>
-                        </div>
-                        <div className="wz-book-page-body" style={{ fontFamily: fontCss, fontSize: sizeObj.size, lineHeight: sizeObj.lh, color: theme.text }}>
-                          {msLoading ? (
-                            <div className="wz-reader-loading" style={{ color: theme.text }}>
-                              <div className="wz-spinner" style={{ borderColor: `${theme.text}22`, borderTopColor: theme.text }} />
-                              Loading your manuscript…
-                            </div>
-                          ) : showMs ? (
-                            currentPage.map((para, i) => <p key={i} className="wz-reader-para">{para}</p>)
-                          ) : (
-                            SAMPLE_TEXT.map((block, i) =>
-                              block.type === 'chapter'
-                                ? <div key={i} className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>{block.text}</div>
-                                : <p key={i} className="wz-reader-para">{block.text}</p>
-                            )
-                          )}
-                        </div>
-                        <div className="wz-book-page-ftr" style={{ borderColor: `${theme.text}15`, color: theme.text }}>
-                          {showMs && <span style={{ opacity: 0.34, fontSize: '0.72rem', fontFamily: fontCss }}>Page {msPage + 1} / {msPages.length} · {selectedTrim.label}</span>}
-                          {!showMs && !msLoading && (
-                            <span style={{ opacity: 0.28, fontSize: '0.65rem' }}>
-                              {fd.manuscriptPath ? '.txt files only · sample text shown' : 'Sample text · upload a .txt manuscript to preview'}
-                            </span>
-                          )}
-                        </div>
+                      <div className={`wz-book-page-body ${isChapterOpening ? 'is-chapter-opening' : ''}`} style={{ fontFamily: fontCss, fontSize: sizeObj.size, lineHeight: sizeObj.lh, color: theme.text }}>
+                        {msLoading ? (
+                          <div className="wz-reader-loading" style={{ color: theme.text }}>
+                            <div className="wz-spinner" style={{ borderColor: `${theme.text}22`, borderTopColor: theme.text }} />
+                            Loading your manuscript…
+                          </div>
+                        ) : showMs ? (
+                          <>
+                            {chapterHeading && (
+                              <div className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>
+                                {chapterHeading.label && <span className="wz-reader-chapter-kicker">{chapterHeading.label}</span>}
+                                {chapterHeading.title && <span className="wz-reader-chapter-title">{chapterHeading.title}</span>}
+                              </div>
+                            )}
+                            {pageParagraphs.map((para, i) => <p key={i} className="wz-reader-para">{para}</p>)}
+                          </>
+                        ) : (
+                          SAMPLE_TEXT.map((block, i) =>
+                            block.type === 'chapter'
+                              ? <div key={i} className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>{block.text}</div>
+                              : <p key={i} className="wz-reader-para">{block.text}</p>
+                          )
+                        )}
                       </div>
-                      <button className="wz-book-arrow" onClick={() => setMsPage(p => Math.min(msPages.length - 1, p + 1))} disabled={isLastPage || !showMs} aria-label="Next page">›</button>
+                      <div className="wz-book-page-ftr" style={{ borderColor: 'transparent', color: theme.text }}>
+                        {!msLoading && (
+                          <span className="wz-book-page-number" style={{ fontFamily: fontCss }}>
+                            {showMs ? msPage + 1 : 1}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </section>
+                  </div>
                 </div>
               </div>
             );
           })()}
 
-          {/* ════════ STEP 5: Cover & Pricing ════════ */}
+          {/* ════════ STEP 5: Cover ════════ */}
           {step === 5 && (
             <div className="wz-step">
-              <h2>Cover & Pricing</h2>
+              <h2>Cover</h2>
               <p className="wz-sub">Create a clean starter cover, upload finished artwork, or hire a cover designer when you want a more polished launch.</p>
 
               <div className="wz-cover-mode-tabs" aria-label="Cover source options">
@@ -2650,8 +2938,14 @@ export default function UploadWizard() {
                   )}
                 </div>
               </div>
+            </div>
+          )}
 
-              <div className="wz-section-divider"><span>Pricing & Buy Link</span></div>
+          {/* ════════ STEP 6: Pricing ════════ */}
+          {step === 6 && (
+            <div className="wz-step">
+              <h2>Pricing</h2>
+              <p className="wz-sub">Set your list price, see estimated royalties, and tell readers where to buy your book.</p>
 
               <div className="wz-fields">
                 {hasPrintFormat && (
@@ -2795,34 +3089,24 @@ export default function UploadWizard() {
                   )}
                 </div>
 
-                <div className="wz-row">
-                  <div className="wz-field">
-                    <label>Where do you sell it? <span className="opt">optional</span></label>
-                    <select value={fd.buyPlatform} onChange={e => up('buyPlatform', e.target.value)}>
-                      <option value="own">My own website</option>
-                      <option value="gumroad">Gumroad</option>
-                      <option value="payhip">Payhip</option>
-                      <option value="amazon">Amazon KDP</option>
-                      <option value="bookshop">Bookshop.org</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <div className="wz-field">
-                    <label>Buy link URL <span className="opt">optional</span></label>
-                    <input type="url" value={fd.buyUrl} onChange={e => up('buyUrl', e.target.value)} placeholder="https://…" />
-                  </div>
-                </div>
+                <RetailerLinksEditor
+                  links={fd.retailerLinks}
+                  onChange={links => up('retailerLinks', links)}
+                  label="Where do you sell it? — add every retailer, with a price if you have one"
+                  hint="IndieConverters doesn't sell books directly — we link readers to wherever you sell yours, and show them which is cheapest."
+                />
               </div>
             </div>
           )}
 
-          {/* ════════ STEP 6: Distribution ════════ */}
-          {step === 6 && (
+          {/* ════════ STEP 7: Distribution ════════ */}
+          {step === 7 && (
             <div className="wz-step">
               <h2>Distribution</h2>
               <p className="wz-sub">
-                Choose where readers can find your book. We publish on your behalf through our platform accounts — no separate sign-ups needed.
-                Distribution takes 24–72 hours after publishing.
+                By default your book publishes directly on Indie Converters only, so you can get a page live fast.
+                Add retailers and libraries any time — before or after publishing — from your dashboard.
+                We publish on your behalf through our platform accounts — no separate sign-ups needed. Wide distribution takes 24–72 hours after publishing.
               </p>
 
               <div className="wz-dist-summary" aria-label="Distribution summary">
@@ -2852,9 +3136,14 @@ export default function UploadWizard() {
               {/* Presets */}
               <div className="wz-dist-presets">
                 <button type="button"
-                  className={`wz-dist-preset ${fd.distributionChannels.length >= 6 && fd.distributionChannels.includes('overdrive') ? 'selected' : ''}`}
-                  onClick={() => up('distributionChannels', ['amazon','apple','bn','kobo','google-play','scribd','overdrive','hoopla','baker-taylor','tolino','vivlio'])}>
-                  ✦ Go Wide — All Platforms
+                  className={`wz-dist-preset ${fd.distributionChannels.length === 0 ? 'selected' : ''}`}
+                  onClick={() => up('distributionChannels', [])}>
+                  Indie Converters Only <span className="wz-matter-rec">Recommended</span>
+                </button>
+                <button type="button"
+                  className={`wz-dist-preset ${fd.distributionChannels.length === 1 && fd.distributionChannels[0] === 'amazon' ? 'selected' : ''}`}
+                  onClick={() => up('distributionChannels', ['amazon'])}>
+                  Amazon Only
                 </button>
                 <button type="button"
                   className={`wz-dist-preset ${fd.distributionChannels.length >= 6 && !fd.distributionChannels.includes('overdrive') && !fd.distributionChannels.includes('tolino') ? 'selected' : ''}`}
@@ -2862,9 +3151,9 @@ export default function UploadWizard() {
                   Major Retailers Only
                 </button>
                 <button type="button"
-                  className={`wz-dist-preset ${fd.distributionChannels.length === 1 && fd.distributionChannels[0] === 'amazon' ? 'selected' : ''}`}
-                  onClick={() => up('distributionChannels', ['amazon'])}>
-                  Amazon Only
+                  className={`wz-dist-preset ${fd.distributionChannels.length >= 6 && fd.distributionChannels.includes('overdrive') ? 'selected' : ''}`}
+                  onClick={() => up('distributionChannels', ['amazon','apple','bn','kobo','google-play','scribd','overdrive','hoopla','baker-taylor','tolino','vivlio'])}>
+                  ✦ Go Wide — All Platforms
                 </button>
               </div>
 
@@ -2924,10 +3213,10 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ════════ STEP 7: Book Structure ════════ */}
-          {step === 7 && (
+          {/* ════════ STEP 8: Front & Back Matter ════════ */}
+          {step === 8 && (
             <div className="wz-step">
-              <h2>Book Structure</h2>
+              <h2>Front & Back Matter</h2>
               <p className="wz-sub">Optional pages that surround your main content. Templates are pre-filled — toggle on to customise.</p>
 
               <div className="wz-section-divider"><span>Front Matter</span></div>
@@ -3156,49 +3445,131 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ════════ STEP 8: Marketing Kit ════════ */}
-          {step === 8 && (
-            <div className="wz-step wz-step--marketing">
-              <h2>Marketing Kit</h2>
-              <p className="wz-sub">Optional launch assets for sharing your book. Download one or skip ahead to review.</p>
+          {/* ════════ STEP 9: Book Structure (assembled preview) ════════ */}
+          {step === 9 && (() => {
+            const currentPage = bookStructurePages[bsPage] || null;
+            const hasPages = bookStructurePages.length > 0;
+            const isLastPage = bsPage >= bookStructurePages.length - 1;
+            const isManuscript = currentPage?.type === 'manuscript';
+            const chapterHeading = isManuscript && currentPage.headingBlock ? formatChapterHeading(currentPage.headingBlock.text) : null;
+            const pageParagraphs = isManuscript ? currentPage.paras : [];
+            const isChapterOpening = !isManuscript || !!chapterHeading || bsPage === 0;
+            const runningHead = isChapterOpening
+              ? ''
+              : (bsPage % 2 === 0 ? (fd.title || 'Your Book Title') : authorName);
 
-              <section className="wz-marketing-panel">
-                <div className="wz-marketing-head">
-                  <div>
-                    <span>Book mockups</span>
-                    <small>Generated from your current cover and book details.</small>
-                  </div>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={downloadAllMarketingMockups}>
-                    Download all
-                  </button>
-                </div>
-                <div className="wz-mockup-grid">
-                  {MARKETING_FORMATS.map(format => {
-                    const previewSrc = marketingMockupDataUrl(format);
-                    return (
-                      <div key={format.id} className={`wz-mockup-card wz-mockup-card--${format.id}`}>
-                        <div className={`wz-social-preview wz-social-preview--${format.id}`}>
-                          <img src={previewSrc} alt={`${format.label} marketing mockup`} className="wz-social-preview-img" />
-                        </div>
-                        <div className="wz-mockup-meta">
-                          <div>
-                            <strong>{format.label}</strong>
-                            <span>{format.size}</span>
+            return (
+              <div className="wz-step wz-step--preview wz-step--bookstructure">
+                <div className="wz-bs-layout">
+                  <section className="wz-bs-side">
+                    <div className="wz-bs-side-head">
+                      <span>Contents</span>
+                      <small>{bookStructurePages.length} page{bookStructurePages.length !== 1 ? 's' : ''}</small>
+                    </div>
+
+                    <div className="wz-bs-jumplist">
+                      {bookStructureJumpTargets.length === 0 && (
+                        <p className="wz-toc-empty">Nothing to preview yet — enable front/back matter or upload a manuscript.</p>
+                      )}
+                      {bookStructureJumpTargets.map(target => (
+                        <button
+                          key={target.index}
+                          type="button"
+                          className={`wz-bs-jump-item ${bsPage === target.index ? 'active' : ''}`}
+                          onClick={() => jumpToBookStructurePage(target.index)}
+                        >
+                          {target.label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="wz-bs-stage">
+                    <div className="wz-bs-reader">
+                      <button className="wz-bs-arrow wz-bs-arrow--prev" onClick={() => turnBookStructurePage('prev')} disabled={bsPage === 0 || !!bsPageTurnDir} aria-label="Previous page">‹</button>
+                      <div className="wz-bs-page-wrap">
+                        <div className={`wz-book-page ${bsPageTurnDir ? `is-page-turning is-page-turning-${bsPageTurnDir}` : ''}`}
+                          style={{ background: theme.bg, borderColor: theme.border, '--page-aspect': selectedTrim.aspect }} tabIndex={0}
+                          onKeyDown={e => {
+                            if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) { e.preventDefault(); if (!isLastPage) turnBookStructurePage('next'); }
+                            if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) { e.preventDefault(); if (bsPage > 0) turnBookStructurePage('prev'); }
+                          }}
+                          onTouchStart={handleBsTouchStart}
+                          onTouchEnd={handleBsTouchEnd}>
+                          <div className={`wz-book-page-hdr ${runningHead ? '' : 'is-empty'}`} style={{ borderColor: runningHead ? `${theme.text}08` : 'transparent' }}>
+                            {runningHead && (
+                              <span className="wz-book-running wz-book-running--center" style={{ fontFamily: fontCss, color: theme.text }}>
+                                {runningHead}
+                              </span>
+                            )}
                           </div>
-                          <button type="button" className="btn btn-outline btn-sm" onClick={() => downloadMarketingMockup(format)}>
-                            Download PNG
-                          </button>
+                          <div className={`wz-book-page-body ${isChapterOpening ? 'is-chapter-opening' : ''}`} style={{ fontFamily: fontCss, fontSize: sizeObj.size, lineHeight: sizeObj.lh, color: theme.text }}>
+                            {!hasPages ? (
+                              <div className="wz-reader-loading" style={{ color: theme.text }}>Nothing to preview yet.</div>
+                            ) : currentPage.type === 'cover' ? (
+                              <div className="wz-bs-cover-wrap">
+                                <CoverPreviewArt
+                                  coverPreview={fd.coverPreview}
+                                  title={fd.title}
+                                  subtitle={fd.subtitle}
+                                  author={authorName}
+                                  genreLabel={primaryGenreLabel}
+                                  templateId={fd.coverTemplate}
+                                  paletteId={fd.coverPalette}
+                                  artPreview={fd.coverArtPreview}
+                                  artPlacement={fd.coverArtPlacement}
+                                />
+                              </div>
+                            ) : currentPage.type === 'toc' ? (
+                              <div className="wz-toc-preview-entries">
+                                {currentPage.entries.map((entry, idx) => (
+                                  <div key={idx} className={`wz-toc-preview-row wz-toc-preview-h${entry.level}`}
+                                    style={{ fontFamily: fontCss, color: entry.level === 2 ? `${theme.text}99` : theme.text }}>
+                                    <span className="wz-toc-preview-label">{entry.label}</span>
+                                    <span className="wz-toc-preview-leader" style={{ borderColor: `${theme.text}30` }} />
+                                    <span className="wz-toc-preview-page">{entry.estimatedPage}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : currentPage.type === 'matter' ? (
+                              <>
+                                <div className="wz-bs-matter-label" style={{ fontFamily: fontCss, color: theme.text }}>
+                                  {currentPage.label}
+                                </div>
+                                {currentPage.content.split('\n').filter(Boolean).map((para, i) => <p key={i} className="wz-bs-matter-para">{para}</p>)}
+                              </>
+                            ) : (
+                              <>
+                                {chapterHeading && (
+                                  <div className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>
+                                    {chapterHeading.label && <span className="wz-reader-chapter-kicker">{chapterHeading.label}</span>}
+                                    {chapterHeading.title && <span className="wz-reader-chapter-title">{chapterHeading.title}</span>}
+                                  </div>
+                                )}
+                                {pageParagraphs.map((para, i) => <p key={i} className="wz-reader-para">{para}</p>)}
+                              </>
+                            )}
+                          </div>
+                          <div className="wz-book-page-ftr" style={{ borderColor: 'transparent', color: theme.text }}>
+                            {hasPages && currentPage.type === 'manuscript' && (
+                              <span className="wz-book-page-number" style={{ fontFamily: fontCss }}>{bsPage + 1}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
+                      <button className="wz-bs-arrow wz-bs-arrow--next" onClick={() => turnBookStructurePage('next')} disabled={isLastPage || !hasPages || !!bsPageTurnDir} aria-label="Next page">›</button>
+                      {hasPages && (
+                        <div className="wz-bs-page-indicator">{bsPage + 1} / {bookStructurePages.length}</div>
+                      )}
+                    </div>
+                  </section>
                 </div>
-              </section>
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
-          {/* ════════ STEP 9: Review & Publish ════════ */}
-          {step === 9 && (
+          {/* ════════ STEP 10: Review & Publish ════════ */}
+          {step === 10 && (
             <div className="wz-step">
               <h2>Review & Publish</h2>
               <p className="wz-sub">Check everything before going live. Click Edit to make changes.</p>
@@ -3216,6 +3587,7 @@ export default function UploadWizard() {
                   ]},
                   { title: 'About', to: 1, rows: [
                     ['Audience',         AUDIENCES.find(a => a.value === fd.audience)?.label || '—'],
+                    ['Mature content',   fd.matureContent ? 'Yes' : 'No'],
                     ['Description',      fd.description ? fd.description.slice(0, 100) + (fd.description.length > 100 ? '…' : '') : '—'],
                     ['Primary genre',    genres.find(g => g.slug === fd.genre)?.label || '—'],
                     ['Secondary genre',  genres.find(g => g.slug === fd.genreSecondary)?.label || '—'],
@@ -3233,25 +3605,37 @@ export default function UploadWizard() {
                     ['Trim size', selectedTrim.label],
                     ['Page count', pageCountDisplay || '—'],
                   ]},
-                  { title: 'Cover & Pricing', to: 5, rows: [
-                    ['Cover',     fd.coverFile?.name || `${selectedTemplate.name} template${fd.coverArtPreview ? ' + artwork' : ''}`],
+                  { title: 'Reading Style', to: 4, rows: [
+                    ['Template', BOOK_STYLES.find(s => s.id === fd.bookStyle || s.legacyId === fd.bookStyle)?.title || '—'],
+                    ['Appearance', [
+                      PREVIEW_THEMES.find(t => t.id === fd.pTheme)?.name,
+                      PREVIEW_FONTS.find(f => f.id === fd.pFont)?.name,
+                      { sm: 'Small', md: 'Medium', lg: 'Large' }[fd.pSize],
+                      PREVIEW_SPACING.find(s => s.id === fd.pSpacing)?.label,
+                    ].filter(Boolean).join(' · ') || '—'],
+                  ]},
+                  { title: 'Cover', to: 5, rows: [
+                    ['Cover', fd.coverFile?.name || `${selectedTemplate.name} template${fd.coverArtPreview ? ' + artwork' : ''}`],
+                  ]},
+                  { title: 'Pricing', to: 6, rows: [
                     ['Price',     fd.isFree ? 'Free' : (fd.price ? `$${fd.price}` : '—')],
                     ['Best royalty estimate', royaltyEstimate.best ? `${formatRoyaltyMoney(royaltyEstimate.best.authorEarnings)} via ${royaltyEstimate.best.channel}` : '—'],
-                    ['Buy link',  fd.buyUrl || '—'],
-                    ['Platform',  fd.buyPlatform !== 'own' ? fd.buyPlatform : 'Own website'],
+                    ...(fd.retailerLinks.filter(l => l.url?.trim()).length > 0
+                      ? fd.retailerLinks.filter(l => l.url?.trim()).map(l => [
+                          RETAILER_OPTIONS.find(o => o.slug === l.retailer)?.label || l.retailer,
+                          l.price ? `$${l.price}` : 'No price set',
+                        ])
+                      : [['Where to buy', '—']]),
                   ]},
-                  { title: 'Distribution', to: 6, rows: [
+                  { title: 'Distribution', to: 7, rows: [
                     ['Route', distributionModeLabel],
                     ['Channels', selectedDistributionChannels.length
                       ? selectedDistributionChannels.map(channel => channel.label).join(', ')
                       : 'None selected — Indie Converters only'],
                   ]},
-                  { title: 'Book Structure', to: 7, rows: [
+                  { title: 'Front & Back Matter', to: 8, rows: [
                     ['Front Matter', FM_ITEMS.filter(i => fd.frontMatter[i.key]?.enabled).map(i => i.label).join(', ') || 'None'],
                     ['Back Matter',  BM_ITEMS.filter(i => fd.backMatter[i.key]?.enabled).map(i => i.label).join(', ') || 'None'],
-                  ]},
-                  { title: 'Marketing Kit', to: 8, rows: [
-                    ['Mockups', MARKETING_FORMATS.map(f => f.label).join(', ')],
                   ]},
                 ].map(s => (
                   <div key={s.title} className="wz-review-block">
@@ -3366,7 +3750,7 @@ export default function UploadWizard() {
           {/* ── Navigation ── */}
           <div className="wz-nav">
             {step > 0 && <button type="button" className="btn btn-outline" onClick={goBack}>← Back</button>}
-            {step < 9 && <button type="button" className="btn btn-primary" onClick={goNext}>Continue →</button>}
+            {step < 10 && <button type="button" className="btn btn-primary" onClick={goNext}>Continue →</button>}
           </div>
         </div>
       </div>

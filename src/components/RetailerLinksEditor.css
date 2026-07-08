@@ -1,0 +1,68 @@
+.rle-field { display: flex; flex-direction: column; gap: 8px; }
+.rle-label { font-weight: 700; font-size: 0.88rem; color: var(--ink); }
+.rle-hint { font-size: 0.82rem; color: var(--ink-soft); margin: 0 0 4px; line-height: 1.5; }
+
+.rle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rle-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 2.2fr) minmax(110px, 0.8fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.rle-row select,
+.rle-row input {
+  padding: 9px 11px;
+  border: 1.5px solid var(--sand);
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-family: 'Inter', sans-serif;
+  color: var(--ink);
+  background: #fff;
+}
+.rle-row select:focus,
+.rle-row input:focus {
+  outline: none;
+  border-color: var(--clay);
+}
+
+.rle-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid var(--sand);
+  background: #fff;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.rle-remove-btn:hover { border-color: var(--clay); color: var(--clay); }
+
+.rle-add-btn {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 9px 16px;
+  border: 1.5px dashed var(--sand);
+  border-radius: 10px;
+  background: none;
+  color: var(--clay);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.rle-add-btn:hover { border-color: var(--clay); background: rgba(68,28,178,0.05); }
+
+@media (max-width: 640px) {
+  .rle-row { grid-template-columns: 1fr; }
+  .rle-remove-btn { justify-self: flex-end; }
+}

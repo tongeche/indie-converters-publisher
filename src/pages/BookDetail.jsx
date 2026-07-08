@@ -7,6 +7,11 @@ import SEO from '../components/SEO';
 import { fetchBook, fetchRelatedBooks, toggleSave, checkSaved } from '../lib/api';
 import './BookDetail.css';
 
+const CURRENCY_SYMBOLS = { USD: '$', GBP: '£', EUR: '€' };
+function currencySymbol(code) {
+  return CURRENCY_SYMBOLS[code] || `${code} `;
+}
+
 function Stars({ rating }) {
   const full  = Math.floor(rating);
   const half  = rating % 1 >= 0.5;
@@ -54,7 +59,6 @@ export default function BookDetail() {
   const [heroColor,   setHeroColor]  = useState(null);
   const [coverCorsBlocked, setCoverCorsBlocked] = useState(false);
   const [buyOpen,     setBuyOpen]    = useState(false);
-  const [menuOpen,    setMenuOpen]   = useState(false);
   const [copied,      setCopied]     = useState(false);
   const actionsRef = useRef(null);
 
@@ -77,18 +81,17 @@ export default function BookDetail() {
     checkSaved(book.dbId, user.id).then(setSaved);
   }, [book?.dbId, user?.id]);
 
-  /* Close dropdowns on outside click */
+  /* Close the buy dropdown on outside click */
   useEffect(() => {
-    if (!buyOpen && !menuOpen) return;
+    if (!buyOpen) return;
     function handler(e) {
       if (actionsRef.current && !actionsRef.current.contains(e.target)) {
         setBuyOpen(false);
-        setMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [buyOpen, menuOpen]);
+  }, [buyOpen]);
 
   const handleCoverLoad = useCallback((e) => {
     const color = extractColor(e.currentTarget);
@@ -179,6 +182,10 @@ export default function BookDetail() {
     g.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   ).join(' · ') || book.genre;
 
+  const primaryGenreLabel = book.genres?.[0]
+    ? book.genres[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    : null;
+
   const buyLinks = book.buyLinks?.length > 0
     ? book.buyLinks
     : book.buyLink ? [{ label: 'Get book', url: book.buyLink }] : [];
@@ -194,9 +201,8 @@ export default function BookDetail() {
       {/* ═══════════════ HERO ═══════════════ */}
       <section className="bd-hero" style={heroGradient(heroColor)}>
 
-        {/* Mobile-only top-right action buttons: + (save) and ··· (more/share) */}
+        {/* Mobile-only top-right action buttons: Save and Share */}
         <div className="bd-hero-actions">
-          {/* + Save */}
           <button
             className={`bd-hero-action-btn${saved ? ' bd-hero-action-btn--saved' : ''}`}
             onClick={handleSave}
@@ -209,28 +215,15 @@ export default function BookDetail() {
             }
           </button>
 
-          {/* ··· More (opens share + other options) */}
-          <div className="bd-menu-wrap">
-            <button
-              className={`bd-hero-action-btn${menuOpen ? ' bd-hero-action-btn--active' : ''}`}
-              onClick={() => setMenuOpen(o => !o)}
-              aria-label="More options"
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
-                <circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/>
-              </svg>
-            </button>
-            {menuOpen && (
-              <div className="bd-menu-dropdown">
-                <button className="bd-menu-item" onClick={() => { handleShare(); setMenuOpen(false); }}>
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
-                    <path d="M10 3v10M6 7l4-4 4 4"/><path d="M4 13v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/>
-                  </svg>
-                  <span>{copied ? 'Link copied!' : 'Share'}</span>
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            className="bd-hero-action-btn"
+            onClick={handleShare}
+            aria-label={copied ? 'Link copied' : 'Share'}
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+              <path d="M10 3v10M6 7l4-4 4 4"/><path d="M4 13v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/>
+            </svg>
+          </button>
         </div>
 
         <div className="container bd-hero-inner">
@@ -308,9 +301,13 @@ export default function BookDetail() {
                     <div className="bd-buy-wrap">
                       <button
                         className={`bd-buy-btn${buyOpen ? ' active' : ''}`}
-                        onClick={() => { setBuyOpen(o => !o); setMenuOpen(false); }}
+                        onClick={() => setBuyOpen(o => !o)}
                       >
-                        {book.price ? `Get it · $${book.price}` : 'Get it'}
+                        {(() => {
+                          const shown = book.lowestPrice ?? book.price;
+                          const symbol = book.lowestPrice != null ? currencySymbol(book.lowestCurrency) : '$';
+                          return shown ? `Get it · from ${symbol}${Number(shown).toFixed(2)}` : 'Get it';
+                        })()}
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12" className={`bd-chevron${buyOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
                       </button>
 
@@ -325,49 +322,45 @@ export default function BookDetail() {
                               rel="noreferrer"
                               onClick={() => setBuyOpen(false)}
                             >
-                              <span className="bd-buy-option-label">{link.label}</span>
-                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+                              <span className="bd-buy-option-label">
+                                {link.label}
+                                {book.lowestPrice != null && link.price === book.lowestPrice && (
+                                  <span className="bd-buy-best-badge">Best price</span>
+                                )}
+                                {link.verified && (
+                                  <span className="bd-buy-verified-badge" title="Automatically cross-checked against Google Books">Verified</span>
+                                )}
+                              </span>
+                              <span className="bd-buy-option-right">
+                                {link.price != null && <span className="bd-buy-option-price">{currencySymbol(link.currency)}{Number(link.price).toFixed(2)}</span>}
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+                              </span>
                             </a>
                           ))}
+                          <p className="bd-buy-disclaimer">Prices are entered by the author or our team unless marked Verified, and may not be current — confirm on the retailer's site before buying.</p>
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* ··· more menu: Save + Share — desktop only, hidden on mobile */}
-                  <div className="bd-menu-wrap bd-menu-wrap--desktop">
-                    <button
-                      className={`bd-menu-btn${menuOpen ? ' active' : ''}`}
-                      onClick={() => { setMenuOpen(o => !o); setBuyOpen(false); }}
-                      aria-label="More options"
-                    >
-                      <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
-                        <circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/>
-                      </svg>
-                    </button>
+                  {/* Save + Share — desktop only, hidden on mobile (mobile has its own hero buttons) */}
+                  <button
+                    className={`bd-icon-btn bd-icon-btn--desktop${saved ? ' bd-icon-btn--saved' : ''}`}
+                    onClick={handleSave}
+                    disabled={savePending}
+                  >
+                    <svg viewBox="0 0 20 20" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" width="16" height="16">
+                      <path d="M10 17s-7-4.35-7-9a5 5 0 0 1 7-4.58A5 5 0 0 1 17 8c0 4.65-7 9-7 9z"/>
+                    </svg>
+                    <span>{saved ? 'Saved' : 'Save'}</span>
+                  </button>
 
-                    {menuOpen && (
-                      <div className="bd-menu-dropdown">
-                        <button
-                          className={`bd-menu-item${saved ? ' bd-menu-item--saved' : ''}`}
-                          onClick={() => { handleSave(); setMenuOpen(false); }}
-                          disabled={savePending}
-                        >
-                          <svg viewBox="0 0 20 20" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" width="18" height="18">
-                            <path d="M10 17s-7-4.35-7-9a5 5 0 0 1 7-4.58A5 5 0 0 1 17 8c0 4.65-7 9-7 9z"/>
-                          </svg>
-                          <span>{saved ? 'Saved' : 'Save'}</span>
-                        </button>
-
-                        <button className="bd-menu-item" onClick={() => { handleShare(); setMenuOpen(false); }}>
-                          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
-                            <path d="M10 3v10M6 7l4-4 4 4"/><path d="M4 13v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/>
-                          </svg>
-                          <span>{copied ? 'Link copied!' : 'Share'}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <button className="bd-icon-btn bd-icon-btn--desktop" onClick={handleShare}>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16">
+                      <path d="M10 3v10M6 7l4-4 4 4"/><path d="M4 13v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/>
+                    </svg>
+                    <span>{copied ? 'Copied!' : 'Share'}</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -382,38 +375,33 @@ export default function BookDetail() {
         </div>
       </section>
 
-      {/* ═══════════════ CONTENT ═══════════════ */}
-      <div className="bd-content">
-        <div className="container bd-content-inner">
-
-        </div>
-
-        {related.length > 0 && (
-          <section className="bd-more">
-            <div className="container">
-              <div className="bd-more-head">
-                <h2 className="bd-section-title bd-more-title">We think you might like</h2>
-              </div>
+      {related.length > 0 && (
+        <section className="bd-more">
+          <div className="container">
+            <div className="bd-more-head">
+              <h2 className="bd-section-title bd-more-title">
+                {primaryGenreLabel ? `More in ${primaryGenreLabel}` : 'Similar titles'}
+              </h2>
             </div>
-            <div className="bd-more-scroll-wrap">
-              <div className="bd-more-scroll">
-                {related.filter(b => b.coverUrl).map(b => (
-                  <Link to={`/book/${b.slug}`} key={b.slug} className="bd-related-card">
-                    <div className="bd-related-cover">
-                      {b.coverUrl
-                        ? <img src={b.coverUrl} alt={b.title} />
-                        : <BookCover title={b.title} author={b.author} colorClass={b.coverColor} size="sm" />
-                      }
-                    </div>
-                    <span className="bd-related-title">{b.title}</span>
-                    {b.price > 0 && <span className="bd-related-price">${b.price}</span>}
-                  </Link>
-                ))}
-              </div>
+          </div>
+          <div className="bd-more-scroll-wrap">
+            <div className="bd-more-scroll">
+              {related.filter(b => b.coverUrl).map(b => (
+                <Link to={`/book/${b.slug}`} key={b.slug} className="bd-related-card">
+                  <div className="bd-related-cover">
+                    {b.coverUrl
+                      ? <img src={b.coverUrl} alt={b.title} />
+                      : <BookCover title={b.title} author={b.author} colorClass={b.coverColor} size="sm" />
+                    }
+                  </div>
+                  <span className="bd-related-title">{b.title}</span>
+                  {b.price > 0 && <span className="bd-related-price">${b.price}</span>}
+                </Link>
+              ))}
             </div>
-          </section>
-        )}
-      </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

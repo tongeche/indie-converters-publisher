@@ -43,10 +43,6 @@
   border-color: rgba(167,139,250,0.5);
   color: #a78bfa;
 }
-.bd-hero-action-btn--active {
-  background: rgba(255,255,255,0.22);
-  color: #fff;
-}
 .bd-hero--loading {
   min-height: 380px;
   background: linear-gradient(175deg, #3a3a3c 0%, #1c1c1e 100%);
@@ -309,7 +305,7 @@
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  min-width: 200px;
+  min-width: 260px;
   background: rgba(30, 30, 36, 0.96);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255,255,255,0.12);
@@ -322,11 +318,6 @@
 
 @keyframes bd-dropdown-in {
   from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes bd-sheet-in {
-  from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -343,84 +334,86 @@
 .bd-buy-option:hover { background: rgba(255,255,255,0.08); }
 
 .bd-buy-option-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 0.85rem;
   font-weight: 600;
   color: #fff;
 }
 .bd-buy-option svg { color: rgba(255,255,255,0.4); flex-shrink: 0; }
 
-/* ··· more menu */
-.bd-menu-wrap {
-  position: relative;
+.bd-buy-verified-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #cfe0ff;
+  background: rgba(120,160,255,0.18);
+  border: 1px solid rgba(120,160,255,0.4);
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
-.bd-menu-btn {
+.bd-buy-best-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1B1330;
+  background: #a8e6b8;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.bd-buy-option-right {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 40px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bd-buy-option-price {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+}
+
+.bd-buy-disclaimer {
+  margin: 6px 4px 2px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.45);
+}
+
+/* Save / Share icon buttons (desktop actions row) */
+.bd-icon-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   height: 40px;
+  padding: 0 16px;
   border-radius: 100px;
-  background: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.18);
-  color: rgba(255,255,255,0.75);
+  color: rgba(255,255,255,0.85);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
+  white-space: nowrap;
   transition: background 150ms, color 150ms;
   flex-shrink: 0;
 }
-.bd-menu-btn:hover,
-.bd-menu-btn.active {
-  background: rgba(255,255,255,0.2);
-  color: #fff;
-}
-
-.bd-menu-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  min-width: 180px;
-  background: rgba(30,30,36,0.97);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 14px;
-  padding: 6px;
-  z-index: 50;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.45);
-  animation: bd-dropdown-in 140ms ease;
-}
-
-.bd-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 11px 14px;
-  border-radius: 9px;
-  background: none;
-  border: none;
-  color: rgba(255,255,255,0.85);
-  font-size: 0.88rem;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition: background 120ms;
-}
-.bd-menu-item:hover { background: rgba(255,255,255,0.08); }
-.bd-menu-item:disabled { opacity: 0.55; cursor: default; }
-.bd-menu-item svg { flex-shrink: 0; opacity: 0.8; }
-.bd-menu-item--saved { color: #a78bfa; }
-.bd-menu-item--saved svg { opacity: 1; color: #a78bfa; }
-
-/* ═══ CONTENT (white section) ════════════════════════════════ */
-.bd-content {
-  padding-bottom: 80px;
-}
-
-.bd-content-inner {
-  padding-top: 48px;
-  max-width: 760px;
-}
+.bd-icon-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+.bd-icon-btn:disabled { opacity: 0.55; cursor: default; }
+.bd-icon-btn svg { flex-shrink: 0; }
+.bd-icon-btn--saved { color: #a78bfa; border-color: rgba(167,139,250,0.5); background: rgba(167,139,250,0.14); }
+.bd-icon-btn--saved:hover { background: rgba(167,139,250,0.22); color: #a78bfa; }
 
 .bd-section-title {
   font-family: 'Fraunces', serif;
@@ -539,8 +532,8 @@
   /* Hide genre tag — show rating + genre inline below author instead */
   .bd-genre-tag { display: none; }
 
-  /* Hide desktop ··· menu — actions moved to top-right corner */
-  .bd-menu-wrap--desktop { display: none; }
+  /* Hide desktop Save/Share buttons — actions moved to top-right corner */
+  .bd-icon-btn--desktop { display: none; }
 
   /* Show top-right floating action buttons */
   .bd-hero-actions { display: flex; }
@@ -551,22 +544,7 @@
   .bd-rating-row { justify-content: center; margin-bottom: 16px; }
   .bd-buy-card { flex-direction: column; align-items: stretch; max-width: 100%; }
   .bd-actions-row { flex-direction: row; justify-content: center; }
-  .bd-content-inner { padding-top: 28px; }
   .bd-hero-excerpt { text-align: left; max-width: 100%; margin-top: 20px; }
-
-  /* ··· dropdown: bottom sheet */
-  .bd-menu-dropdown {
-    position: fixed;
-    bottom: 24px;
-    left: 16px;
-    right: 16px;
-    top: auto;
-    min-width: unset;
-    border-radius: 18px;
-    padding: 8px;
-    animation: bd-sheet-in 200ms cubic-bezier(0.2,0,0.2,1);
-  }
-  .bd-menu-item { padding: 14px 16px; font-size: 0.95rem; }
 }
 
 @media (max-width: 480px) {

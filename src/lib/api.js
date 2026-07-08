@@ -1,5 +1,23 @@
 import { supabase } from './supabase';
 
+/* ── Landing: dynamic quote cards ── */
+export async function fetchLandingQuotes() {
+  try {
+    const { data, error } = await supabase
+      .from('site_quotes')
+      .select('quote, author, role, sort_order')
+      .eq('placement', 'landing')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .limit(8);
+
+    if (error) return [];
+    return (data || []).filter(row => row.quote?.trim());
+  } catch {
+    return [];
+  }
+}
+
 /* ── Author: fetch own book for editing ── */
 export async function fetchBookForEdit(slug, userId) {
   const { data, error } = await supabase
@@ -9,13 +27,19 @@ export async function fetchBookForEdit(slug, userId) {
       pub_year, page_count, trim_size, isbn_13, language, publisher_name, price,
       front_matter, back_matter, is_published,
       books_genres ( genres ( slug, label ) ),
-      book_retailer_links ( url, retailers ( slug, label ) )
+      book_retailer_links ( id, url, price, source, retailers ( slug, label ) )
     `)
     .eq('slug', slug)
     .eq('author_user_id', userId)
     .single();
   if (error) return null;
-  return data;
+  // Authors only ever see/edit their own declared links — Google-Books-sourced
+  // rows are managed entirely by scripts/enrich-google-books-prices.mjs and
+  // must never appear in (or be overwritten by) the author's edit form.
+  return {
+    ...data,
+    book_retailer_links: (data.book_retailer_links || []).filter(l => l.source !== 'google_books'),
+  };
 }
 
 /* ── Author: update book metadata ── */
@@ -38,21 +62,69 @@ export async function updateBookGenres(bookId, genreSlugs) {
   }
 }
 
-/* ── Author: upsert buy link ── */
-export async function upsertBuyLink(bookId, retailerSlug, url) {
-  if (!url) {
-    // remove existing if URL cleared
-    const { data: ret } = await supabase
-      .from('retailers').select('id').eq('slug', retailerSlug).maybeSingle();
-    if (ret) await supabase.from('book_retailer_links')
-      .delete().eq('book_id', bookId).eq('retailer_id', ret.id);
-    return;
+/* ── Replace all retailer links (and their prices) for a book ──
+   Upserts on (book_id, retailer_id) rather than plain-inserting, so picking
+   the same retailer in two rows doesn't hit the unique constraint — the
+   later row for that retailer just wins. `source` tags who supplied this
+   ('author' from the wizard/EditBook, 'editor' from the catalogue-price
+   curation tool for books with no author account). The cleanup delete is
+   scoped to that same source, so it never removes a Google-Books-verified
+   row that scripts/enrich-google-books-prices.mjs maintains separately, nor
+   an editor's rows when an author saves (or vice versa). */
+export async function replaceRetailerLinks(bookId, links, source = 'author') {
+  const wanted = (links || []).filter(x => x.url?.trim());
+  const keepRetailerIds = [];
+  for (const l of wanted) {
+    const { data: ret } = await supabase.from('retailers').select('id').eq('slug', l.retailer).maybeSingle();
+    if (!ret) continue;
+    keepRetailerIds.push(ret.id);
+    const { error } = await supabase.from('book_retailer_links').upsert(
+      {
+        book_id: bookId, retailer_id: ret.id, url: l.url.trim(),
+        price: l.price ? parseFloat(l.price) : null,
+        source, price_updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'book_id,retailer_id' }
+    );
+    if (error) throw error;
   }
-  const { data: ret } = await supabase
-    .from('retailers').select('id').eq('slug', retailerSlug).maybeSingle();
-  if (!ret) return;
-  await supabase.from('book_retailer_links')
-    .upsert({ book_id: bookId, retailer_id: ret.id, url }, { onConflict: 'book_id,retailer_id' });
+  let del = supabase.from('book_retailer_links').delete().eq('book_id', bookId).eq('source', source);
+  if (keepRetailerIds.length > 0) del = del.not('retailer_id', 'in', `(${keepRetailerIds.join(',')})`);
+  await del;
+}
+
+/* ── Editor: is this user allowed to curate catalogue-wide retailer prices? ── */
+export async function checkIsEditor(userId) {
+  if (!userId) return false;
+  const { data } = await supabase.from('editors').select('user_id').eq('user_id', userId).maybeSingle();
+  return Boolean(data);
+}
+
+/* ── Editor: search any published book by title, for price curation ── */
+export async function searchBooksForPriceCuration(query) {
+  let q = supabase
+    .from('books')
+    .select('id, slug, title, cover_url, author_user_id')
+    .eq('is_published', true)
+    .order('title')
+    .limit(15);
+  if (query?.trim()) q = q.ilike('title', `%${query.trim()}%`);
+  const { data, error } = await q;
+  if (error) return [];
+  return data;
+}
+
+/* ── Editor: fetch a single book's retailer links for curation (any book,
+   not just ones the current user authored) ── */
+export async function fetchBookRetailerLinksForCuration(bookId) {
+  const { data, error } = await supabase
+    .from('book_retailer_links')
+    .select('id, url, price, source, retailers ( slug, label )')
+    .eq('book_id', bookId);
+  if (error) return [];
+  // Editors curate on top of whatever's already there (author or prior editor
+  // entries) but never touch the Google-Books-verified row.
+  return data.filter(l => l.source !== 'google_books');
 }
 
 /* ── Hire: submit a brief ── */
@@ -134,7 +206,7 @@ export async function fetchSavedBooks(userId) {
         pub_year, page_count, trim_size, isbn_13, language, publisher_name,
         books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
         books_genres ( genres ( slug, label ) ),
-        book_retailer_links ( url, retailers ( slug, label ) )
+        book_retailer_links ( url, price, currency, source, retailers ( slug, label ) )
       )
     `)
     .eq('user_id', userId)
@@ -178,16 +250,17 @@ export async function checkSaved(bookId, userId) {
   return Boolean(data);
 }
 
-export async function fetchBooks({ genres = [], query, sort = 'newest', formats = [], language, limit = 24, offset = 0 } = {}) {
+export async function fetchBooks({ genres = [], query, sort = 'newest', formats = [], language, limit = 24, offset = 0, indieOnly = false } = {}) {
   const SELECT = `
     id, slug, title, description, cover_url, rating, formats, keywords, pub_year, price, language,
-    trim_size,
+    trim_size, indie_status,
     books_authors ( position, authors ( slug, display_name ) ),
     books_genres ( genres ( slug, label ) )
   `;
 
   function buildBase() {
     let q = supabase.from('books').select(SELECT).eq('is_published', true);
+    if (indieOnly)          q = q.in('indie_status', ['small_press', 'self_published', 'likely_indie']);
     if (formats.length > 0) q = q.contains('formats', formats);
     if (language)           q = q.eq('language', language);
     if (sort === 'title')   q = q.order('title');
@@ -235,6 +308,7 @@ export async function fetchBooks({ genres = [], query, sort = 'newest', formats 
     .from('books')
     .select(SELECT, { count: 'exact' })
     .eq('is_published', true);
+  if (indieOnly)          q = q.in('indie_status', ['small_press', 'self_published', 'likely_indie']);
   if (formats.length > 0) q = q.contains('formats', formats);
   if (language)           q = q.eq('language', language);
   if (sort === 'title')   q = q.order('title');
@@ -269,7 +343,7 @@ export async function fetchBook(slug) {
       pub_year, page_count, trim_size, isbn_13, language, publisher_name,
       books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
       books_genres ( genres ( slug, label ) ),
-      book_retailer_links ( url, retailers ( slug, label ) )
+      book_retailer_links ( url, price, currency, source, retailers ( slug, label ) )
     `)
     .eq('slug', slug)
     .eq('is_published', true)
@@ -300,6 +374,7 @@ export async function fetchAuthorBooks(authorSlug) {
     .from('books')
     .select(`
       id, slug, title, description, cover_url, rating, formats, keywords,
+      pub_year, page_count, trim_size, publisher_name, indie_status,
       books_authors ( position, authors ( slug, display_name ) ),
       books_genres ( genres ( slug, label ) )
     `)
@@ -315,6 +390,20 @@ export async function fetchAuthorBooks(authorSlug) {
 export async function fetchGenres() {
   const { data } = await supabase.from('genres').select('slug, label').order('label');
   return data || [];
+}
+
+/* ── Browse: books grouped into rows by genre (most-populated first) ── */
+export async function fetchBooksGroupedByGenre({ perGenreLimit = 12 } = {}) {
+  const genres = await fetchGenres();
+  const rows = await Promise.all(
+    genres.map(genre =>
+      fetchBooks({ genres: [genre.slug], limit: perGenreLimit, sort: 'newest' })
+        .then(({ books, total }) => ({ genre, books, total }))
+    )
+  );
+  return rows
+    .filter(row => row.books.length > 0)
+    .sort((a, b) => b.total - a.total);
 }
 
 export async function fetchRelatedBooks(currentSlug, genreSlugs = [], pubYear = null) {
@@ -367,22 +456,50 @@ export async function fetchRelatedBooks(currentSlug, genreSlugs = [], pubYear = 
     .slice(0, 8);
 }
 
+function extractGoogleVolumeId(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.searchParams.get('id') || null;
+  } catch {
+    return null;
+  }
+}
+
 // Flatten Supabase join shape into the flat shape the UI already expects
 function normaliseBook(b) {
   const primaryAuthor = b.books_authors
     ?.sort((a, z) => (a.position ?? 1) - (z.position ?? 1))[0]?.authors;
   const genres = b.books_genres?.map(bg => bg.genres?.slug).filter(Boolean) || [];
 
-  const buyLinks = (b.book_retailer_links || []).map(rl => ({
-    label: rl.retailers?.label || 'Buy',
-    slug: rl.retailers?.slug || '',
-    url: rl.url,
-  }));
+  const buyLinks = (b.book_retailer_links || [])
+    .map(rl => ({
+      label: rl.retailers?.label || 'Buy',
+      slug: rl.retailers?.slug || '',
+      url: rl.url,
+      price: rl.price ?? null,
+      currency: rl.currency || 'USD',
+      verified: rl.source === 'google_books',
+    }))
+    .sort((a, z) => {
+      // Note: compares raw numbers, not converted amounts — fine while only
+      // a handful of non-USD entries exist, but not real FX-aware sorting.
+      if (a.price == null && z.price == null) return 0;
+      if (a.price == null) return 1;   // no-price rows sort last
+      if (z.price == null) return -1;
+      return a.price - z.price;         // cheapest first
+    });
+
+  const lowestLink = buyLinks.find(l => l.price != null) || null;
+  const lowestPrice = lowestLink?.price ?? null;
+  const lowestCurrency = lowestLink?.currency ?? 'USD';
 
   // Prefer Bookshop.org as the primary buy link; fall back to first available
   const primaryLink = buyLinks.find(l => l.slug === 'bookshop')
     || buyLinks[0]
     || null;
+  const googleBooksLink = buyLinks.find(l => l.slug === 'google-books')?.url || null;
+  const googleVolumeId = extractGoogleVolumeId(googleBooksLink);
 
   // Collect all authors for co-author display
   const allAuthors = (b.books_authors || [])
@@ -407,7 +524,10 @@ function normaliseBook(b) {
     coverUrl: b.cover_url || null,
     coverColor: pickCoverColor(b.slug),
     rating: b.rating,
+    indieStatus: b.indie_status || null,
     price: b.price || null,
+    lowestPrice,
+    lowestCurrency,
     pubYear: b.pub_year || null,
     pageCount: b.page_count || null,
     trimSize: b.trim_size || null,
@@ -416,6 +536,8 @@ function normaliseBook(b) {
     publisher: b.publisher_name || null,
     buyLink: primaryLink?.url || '#',
     buyLinks,
+    googleBooksLink,
+    googleVolumeId,
   };
 }
 

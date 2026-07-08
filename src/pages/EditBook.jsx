@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { fetchBookForEdit, updateBook, updateBookGenres, upsertBuyLink } from '../lib/api';
+import { fetchBookForEdit, updateBook, updateBookGenres, replaceRetailerLinks } from '../lib/api';
 import SEO from '../components/SEO';
+import RetailerLinksEditor from '../components/RetailerLinksEditor';
 import './EditBook.css';
 
 const FORMATS   = ['eBook', 'Paperback', 'Hardcover', 'Audiobook'];
@@ -14,14 +15,6 @@ const TRIM_SIZES = [
   { id: '7x10', label: '7 x 10 in' },
   { id: '8_5x11', label: '8.5 x 11 in' },
 ];
-const PLATFORMS = [
-  { slug: 'own',      label: 'My own website' },
-  { slug: 'gumroad',  label: 'Gumroad' },
-  { slug: 'payhip',   label: 'Payhip' },
-  { slug: 'amazon',   label: 'Amazon' },
-  { slug: 'bookshop', label: 'Bookshop.org' },
-  { slug: 'other',    label: 'Other' },
-];
 
 const SECTIONS = [
   { id: 'core',    label: 'Core info' },
@@ -30,7 +23,7 @@ const SECTIONS = [
   { id: 'pub',     label: 'Publishing' },
   { id: 'cover',   label: 'Cover' },
   { id: 'formats', label: 'Formats & price' },
-  { id: 'buy',     label: 'Buy link' },
+  { id: 'buy',     label: 'Prices & retailers' },
   { id: 'matter',  label: 'Front / back matter' },
 ];
 
@@ -60,7 +53,11 @@ export default function EditBook() {
       setGenres(gList || []);
 
       const genreSlugs = bk.books_genres?.map(bg => bg.genres?.slug).filter(Boolean) || [];
-      const link = bk.book_retailer_links?.[0];
+      const retailerLinks = (bk.book_retailer_links || []).map(l => ({
+        retailer: l.retailers?.slug || 'own',
+        url: l.url || '',
+        price: l.price != null ? String(l.price) : '',
+      }));
 
       setFd({
         title:         bk.title || '',
@@ -78,8 +75,7 @@ export default function EditBook() {
         formats:       bk.formats || ['eBook'],
         price:         bk.price != null ? String(bk.price) : '',
         isFree:        bk.price === 0,
-        buyPlatform:   link?.retailers?.slug || 'own',
-        buyUrl:        link?.url || '',
+        retailerLinks: retailerLinks.length ? retailerLinks : [{ retailer: 'own', url: '', price: '' }],
         coverFile:     null,
         coverPreview:  bk.cover_url || '',
         frontMatter:   bk.front_matter || {},
@@ -174,8 +170,8 @@ export default function EditBook() {
       // 3. Update genres
       await updateBookGenres(book.id, [fd.genre, fd.genreSecondary]);
 
-      // 4. Upsert buy link
-      await upsertBuyLink(book.id, fd.buyPlatform, fd.buyUrl.trim());
+      // 4. Replace retailer links (and their prices)
+      await replaceRetailerLinks(book.id, fd.retailerLinks);
 
       setSaved(true);
     } catch (err) {
@@ -402,27 +398,15 @@ export default function EditBook() {
             )}
           </section>
 
-          {/* Buy link */}
+          {/* Prices & retailers */}
           <section className="eb-section" id="eb-buy">
-            <h2 className="eb-section-title">Buy link</h2>
-            <p className="eb-section-hint">Where should readers go to buy your book? This link appears on your public listing.</p>
-            <div className="eb-row">
-              <div className="eb-field">
-                <label>Platform</label>
-                <select value={fd.buyPlatform} onChange={e => set('buyPlatform', e.target.value)}>
-                  {PLATFORMS.map(p => <option key={p.slug} value={p.slug}>{p.label}</option>)}
-                </select>
-              </div>
-              <div className="eb-field" style={{ flex: 2 }}>
-                <label>URL</label>
-                <input
-                  type="url"
-                  value={fd.buyUrl}
-                  onChange={e => set('buyUrl', e.target.value)}
-                  placeholder="https://…"
-                />
-              </div>
-            </div>
+            <h2 className="eb-section-title">Prices &amp; retailers</h2>
+            <RetailerLinksEditor
+              links={fd.retailerLinks}
+              onChange={links => set('retailerLinks', links)}
+              label={null}
+              hint="Add every place readers can buy your book, with a price if you have one. IndieConverters shows readers which is cheapest — we never sell directly."
+            />
           </section>
 
           {/* Front / back matter */}
