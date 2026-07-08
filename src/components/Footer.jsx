@@ -9,7 +9,6 @@ const COLUMNS = [
       { to: '/browse',             label: 'Browse Books'       },
       { to: '/moods',              label: 'Book Moods'         },
       { to: '/browse?sort=newest', label: 'New Releases'       },
-      { to: '/authors',            label: 'Author Profiles'    },
     ],
   },
   {
