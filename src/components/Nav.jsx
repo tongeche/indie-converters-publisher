@@ -22,7 +22,7 @@ const NAV = [
   {
     label: 'Collections',
     dropdown: [
-      { to: '/browse',              label: 'Indie Books',  desc: 'Hand-picked titles from independent authors', Icon: IconBooks },
+      { to: '/browse?indie=1',      label: 'Indie Books',  desc: 'Hand-picked titles from independent authors', Icon: IconBooks },
       { to: '/browse?genre=fiction',label: 'Fiction',      desc: 'Novels, short stories and literary fiction',  Icon: IconPen   },
       { to: '/browse?genre=nonfiction', label: 'Non-Fiction', desc: 'Guides, essays and narrative nonfiction',  Icon: IconNews  },
       { to: '/browse',              label: 'All Books',    desc: 'Browse the full catalogue',                   Icon: IconGrid  },
@@ -31,27 +31,31 @@ const NAV = [
   {
     label: 'Community',
     dropdown: [
-      { to: '/authors', label: 'Authors',     desc: 'Discover the indie authors behind the books', Icon: IconUserOk },
       { to: '/blog',    label: 'Blog',        desc: 'Stories, guides and publishing advice',       Icon: IconPen    },
       { to: '/blog',    label: 'News',        desc: "What's new in indie publishing",              Icon: IconNews   },
       { to: '/help',    label: 'Help Center', desc: 'Quick answers and how-tos',                   Icon: IconHelp   },
     ],
   },
   {
-    label: 'Hire Freelancer',
-    dropdown: [
-      { to: '/hire/post',      label: 'Post a Brief',        desc: 'Tell us what you need — we match you with the right talent', Icon: IconBrief   },
-      { to: '/hire/browse',    label: 'Browse Freelancers',  desc: 'Find ghostwriters, editors and cover designers',             Icon: IconSearch  },
+    label: 'Services',
+    groups: [
+      {
+        heading: 'Hire a Freelancer',
+        to: '/hire',
+        items: [
+          { to: '/hire/post',   label: 'Post a Brief',       desc: 'Tell us what you need — we match you with the right talent', Icon: IconBrief  },
+          { to: '/hire/browse', label: 'Browse Freelancers', desc: 'Find ghostwriters, editors and cover designers',             Icon: IconSearch },
+        ],
+      },
+      {
+        heading: 'Get Hired',
+        to: '/get-hired',
+        items: [
+          { to: '/get-hired/projects', label: 'Browse Projects', desc: 'Find editing, writing and design briefs from authors',   Icon: IconSearch },
+          { to: '/get-hired/profile',  label: 'Create Profile',  desc: 'Showcase your work and get discovered by indie authors', Icon: IconUserOk },
+        ],
+      },
     ],
-    footer: { label: 'Learn how hiring works →', to: '/hire' },
-  },
-  {
-    label: 'Get Hired',
-    dropdown: [
-      { to: '/get-hired/projects', label: 'Browse Projects', desc: 'Find editing, writing and design briefs from authors',   Icon: IconSearch  },
-      { to: '/get-hired/profile',  label: 'Create Profile',  desc: 'Showcase your work and get discovered by indie authors', Icon: IconUserOk  },
-    ],
-    footer: { label: 'Learn how getting hired works →', to: '/get-hired' },
   },
   { to: '/publish',    label: 'Publish'         },
 ];
@@ -94,7 +98,13 @@ export default function Nav() {
   }
 
   function isDropdownActive(item) {
-    return item.dropdown?.some(sub => location.pathname.startsWith(sub.to));
+    if (item.dropdown) return item.dropdown.some(sub => location.pathname.startsWith(sub.to));
+    if (item.groups) {
+      return item.groups.some(group =>
+        location.pathname.startsWith(group.to) || group.items.some(sub => location.pathname.startsWith(sub.to))
+      );
+    }
+    return false;
   }
 
   return (
@@ -117,7 +127,7 @@ export default function Nav() {
         </button>
 
         <div className={`nav-links ${menuOpen ? 'open' : ''}`}>
-          {NAV.map(item => item.dropdown ? (
+          {NAV.map(item => (item.dropdown || item.groups) ? (
             /* ── Dropdown item ── */
             <div
               key={item.label}
@@ -136,7 +146,21 @@ export default function Nav() {
                 onMouseEnter={() => openMenu(item.label)}
                 onMouseLeave={scheduleClose}
               >
-                {item.dropdown.map(({ to, label, desc, Icon }) => (
+                {item.groups ? item.groups.map((group, gi) => (
+                  <div className="nav-dropdown-section" key={group.heading}>
+                    <Link to={group.to} className="nav-dropdown-section-heading">{group.heading}</Link>
+                    {group.items.map(({ to, label, desc, Icon }) => (
+                      <Link key={label} to={to} className="nav-dropdown-item">
+                        <div className="nav-dropdown-icon"><Icon /></div>
+                        <div className="nav-dropdown-text">
+                          <span className="nav-dropdown-label">{label}</span>
+                          <span className="nav-dropdown-desc">{desc}</span>
+                        </div>
+                      </Link>
+                    ))}
+                    {gi < item.groups.length - 1 && <div className="nav-dropdown-sep" />}
+                  </div>
+                )) : item.dropdown.map(({ to, label, desc, Icon }) => (
                   <Link key={label} to={to} className="nav-dropdown-item">
                     <div className="nav-dropdown-icon"><Icon /></div>
                     <div className="nav-dropdown-text">
@@ -165,7 +189,14 @@ export default function Nav() {
               </button>
               {mobileExpanded[item.label] && (
                 <div className="nav-mobile-sub">
-                  {item.dropdown.map(({ to, label }) => (
+                  {item.groups ? item.groups.map(group => (
+                    <div key={group.heading} className="nav-mobile-group">
+                      <Link to={group.to} className="nav-mobile-group-heading">{group.heading}</Link>
+                      {group.items.map(({ to, label }) => (
+                        <Link key={label} to={to} className="nav-link nav-mobile-sub-link">{label}</Link>
+                      ))}
+                    </div>
+                  )) : item.dropdown.map(({ to, label }) => (
                     <Link key={label} to={to} className="nav-link nav-mobile-sub-link">{label}</Link>
                   ))}
                 </div>

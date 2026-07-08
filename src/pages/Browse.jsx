@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import BookCover from '../components/BookCover';
 import SEO from '../components/SEO';
 import { useAuth } from '../context/AuthContext';
-import { fetchBooks, fetchGenres, fetchSavedBooks, fetchRelatedBooks } from '../lib/api';
+import { fetchBooks, fetchGenres, fetchSavedBooks, fetchRelatedBooks, fetchBooksGroupedByGenre } from '../lib/api';
 import allBooksHero from '../assets/all-books-hero.webp';
 import './Browse.css';
 
@@ -21,6 +21,7 @@ export default function Browse() {
   const activeFormats = searchParams.getAll('format');
   const language      = searchParams.get('lang')   || '';
   const sort          = searchParams.get('sort')   || 'newest';
+  const indieOnly     = searchParams.get('indie')  === '1';
 
   // Local input value — debounced into URL
   const [inputValue, setInputValue] = useState(query);
@@ -33,7 +34,12 @@ export default function Browse() {
   const [offset,      setOffset]      = useState(0);
   const [genres,      setGenres]      = useState([]);
   const [recommended, setRecommended] = useState([]);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [genreOpen,   setGenreOpen]   = useState(false);
+  const [formatOpen,  setFormatOpen]  = useState(false);
+  const [rows,        setRows]        = useState([]);
+  const [rowsLoading, setRowsLoading] = useState(true);
+  const genreDropdownRef  = useRef(null);
+  const formatDropdownRef = useRef(null);
   const hasMore = books.length < total;
 
   // Keep inputValue in sync when URL changes externally (back/forward)
@@ -46,6 +52,36 @@ export default function Browse() {
   }, [query]);
 
   useEffect(() => { fetchGenres().then(setGenres); }, []);
+
+  // Genre rows for the default (unfiltered) browse view
+  useEffect(() => {
+    setRowsLoading(true);
+    fetchBooksGroupedByGenre().then(setRows).finally(() => setRowsLoading(false));
+  }, []);
+
+  // Close the genre dropdown on outside click
+  useEffect(() => {
+    if (!genreOpen) return;
+    function handler(e) {
+      if (genreDropdownRef.current && !genreDropdownRef.current.contains(e.target)) {
+        setGenreOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [genreOpen]);
+
+  // Close the format dropdown on outside click
+  useEffect(() => {
+    if (!formatOpen) return;
+    function handler(e) {
+      if (formatDropdownRef.current && !formatDropdownRef.current.contains(e.target)) {
+        setFormatOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [formatOpen]);
 
   // Debounce search input → URL
   useEffect(() => {
@@ -63,11 +99,11 @@ export default function Browse() {
   useEffect(() => {
     setLoading(true);
     setOffset(0);
-    fetchBooks({ genres: activeGenres, query, sort, formats: activeFormats, language, limit: LIMIT, offset: 0 })
+    fetchBooks({ genres: activeGenres, query, sort, formats: activeFormats, language, indieOnly, limit: LIMIT, offset: 0 })
       .then(({ books: b, total: t }) => { setBooks(b); setTotal(t); })
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, activeGenres.join(','), activeFormats.join(','), language, sort]);
+  }, [query, activeGenres.join(','), activeFormats.join(','), language, sort, indieOnly]);
 
   // Personalised recommendations for logged-in users
   useEffect(() => {
@@ -108,7 +144,7 @@ export default function Browse() {
     setLoadingMore(true);
     const next = offset + LIMIT;
     const { books: more } = await fetchBooks({
-      genres: activeGenres, query, sort, formats: activeFormats, language,
+      genres: activeGenres, query, sort, formats: activeFormats, language, indieOnly,
       limit: LIMIT, offset: next,
     });
     setBooks(prev => [...prev, ...more]);
@@ -116,8 +152,7 @@ export default function Browse() {
     setLoadingMore(false);
   }
 
-  const hasFilters = activeGenres.length > 0 || activeFormats.length > 0 || language || query;
-  const activeFilterCount = activeGenres.length + activeFormats.length + (language ? 1 : 0);
+  const hasFilters = activeGenres.length > 0 || activeFormats.length > 0 || language || query || indieOnly;
 
   return (
     <div className="browse">
@@ -131,8 +166,12 @@ export default function Browse() {
       <div className="browse-hero" style={{ backgroundImage: `url(${allBooksHero})` }}>
         <div className="container">
           <div className="eyebrow">Catalog</div>
-          <h1>Browse all books</h1>
-          <p>Independent authors — no exclusivity, no subscription.</p>
+          <h1>{indieOnly ? 'Indie books' : 'Browse all books'}</h1>
+          <p>
+            {indieOnly
+              ? 'Hand-picked titles from independent and self-published authors.'
+              : 'Independent authors — no exclusivity, no subscription.'}
+          </p>
         </div>
       </div>
 
@@ -160,68 +199,9 @@ export default function Browse() {
 
       {/* ── Main layout ── */}
       <div className="container browse-layout">
-
-        {/* ── Mobile filter toggle ── */}
-        <button
-          type="button"
-          className="browse-filter-toggle"
-          onClick={() => setFiltersOpen(o => !o)}
-          aria-expanded={filtersOpen}
-        >
-          <span>Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}</span>
-          <span className={`browse-filter-toggle-icon${filtersOpen ? ' open' : ''}`} aria-hidden="true">⌄</span>
-        </button>
-
-        {/* ── Sidebar ── */}
-        <aside className={`browse-sidebar${filtersOpen ? ' browse-sidebar--open' : ''}`}>
-
-          {/* Genre */}
-          <div className="sidebar-section">
-            <h3>Genre</h3>
-            <div className="sidebar-chip-group">
-              {genres.map(g => (
-                <button key={g.slug} type="button"
-                  className={`sidebar-chip ${activeGenres.includes(g.slug) ? 'on' : ''}`}
-                  onClick={() => toggleMulti('genre', g.slug)}>
-                  {g.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Format */}
-          <div className="sidebar-section">
-            <h3>Format</h3>
-            <div className="sidebar-chip-group">
-              {FORMATS.map(f => (
-                <button key={f} type="button"
-                  className={`sidebar-chip ${activeFormats.includes(f) ? 'on' : ''}`}
-                  onClick={() => toggleMulti('format', f)}>
-                  {f}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Language */}
-          <div className="sidebar-section">
-            <h3>Language</h3>
-            <select className="sidebar-lang-select" value={language}
-              onChange={e => setParam('lang', e.target.value)}>
-              <option value="">All languages</option>
-              {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </div>
-
-          {hasFilters && (
-            <button className="clear-btn" onClick={clearAll}>Clear all filters</button>
-          )}
-        </aside>
-
-        {/* ── Main content ── */}
         <main className="browse-main">
 
-          {/* Search + sort bar */}
+          {/* Search + filters + sort bar */}
           <div className="browse-controls">
             <div className="search-wrap">
               <span className="search-icon">⌕</span>
@@ -236,6 +216,73 @@ export default function Browse() {
                 <button className="search-clear" onClick={() => setInputValue('')} aria-label="Clear search">×</button>
               )}
             </div>
+
+            <div className="browse-genre-dropdown" ref={formatDropdownRef}>
+              <button
+                type="button"
+                className={`browse-genre-btn${activeFormats.length > 0 ? ' on' : ''}`}
+                onClick={() => setFormatOpen(o => !o)}
+                aria-expanded={formatOpen}
+              >
+                <span>{activeFormats.length === 0 ? 'Format' : activeFormats.length === 1 ? activeFormats[0] : `Format · ${activeFormats.length}`}</span>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12" className={`browse-genre-chevron${formatOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
+              </button>
+              {formatOpen && (
+                <div className="browse-genre-panel">
+                  {FORMATS.map(f => (
+                    <button
+                      key={f}
+                      type="button"
+                      className={`browse-genre-option${activeFormats.includes(f) ? ' active' : ''}`}
+                      onClick={() => toggleMulti('format', f)}
+                    >
+                      <span className={`browse-format-check${activeFormats.includes(f) ? ' checked' : ''}`} aria-hidden="true" />
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <select className="browse-lang-select" value={language}
+              onChange={e => setParam('lang', e.target.value)}>
+              <option value="">Language</option>
+              {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+
+            <div className="browse-genre-dropdown" ref={genreDropdownRef}>
+              <button
+                type="button"
+                className={`browse-genre-btn${activeGenres.length > 0 ? ' on' : ''}`}
+                onClick={() => setGenreOpen(o => !o)}
+                aria-expanded={genreOpen}
+              >
+                <span>{activeGenres.length > 0 ? (genres.find(g => g.slug === activeGenres[0])?.label || 'Genre') : 'Genre'}</span>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12" className={`browse-genre-chevron${genreOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
+              </button>
+              {genreOpen && (
+                <div className="browse-genre-panel">
+                  <button
+                    type="button"
+                    className={`browse-genre-option${activeGenres.length === 0 ? ' active' : ''}`}
+                    onClick={() => { setParam('genre', ''); setGenreOpen(false); }}
+                  >
+                    All genres
+                  </button>
+                  {genres.map(g => (
+                    <button
+                      key={g.slug}
+                      type="button"
+                      className={`browse-genre-option${activeGenres[0] === g.slug ? ' active' : ''}`}
+                      onClick={() => { setParam('genre', activeGenres[0] === g.slug ? '' : g.slug); setGenreOpen(false); }}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <select className="sort-select" value={sort}
               onChange={e => setParam('sort', e.target.value)}>
               <option value="newest">Newest</option>
@@ -243,75 +290,123 @@ export default function Browse() {
             </select>
           </div>
 
-          {/* Active filter pills */}
-          {(activeGenres.length > 0 || activeFormats.length > 0 || language) && (
-            <div className="browse-active-filters">
-              {activeGenres.map(g => (
-                <span key={g} className="browse-filter-pill">
-                  {genres.find(x => x.slug === g)?.label || g}
-                  <button onClick={() => toggleMulti('genre', g)} aria-label={`Remove ${g}`}>×</button>
-                </span>
-              ))}
-              {activeFormats.map(f => (
-                <span key={f} className="browse-filter-pill">
-                  {f}
-                  <button onClick={() => toggleMulti('format', f)} aria-label={`Remove ${f}`}>×</button>
-                </span>
-              ))}
-              {language && (
-                <span className="browse-filter-pill">
-                  {language}
-                  <button onClick={() => setParam('lang', '')} aria-label="Remove language filter">×</button>
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Result count */}
-          <div className="results-meta">
-            {loading
-              ? <span className="results-meta-loading">Searching…</span>
-              : <>{total.toLocaleString()} {total === 1 ? 'book' : 'books'}{hasFilters ? ' · filtered' : ''}</>
-            }
-          </div>
-
-          {/* Grid */}
-          {!loading && books.length === 0 ? (
-            <div className="no-results">
-              <div className="no-results-icon">··</div>
-              <p>No books match your filters.</p>
-              <button className="link-btn" onClick={clearAll}>Clear all filters</button>
-            </div>
-          ) : (
+          {hasFilters ? (
             <>
-              <div className="book-grid">
+              {/* Active filter pills */}
+              {(activeGenres.length > 0 || activeFormats.length > 0 || language || indieOnly) && (
+                <div className="browse-active-filters">
+                  {indieOnly && (
+                    <span className="browse-filter-pill">
+                      Indie only
+                      <button onClick={() => setParam('indie', '')} aria-label="Remove indie filter">×</button>
+                    </span>
+                  )}
+                  {activeGenres.map(g => (
+                    <span key={g} className="browse-filter-pill">
+                      {genres.find(x => x.slug === g)?.label || g}
+                      <button onClick={() => setParam('genre', '')} aria-label={`Remove ${g}`}>×</button>
+                    </span>
+                  ))}
+                  {activeFormats.map(f => (
+                    <span key={f} className="browse-filter-pill">
+                      {f}
+                      <button onClick={() => toggleMulti('format', f)} aria-label={`Remove ${f}`}>×</button>
+                    </span>
+                  ))}
+                  {language && (
+                    <span className="browse-filter-pill">
+                      {language}
+                      <button onClick={() => setParam('lang', '')} aria-label="Remove language filter">×</button>
+                    </span>
+                  )}
+                  <button className="clear-btn browse-clear-inline" onClick={clearAll}>Clear all</button>
+                </div>
+              )}
+
+              {/* Result count */}
+              <div className="results-meta">
                 {loading
-                  ? Array(12).fill(null).map((_, i) => <div key={i} className="book-card-skeleton" />)
-                  : books.map(book => (
-                      <Link to={`/book/${book.slug}`} key={book.slug} className="book-card" aria-label={`${book.title} by ${book.author}`}>
-                        <BookCover
-                          title={book.title}
-                          author={book.author}
-                          colorClass={book.coverColor}
-                          coverUrl={book.coverUrl}
-                        />
-                      </Link>
-                    ))
+                  ? <span className="results-meta-loading">Searching…</span>
+                  : <>{total.toLocaleString()} {total === 1 ? 'book' : 'books'} · filtered</>
                 }
               </div>
 
-              {/* Load more */}
-              {!loading && hasMore && (
-                <div className="browse-load-more">
-                  <button className="btn btn-outline" onClick={loadMore} disabled={loadingMore}>
-                    {loadingMore
-                      ? 'Loading…'
-                      : `Load more · ${(total - books.length).toLocaleString()} remaining`
-                    }
-                  </button>
+              {/* Grid */}
+              {!loading && books.length === 0 ? (
+                <div className="no-results">
+                  <div className="no-results-icon">··</div>
+                  <p>No books match your filters.</p>
+                  <button className="link-btn" onClick={clearAll}>Clear all filters</button>
                 </div>
+              ) : (
+                <>
+                  <div className="book-grid">
+                    {loading
+                      ? Array(12).fill(null).map((_, i) => <div key={i} className="book-card-skeleton" />)
+                      : books.map(book => (
+                          <Link to={`/book/${book.slug}`} key={book.slug} className="book-card" aria-label={`${book.title} by ${book.author}`}>
+                            <BookCover
+                              title={book.title}
+                              author={book.author}
+                              colorClass={book.coverColor}
+                              coverUrl={book.coverUrl}
+                            />
+                          </Link>
+                        ))
+                    }
+                  </div>
+
+                  {/* Load more */}
+                  {!loading && hasMore && (
+                    <div className="browse-load-more">
+                      <button className="btn btn-outline" onClick={loadMore} disabled={loadingMore}>
+                        {loadingMore
+                          ? 'Loading…'
+                          : `Load more · ${(total - books.length).toLocaleString()} remaining`
+                        }
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </>
+          ) : (
+            /* ── Genre rows (default browse view) ── */
+            <div className="genre-rows">
+              {rowsLoading
+                ? Array(3).fill(null).map((_, i) => (
+                    <div className="genre-row" key={i}>
+                      <div className="genre-row-scroll">
+                        {Array(6).fill(null).map((_, j) => <div key={j} className="book-card-skeleton genre-row-skeleton" />)}
+                      </div>
+                    </div>
+                  ))
+                : rows.map(row => (
+                    <div className="genre-row" key={row.genre.slug}>
+                      <Link to={`/browse?genre=${row.genre.slug}`} className="genre-row-heading">
+                        {row.genre.label} <span aria-hidden="true">→</span>
+                      </Link>
+                      <div className="genre-row-scroll">
+                        {row.books.map(book => (
+                          <Link
+                            to={`/book/${book.slug}`}
+                            key={book.slug}
+                            className="book-card genre-row-card"
+                            aria-label={`${book.title} by ${book.author}`}
+                          >
+                            <BookCover
+                              title={book.title}
+                              author={book.author}
+                              colorClass={book.coverColor}
+                              coverUrl={book.coverUrl}
+                            />
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+              }
+            </div>
           )}
         </main>
       </div>

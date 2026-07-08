@@ -223,6 +223,20 @@
   line-height: 1.4;
 }
 
+/* Grouped sections inside a single dropdown (e.g. "Services") */
+.nav-dropdown-section-heading {
+  display: block;
+  padding: 8px 12px 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  text-decoration: none;
+  transition: color 140ms;
+}
+.nav-dropdown-section-heading:hover { color: var(--clay); }
+
 /* Separator + footer link (e.g. "Learn how hiring works →") */
 .nav-dropdown-sep {
   height: 1px;
@@ -260,6 +274,21 @@
   font-size: 0.85rem !important;
   padding: 8px 10px !important;
   color: var(--ink-soft) !important;
+}
+.nav-mobile-group {
+  display: flex;
+  flex-direction: column;
+}
+.nav-mobile-group + .nav-mobile-group { margin-top: 6px; }
+.nav-mobile-group-heading {
+  display: block;
+  padding: 6px 10px 2px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  text-decoration: none;
 }
 
 /* Burger */
