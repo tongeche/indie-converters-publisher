@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
 import SEO from '../components/SEO';
+import DashboardPreviewCta from '../components/DashboardPreviewCta';
 import { trackEvent } from '../lib/analytics';
-import { fetchBooks, fetchBlogs } from '../lib/api';
+import { fetchBooks, fetchLandingQuotes } from '../lib/api';
 import mainHeroImg    from '../assets/main-hero.webp';
-import imgGhostwriting        from '../assets/services/ghostwriting.webp';
-import imgDevelopmentalEditing from '../assets/services/developmental-editing.webp';
-import imgCoverDesign         from '../assets/services/cover-design.webp';
-import imgEpubFormatting      from '../assets/services/epub-formatting.webp';
+import indieWriterImg from '../assets/indie-writer.png';
+import indieReaderImg from '../assets/indie-author-readothers.png';
+import lightsFutureCoverImg from '../assets/dammie-covers/dammie01.png';
+import loveSunsetCoverImg   from '../assets/dammie-covers/dammie-02.png';
+import wishHorseCoverImg    from '../assets/dammie-covers/dammie-03.png';
 import imgAche   from '../assets/moods/Ache.webp';
 import imgDrift  from '../assets/moods/Drift.webp';
 import imgHaunt  from '../assets/moods/haunt.webp';
@@ -20,51 +22,89 @@ import './Landing.css';
 
 const HERO_DOTS = Array.from({ length: 56 }, (_, index) => index);
 
-const IconGrid   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="22" height="22"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>;
-const IconBrief  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="22" height="22"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>;
-const IconTag    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="22" height="22"><path d="M20.59 13.41 12 22l-9-9 8.59-8.59A2 2 0 0 1 13 4h6a1 1 0 0 1 1 1v6a2 2 0 0 1-.41 1.41z"/><circle cx="16.5" cy="7.5" r="1"/></svg>;
-const IconChat   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="22" height="22"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>;
-
-const FREELANCE_FEATURES = [
-  { Icon: IconGrid,  desc: 'Ghostwriters, editors, cover designers and formatters — all in one place.' },
-  { Icon: IconBrief, desc: "Post a brief once. Freelancers with real profiles reach out to you." },
-  { Icon: IconTag,   desc: "See real rates and skills upfront on every freelancer's profile." },
-  { Icon: IconChat,  desc: 'Contact freelancers directly — no bidding wars, no middleman.' },
+const DISTRIBUTION_CHANNELS = [
+  { id: 'apple', label: 'Apple Books' },
+  { id: 'kobo', label: 'Rakuten Kobo' },
+  { id: 'google', label: 'Google Play' },
+  { id: 'amazon', label: 'Amazon' },
+  { id: 'bn', label: 'Barnes & Noble' },
+  { id: 'scribd', label: 'Scribd' },
+  { id: 'overdrive', label: 'OverDrive' },
+  { id: 'hoopla', label: 'Hoopla' },
+  { id: 'baker', label: 'Baker & Taylor' },
+  { id: 'tolino', label: 'Tolino' },
+  { id: 'vivlio', label: 'Vivlio' },
+  { id: 'smashwords', label: 'Smashwords' },
+  { id: 'fable', label: 'Fable' },
+  { id: 'kobo-plus', label: 'Kobo Plus' },
+  { id: 'cloudlibrary', label: 'cloudLibrary' },
+  { id: 'odilo', label: 'Odilo' },
+  { id: 'borrowbox', label: 'BorrowBox' },
+  { id: 'fnac', label: 'Fnac' },
+  { id: 'wook', label: 'Wook' },
+  { id: 'thalia', label: 'Thalia' },
+  { id: 'gardner', label: 'Gardner' },
 ];
 
-const HIRE_SERVICES = [
-  { label: 'Ghostwriting',            slug: 'ghostwriting', img: imgGhostwriting },
-  { label: 'Editing',                 slug: 'editing',      img: imgDevelopmentalEditing },
-  { label: 'Cover Design',             slug: 'cover-design', img: imgCoverDesign },
-  { label: 'EPUB Formatting',          slug: 'formatting',   img: imgEpubFormatting },
+const DISTRIBUTION_ROWS = [
+  DISTRIBUTION_CHANNELS.filter((_, index) => index % 2 === 0),
+  DISTRIBUTION_CHANNELS.filter((_, index) => index % 2 === 1),
 ];
 
-const FEATURE_FALLBACK_BG = 'linear-gradient(145deg, #1B1330 0%, #2E1180 55%, #441CB2 100%)';
-
-function pillarLabel(pillar) {
-  if (!pillar) return 'Blog';
-  return pillar.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-}
-
-function TiltCard({ children, className, style }) {
-  const ref = useRef(null);
-  function onMove(e) {
-    const r = ref.current.getBoundingClientRect();
-    const x = (e.clientX - r.left)  / r.width  - 0.5;
-    const y = (e.clientY - r.top)   / r.height - 0.5;
-    ref.current.style.transition = 'transform 80ms linear';
-    ref.current.style.transform  = `perspective(900px) rotateX(${-y * 7}deg) rotateY(${x * 7}deg) translateZ(6px)`;
+function DistributionLogo({ channel }) {
+  if (channel.id === 'apple') {
+    return (
+      <span className="dl-logo dl-logo--apple" aria-label={channel.label}>
+        <svg viewBox="0 0 42 42" aria-hidden="true">
+          <rect x="6" y="7" width="30" height="28" rx="7" />
+          <path d="M14 16.5c2.9-1.5 5.3-.9 7 1.2 1.7-2.1 4.1-2.7 7-1.2v12.8c-3-1.5-5.4-.9-7 1.1-1.6-2-4-2.6-7-1.1Z" />
+          <path d="M21 18.1v12.2" />
+        </svg>
+        <strong>Apple Books</strong>
+      </span>
+    );
   }
-  function onLeave() {
-    ref.current.style.transition = 'transform 550ms cubic-bezier(0.2,0,0.2,1)';
-    ref.current.style.transform  = 'perspective(900px) rotateX(0deg) rotateY(0deg) translateZ(0px)';
+
+  if (channel.id === 'google') {
+    return (
+      <span className="dl-logo dl-logo--google" aria-label={channel.label}>
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <path d="M10 7.5 31 20 10 32.5Z" />
+          <path d="m10 7.5 12.7 12.6L10 32.5Z" />
+        </svg>
+        <strong>Google Play</strong>
+      </span>
+    );
   }
+
+  if (channel.id === 'amazon') {
+    return (
+      <span className="dl-logo dl-logo--amazon" aria-label={channel.label}>
+        <strong>amazon</strong>
+        <svg viewBox="0 0 96 16" aria-hidden="true">
+          <path d="M12 7.5c15.5 8.7 45.4 8.7 65.7.2" />
+          <path d="M71.5 5.2 79 7.3l-4.4 5.9" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (channel.id === 'bn') {
+    return (
+      <span className="dl-logo dl-logo--bn" aria-label={channel.label}>
+        <strong>B&amp;N</strong>
+        <span>Barnes &amp; Noble</span>
+      </span>
+    );
+  }
+
   return (
-    <div ref={ref} className={className} style={style} onMouseMove={onMove} onMouseLeave={onLeave}>
-      {children}
-    </div>
+    <span className={`dl-logo dl-logo--${channel.id}`} aria-label={channel.label}>
+      <strong>{channel.label}</strong>
+    </span>
   );
 }
+
 const TICKER_WORDS = ['publishing.', 'finding.', 'reading.'];
 
 function HeroTicker() {
@@ -96,25 +136,57 @@ function HeroTicker() {
   );
 }
 
-const BRAND_QUOTES = [
-  'Every book deserves a clean file, a real cover, and a chance to be found.',
-  "Self-publishing isn't a compromise — it's a different kind of craft.",
-  'The best tools get out of the way and let the writing lead.',
-  'An indie author with the right files can reach any reader, anywhere.',
+const FALLBACK_QUOTES = [
+  {
+    quote: 'Every book deserves a clean file, a real cover, and a chance to be found.',
+    author: 'Indie Converters',
+    role: 'Publishing principle',
+  },
+  {
+    quote: "Self-publishing isn't a compromise. It is a different kind of craft.",
+    author: 'Indie Converters',
+    role: 'For authors',
+  },
+  {
+    quote: 'The best publishing tools get out of the way and let the writing lead.',
+    author: 'Indie Converters',
+    role: 'Product note',
+  },
+  {
+    quote: 'An indie author with the right files can reach any reader, anywhere.',
+    author: 'Indie Converters',
+    role: 'Distribution belief',
+  },
 ];
 
-function QuoteRotator() {
+function QuoteRotator({ quotes = FALLBACK_QUOTES }) {
+  const quoteItems = (quotes?.length ? quotes : FALLBACK_QUOTES)
+    .map(item => typeof item === 'string'
+      ? { quote: item, author: 'Indie Converters', role: '' }
+      : {
+          quote: item.quote || item.text || '',
+          author: item.author || 'Indie Converters',
+          role: item.role || '',
+        })
+    .filter(item => item.quote);
+
   const [idx, setIdx]       = useState(0);
   const [fading, setFading] = useState(false);
   const nextIdxRef = useRef(0);
+  const activeQuote = quoteItems[idx] || quoteItems[0];
 
   useEffect(() => {
+    if (idx >= quoteItems.length) setIdx(0);
+  }, [idx, quoteItems.length]);
+
+  useEffect(() => {
+    if (quoteItems.length < 2) return undefined;
     const id = setInterval(() => {
-      nextIdxRef.current = (idx + 1) % BRAND_QUOTES.length;
+      nextIdxRef.current = (idx + 1) % quoteItems.length;
       setFading(true);
     }, 5000);
     return () => clearInterval(id);
-  }, [idx]);
+  }, [idx, quoteItems.length]);
 
   function onTransitionEnd(e) {
     if (e.propertyName !== 'opacity' || !fading) return;
@@ -128,24 +200,33 @@ function QuoteRotator() {
     setFading(true);
   }
 
+  if (!activeQuote) return null;
+
   return (
-    <div className="quote-rotator">
+    <div className="quote-card">
+      <span className="quote-mark" aria-hidden="true">
+        <span />
+        <span />
+      </span>
       <blockquote
-        className={`quote-text${fading ? ' quote-text--fade' : ''}`}
+        className={`quote-text${fading ? ' quote-text--fade' : ''}${activeQuote.quote.length > 92 ? ' quote-text--long' : ''}`}
         onTransitionEnd={onTransitionEnd}
       >
-        “{BRAND_QUOTES[idx]}”
+        {activeQuote.quote}
       </blockquote>
-      <div className="quote-dots">
-        {BRAND_QUOTES.map((_, i) => (
-          <button
-            key={i}
-            type="button"
-            className={`quote-dot${i === idx ? ' quote-dot--active' : ''}`}
-            aria-label={`Show quote ${i + 1}`}
-            onClick={() => goTo(i)}
-          />
-        ))}
+      <div className="quote-footer-row">
+        <div className="quote-controls" aria-label="Quote navigation">
+          {quoteItems.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              className={`quote-dot${i === idx ? ' quote-dot--active' : ''}`}
+              aria-label={`Show quote ${i + 1}`}
+              onClick={() => goTo(i)}
+            />
+          ))}
+        </div>
+        <strong className="quote-brand">indieconverters</strong>
       </div>
     </div>
   );
@@ -206,23 +287,45 @@ const MOODS = [
   { verb: 'Grieve', label: 'Quiet loss & resilience',desc: 'Stories that sit with grief honestly, without rushing toward resolution.',                   accent: '#94A3B8', accentDark: '#334155' },
 ];
 
+const VALUE_PROPS = [
+  {
+    title: 'You own', highlight: 'your book', icon: 'unlock', photo: indieWriterImg, photoFloat: true,
+    body: 'No exclusivity clauses, no rights grabs. Publish through Indie Converters and keep full ownership of your manuscript, your cover, and your sales — sell it anywhere, anytime, on your own terms.',
+    bg: 'var(--clay)', fg: '#F0EBFF',
+  },
+  {
+    title: 'Tools for', highlight: 'every stage', icon: 'convert',
+    stack: [
+      { src: lightsFutureCoverImg, title: 'The Lights in the Future', author: 'Tom Holink' },
+      { src: loveSunsetCoverImg,   title: 'Love Before Sunset',       author: 'Jessica Pane' },
+      { src: wishHorseCoverImg,    title: 'If I Had a Wish and a Horse', author: 'Jun Lint' },
+    ],
+    body: 'From a raw manuscript to a finished, reader-ready file. Our upload wizard formats interiors, builds distribution-ready EPUBs, calculates print covers, and estimates royalties — before you publish a single copy.',
+    bg: 'var(--ochre)', fg: '#1B1330',
+  },
+  {
+    title: 'Explore and', highlight: 'support indie voices', icon: 'read', light: true, photo: indieReaderImg,
+    body: 'Readers browse by mood, genre, and story — not just bestseller lists. Free samples, curated collections, and honest author profiles make it easy to find indie work worth supporting.',
+    bg: 'var(--parchment)', fg: 'var(--clay)',
+  },
+];
+
 export default function Landing() {
   const navigate = useNavigate();
   const [allBooks, setAllBooks] = useState([]);
+  const [quotes, setQuotes] = useState(FALLBACK_QUOTES);
   const [moodActive,      setMoodActive]      = useState(null);
   const [moodDisplayed,   setMoodDisplayed]   = useState(null);
   const [moodHeadingFade, setMoodHeadingFade] = useState(false);
-  const [blogs,           setBlogs]           = useState([]);
+  const [moodScrollState, setMoodScrollState] = useState({ atStart: true, atEnd: false });
   const heroRef = useRef(null);
-  const jtRef   = useRef(null);
   const moodTimerRef = useRef(null);
+  const moodTrackRef = useRef(null);
 
   useEffect(() => {
-    fetchBooks({ limit: 48 }).then(({ books }) => setAllBooks(books));
-    fetchBlogs({ limit: 5 }).then(results => {
-      const feature = results.find(b => b.content_id === 'BN-001');
-      const rest    = results.filter(b => b.content_id !== 'BN-001').slice(0, 3);
-      setBlogs(feature ? [feature, ...rest] : results.slice(0, 4));
+    fetchBooks({ limit: 48, indieOnly: true }).then(({ books }) => setAllBooks(books));
+    fetchLandingQuotes().then(fetchedQuotes => {
+      if (fetchedQuotes.length) setQuotes(fetchedQuotes);
     });
   }, []);
 
@@ -235,6 +338,30 @@ export default function Landing() {
     }, 180);
     return () => clearTimeout(moodTimerRef.current);
   }, [moodActive]);
+
+  function updateMoodScrollState() {
+    const track = moodTrackRef.current;
+    if (!track) return;
+    setMoodScrollState({
+      atStart: track.scrollLeft <= 2,
+      atEnd: track.scrollLeft + track.clientWidth >= track.scrollWidth - 2,
+    });
+  }
+
+  function scrollMoods(direction) {
+    const track = moodTrackRef.current;
+    if (!track) return;
+    const card = track.querySelector('.mood-lcard');
+    const gap = parseFloat(getComputedStyle(track).columnGap || getComputedStyle(track).gap) || 10;
+    const step = (card?.getBoundingClientRect().width || track.clientWidth / 3) + gap;
+    track.scrollBy({ left: direction * step, behavior: 'smooth' });
+  }
+
+  useEffect(() => {
+    updateMoodScrollState();
+    window.addEventListener('resize', updateMoodScrollState);
+    return () => window.removeEventListener('resize', updateMoodScrollState);
+  }, []);
 
   useEffect(() => {
     const hero = heroRef.current;
@@ -328,27 +455,34 @@ export default function Landing() {
     };
   }, []);
 
-
-
-  useEffect(() => {
-    if (!jtRef.current) return;
-    const cards = jtRef.current.querySelectorAll('.jcard');
-    const obs = new IntersectionObserver(
-      entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('jcard--visible'); }),
-      { threshold: 0.12, rootMargin: '-20px 0px' }
-    );
-    cards.forEach(c => obs.observe(c));
-    return () => obs.disconnect();
-  }, [blogs]);
-
-  function scrollJt(dir) {
-    const el = jtRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' });
-  }
-
   const withCovers = allBooks.filter(b => b.coverUrl);
   const featured = withCovers.slice(0, 5);
+
+  function handlePortraitTilt(e) {
+    if (e.pointerType === 'touch') return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+
+    e.currentTarget.style.setProperty('--vp-rotate-x', `${(-y * 10).toFixed(2)}deg`);
+    e.currentTarget.style.setProperty('--vp-rotate-y', `${(x * 12).toFixed(2)}deg`);
+    e.currentTarget.style.setProperty('--vp-lift', '-8px');
+  }
+
+  function resetPortraitTilt(e) {
+    e.currentTarget.style.removeProperty('--vp-rotate-x');
+    e.currentTarget.style.removeProperty('--vp-rotate-y');
+    e.currentTarget.style.removeProperty('--vp-lift');
+  }
+
+  function scrollToValueProps(e) {
+    e.preventDefault();
+    const el = document.getElementById('why-indie-converters');
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY - 84;
+    window.scrollTo({ top, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
 
   return (
     <div className="landing">
@@ -411,6 +545,55 @@ export default function Landing() {
             </Link>
           </div>
         </div>
+
+        <a
+          href="#why-indie-converters"
+          className="hero-scroll-cue"
+          aria-label="Scroll to why Indie Converters"
+          onClick={scrollToValueProps}
+        >
+          <span className="hero-scroll-cue-chevron" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+              <path d="M5 9l7 7 7-7" />
+            </svg>
+          </span>
+        </a>
+      </section>
+
+      <DashboardPreviewCta />
+
+      {/* ── Distribution channels ── */}
+      <section className="distribution-strip" aria-labelledby="distribution-heading">
+        <div className="container distribution-inner">
+          <div className="distribution-copy">
+            <h2 id="distribution-heading">Sell your book where readers already are</h2>
+            <p>Retailers, libraries, and regional ebookstores authors already trust.</p>
+          </div>
+          <div className="distribution-marquee" aria-label="Distribution channels">
+            {DISTRIBUTION_ROWS.map((channels, rowIndex) => (
+              <div
+                key={`distribution-row-${rowIndex}`}
+                className={`distribution-marquee-row distribution-marquee-row--${rowIndex + 1}`}
+              >
+                <div className="distribution-marquee-track">
+                  {[0, 1].map(copyIndex => (
+                    <div
+                      key={`distribution-set-${rowIndex}-${copyIndex}`}
+                      className="distribution-marquee-set"
+                      aria-hidden={copyIndex === 1 ? true : undefined}
+                    >
+                      {channels.map(channel => (
+                        <div key={`${channel.id}-${copyIndex}`} className="distribution-logo-cell">
+                          <DistributionLogo channel={channel} />
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* ── Featured Books ── */}
@@ -443,31 +626,58 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Value props ── */}
-      <section className="section value-props">
-        <div className="container">
-          <div className="section-header">
-            <div className="eyebrow">Why Indie Converters</div>
-            <h2>Built for writers &amp; readers with the mood</h2>
-          </div>
-          <div className="props-grid">
-            {[
-              { title: 'You own your book', icon: 'unlock', body: 'Sell anywhere, keep control, and let readers discover your work here.' },
-              { title: 'Sell your way', icon: 'link', body: 'Use your own sales channels, keep your margins, and build direct relationships with your readers.' },
-              { title: 'Tools for every stage', icon: 'convert', body: 'Write, edit, convert, and export your book in formats ready for readers.' },
-              { title: 'Explore and support', icon: 'read', body: 'Discover indie books, read free samples, and support authors whose work moves you.' },
-            ].map(p => (
-              <div key={p.title} className="prop-card">
-                <span className="prop-icon">
-                  <ValuePropIcon type={p.icon} />
-                </span>
-                <h3>{p.title}</h3>
-                <p>{p.body}</p>
+      {/* ── Value stories ── */}
+      <div className="value-stories" id="why-indie-converters">
+        {VALUE_PROPS.map((p, i) => (
+          <section
+            key={p.title}
+            className={`value-story value-story--${i + 1}${i % 2 === 1 ? ' value-story--reverse' : ''}${p.light ? ' value-story--light' : ''}`}
+          >
+            <div className="container value-story-inner">
+              <div className="value-story-panel">
+                <div className="value-story-copy">
+                  <h2>{p.title} <span>{p.highlight}</span></h2>
+                  <p>{p.body}</p>
+                </div>
+
+                <div className="value-story-stage">
+                  {p.stack ? (
+                    <div className="vp-media vp-media--stack">
+                      {p.stack.map((book, idx) => (
+                        <div className={`vp-stack-item vp-stack-item--${idx + 1}`} key={book.title}>
+                          <BookCover title={book.title} author={book.author} coverUrl={book.src} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : p.photo && p.photoFloat ? (
+                    <div
+                      className="vp-media vp-media--photo"
+                      onPointerMove={handlePortraitTilt}
+                      onPointerLeave={resetPortraitTilt}
+                    >
+                      <img src={p.photo} alt="" className="vp-media-photo" />
+                    </div>
+                  ) : p.photo ? (
+                    <div className="vp-media vp-media--fill">
+                      <img
+                        src={p.photo}
+                        alt=""
+                        className="vp-media-fill-img"
+                        style={p.fillPosition ? { objectPosition: p.fillPosition } : undefined}
+                      />
+                    </div>
+                  ) : (
+                    <div className="vp-media" style={{ background: p.bg, color: p.fg }}>
+                      <span className="vp-media-dots" aria-hidden="true" />
+                      <span className="vp-media-icon"><ValuePropIcon type={p.icon} /></span>
+                    </div>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
+          </section>
+        ))}
+      </div>
 
       {/* ── Mood shelf ── */}
       <section className="section mood-shelf">
@@ -496,125 +706,75 @@ export default function Landing() {
               Surprise me →
             </button>
           </div>
-          <div className="mood-shelf-grid">
-            {MOODS.map(m => (
-              <Link
-                to="/moods"
-                key={m.verb}
-                className={`mood-lcard${m.img ? ' mood-lcard--img' : ''}${moodActive?.verb === m.verb ? ' mood-lcard--active' : ''}`}
-                style={!m.img ? { background: m.accentDark } : undefined}
-                onMouseEnter={() => setMoodActive(m)}
-                onMouseLeave={() => setMoodActive(null)}
-              >
-                {m.img && <img src={m.img} className="mood-lcard-photo" alt="" />}
-                <div className="mood-lcard-overlay" />
-                <div className="mood-lcard-body">
-                  <div className="mood-lcard-top">
-                    <span className="mood-lcard-verb" style={{ color: m.accent }}>{m.verb}</span>
-                    <span className="mood-lcard-label">{m.label}</span>
-                  </div>
-                  <div className="mood-lcard-reveal">
-                    <p className="mood-lcard-desc">{m.desc}</p>
-                    <span className="mood-lcard-cta" style={{ color: m.accent }}>See picks →</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Hire a Freelancer ── */}
-      <section className="ff-section">
-        <div className="container">
-          <div className="ff-header">
-            <h2 className="ff-heading">Need a little hand?</h2>
-            <Link
-              to="/hire/post"
-              className="btn ff-join-btn"
-              onClick={() => trackEvent('Post a Brief Click', { location: 'hire-strip' })}
+          <div className="mood-carousel">
+            <button
+              type="button"
+              className="mood-carousel-arrow mood-carousel-arrow--prev"
+              onClick={() => scrollMoods(-1)}
+              disabled={moodScrollState.atStart}
+              aria-label="Previous moods"
             >
-              Post a Brief →
-            </Link>
-          </div>
-          <div className="ff-divider" />
-          <div className="ff-grid">
-            {FREELANCE_FEATURES.map(({ Icon, desc }) => (
-              <div className="ff-item" key={desc}>
-                <div className="ff-icon"><Icon /></div>
-                <p className="ff-desc">{desc}</p>
-              </div>
-            ))}
-          </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M15 6l-6 6 6 6"/></svg>
+            </button>
 
-          <div className="hire-svc-grid">
-            {HIRE_SERVICES.map(s => (
-              <Link
-                key={s.slug}
-                to={`/hire/browse?service=${s.slug}`}
-                className="hire-svc-card"
-                onClick={() => trackEvent('Hire Service Card Click', { service: s.slug })}
-              >
-                <span className="hire-svc-title">{s.label}</span>
-                <div className="hire-svc-img" style={{ backgroundImage: `url(${s.img})` }} />
-              </Link>
-            ))}
-          </div>
-
-          <Link
-            to="/hire/browse"
-            className="hire-browse-all"
-            onClick={() => trackEvent('Browse All Freelancers Click', { location: 'hire-strip' })}
-          >
-            Browse all freelancers →
-          </Link>
-        </div>
-      </section>
-
-      {/* ── Journal teaser ── */}
-      {blogs.length > 0 && (
-        <section className="section journal-teaser">
-          <div className="container">
-            <div className="jt-header">
-              <div>
-                <div className="eyebrow">From the Blog</div>
-                <h2 className="jt-heading">Your story matters.</h2>
-              </div>
-              <div className="jt-header-actions">
-                <Link to="/blog" className="jt-see-all">Read the blog →</Link>
-                <div className="jt-arrows">
-                  <button type="button" className="jt-arrow" aria-label="Scroll left" onClick={() => scrollJt(-1)}>‹</button>
-                  <button type="button" className="jt-arrow" aria-label="Scroll right" onClick={() => scrollJt(1)}>›</button>
-                </div>
-              </div>
-            </div>
-            <div className="jt-track" ref={jtRef}>
-              {blogs.map(b => (
-                <Link to={`/blog/${b.slug}`} key={b.slug} className="jt-card-link" title={b.title} aria-label={b.title}>
-                  <TiltCard className="jcard jt-card">
-                    <div
-                      className="jt-card-bg"
-                      style={
-                        b.hero_image_url
-                          ? { backgroundImage: `url(${b.hero_image_url})` }
-                          : { background: FEATURE_FALLBACK_BG }
-                      }
-                    />
-                    <div className="jt-card-overlay" />
-                    <span className="jt-card-tag">{pillarLabel(b.pillar)}</span>
-                  </TiltCard>
+            <div className="mood-carousel-track" ref={moodTrackRef} onScroll={updateMoodScrollState}>
+              {MOODS.map(m => (
+                <Link
+                  to="/moods"
+                  key={m.verb}
+                  className={`mood-lcard${m.img ? ' mood-lcard--img' : ''}${moodActive?.verb === m.verb ? ' mood-lcard--active' : ''}`}
+                  style={!m.img ? { background: m.accentDark } : undefined}
+                  onMouseEnter={() => setMoodActive(m)}
+                  onMouseLeave={() => setMoodActive(null)}
+                >
+                  {m.img && <img src={m.img} className="mood-lcard-photo" alt="" />}
+                  <div className="mood-lcard-overlay" />
+                  <div className="mood-lcard-body">
+                    <div className="mood-lcard-top">
+                      <span className="mood-lcard-verb" style={{ color: m.accent }}>{m.verb}</span>
+                      <span className="mood-lcard-label">{m.label}</span>
+                    </div>
+                    <div className="mood-lcard-reveal">
+                      <p className="mood-lcard-desc">{m.desc}</p>
+                      <span className="mood-lcard-cta" style={{ color: m.accent }}>See picks →</span>
+                    </div>
+                  </div>
                 </Link>
               ))}
             </div>
+
+            <button
+              type="button"
+              className="mood-carousel-arrow mood-carousel-arrow--next"
+              onClick={() => scrollMoods(1)}
+              disabled={moodScrollState.atEnd}
+              aria-label="Next moods"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* ── Quote ── */}
       <section className="section quote-section">
         <div className="container quote-container">
-          <div className="eyebrow quote-eyebrow">In Our Words</div>
-          <QuoteRotator />
+          <QuoteRotator quotes={quotes} />
+        </div>
+      </section>
+
+      {/* ── Bottom CTA ── */}
+      <section className="landing-cta">
+        <div className="container landing-cta-inner">
+          <span className="landing-cta-kicker">Ready to get started?</span>
+          <h2 className="landing-cta-heading">Create your free account</h2>
+          <Link
+            to="/signup"
+            className="btn landing-cta-btn"
+            onClick={() => trackEvent('Create Account Click', { location: 'landing-bottom-cta' })}
+          >
+            Create a free account
+          </Link>
         </div>
       </section>
     </div>
