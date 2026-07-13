@@ -341,15 +341,42 @@ export async function fetchBook(slug) {
     .select(`
       id, slug, title, subtitle, description, cover_url, rating, formats, keywords,
       pub_year, page_count, trim_size, isbn_13, language, publisher_name,
+      book_type,
       books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
       books_genres ( genres ( slug, label ) ),
-      book_retailer_links ( url, price, currency, source, retailers ( slug, label ) )
+      book_retailer_links ( url, price, currency, source, retailers ( slug, label ) ),
+      published_books ( list_price )
     `)
     .eq('slug', slug)
     .eq('is_published', true)
     .single();
   if (error) return null;
   return normaliseBook(data);
+}
+
+// Shop = books sold directly through Indie Converters (book_type =
+// 'published', real checkout via "Get now") plus independently published
+// books from the wider catalogue (indie_status books, which link out to a
+// retailer via "Get it" — same set the "Indie Books" browse filter uses).
+export async function fetchShopBooks({ limit = 48, offset = 0 } = {}) {
+  const { data, error, count } = await supabase
+    .from('books')
+    .select(`
+      id, slug, title, description, cover_url, rating, formats, keywords,
+      pub_year, page_count, trim_size, isbn_13, language, publisher_name,
+      book_type, indie_status,
+      books_authors ( position, authors ( id, slug, display_name, short_bio ) ),
+      books_genres ( genres ( slug, label ) ),
+      book_retailer_links ( url, price, currency, source, retailers ( slug, label ) ),
+      published_books ( list_price )
+    `, { count: 'exact' })
+    .eq('is_published', true)
+    .or('book_type.eq.published,indie_status.in.(small_press,self_published,likely_indie)')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) return { books: [], total: 0 };
+  return { books: (data || []).map(normaliseBook), total: count || 0 };
 }
 
 export async function fetchAuthor(slug) {
@@ -501,6 +528,10 @@ function normaliseBook(b) {
   const googleBooksLink = buyLinks.find(l => l.slug === 'google-books')?.url || null;
   const googleVolumeId = extractGoogleVolumeId(googleBooksLink);
 
+  const publishedBooksRow = Array.isArray(b.published_books) ? b.published_books[0] : b.published_books;
+  const isDirectSale = b.book_type === 'published' && publishedBooksRow != null;
+  const directSalePrice = isDirectSale ? Number(publishedBooksRow.list_price) : null;
+
   // Collect all authors for co-author display
   const allAuthors = (b.books_authors || [])
     .sort((a, z) => (a.position ?? 1) - (z.position ?? 1))
@@ -538,6 +569,8 @@ function normaliseBook(b) {
     buyLinks,
     googleBooksLink,
     googleVolumeId,
+    isDirectSale,
+    directSalePrice,
   };
 }
 
@@ -545,6 +578,107 @@ const COVER_CYCLE = ['cover-clay', 'cover-ink', 'cover-ochre', 'cover-clay-dark'
 function pickCoverColor(slug) {
   const hash = Array.from(slug || '').reduce((a, c) => a + c.charCodeAt(0), 0);
   return COVER_CYCLE[hash % COVER_CYCLE.length];
+}
+
+/* ── Cart & checkout (direct-sale books only) ─────────────────── */
+async function getOrCreateCart(userId) {
+  const { data: existing, error: findErr } = await supabase
+    .from('carts').select('id').eq('user_id', userId).maybeSingle();
+  if (findErr) throw findErr;
+  if (existing) return existing.id;
+
+  const { data: created, error: createErr } = await supabase
+    .from('carts').insert({ user_id: userId }).select('id').single();
+  if (createErr) throw createErr;
+  return created.id;
+}
+
+export async function fetchCart(userId) {
+  const cartId = await getOrCreateCart(userId);
+  const { data, error } = await supabase
+    .from('cart_items')
+    .select('id, item_id, title, price, image_url, quantity')
+    .eq('cart_id', cartId)
+    .eq('item_type', 'book')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+
+  const items = data || [];
+  const subtotal = items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+  return { cartId, items, subtotal };
+}
+
+export async function addToCart(userId, book, quantity = 1) {
+  const cartId = await getOrCreateCart(userId);
+
+  const { data: existing, error: findErr } = await supabase
+    .from('cart_items').select('id, quantity')
+    .eq('cart_id', cartId).eq('item_type', 'book').eq('item_id', book.dbId)
+    .maybeSingle();
+  if (findErr) throw findErr;
+
+  if (existing) {
+    const { error } = await supabase
+      .from('cart_items').update({ quantity: existing.quantity + quantity }).eq('id', existing.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('cart_items').insert({
+      cart_id: cartId, item_type: 'book', item_id: book.dbId,
+      title: book.title, price: book.directSalePrice, image_url: book.coverUrl,
+      quantity,
+    });
+    if (error) throw error;
+  }
+}
+
+export async function updateCartItemQuantity(itemId, quantity) {
+  if (quantity < 1) return removeFromCart(itemId);
+  const { error } = await supabase.from('cart_items').update({ quantity }).eq('id', itemId);
+  if (error) throw error;
+}
+
+export async function removeFromCart(itemId) {
+  const { error } = await supabase.from('cart_items').delete().eq('id', itemId);
+  if (error) throw error;
+}
+
+// Creates a pending order from the given cart items, then immediately
+// simulates a successful payment (no real payment provider is wired in
+// yet — see the note in 20260712120000_orders_and_checkout_schema.sql).
+// Returns the new order id. Clears the cart on success.
+export async function checkoutCart(userId, cartId, items) {
+  const subtotal = items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+
+  const { data: order, error: orderErr } = await supabase
+    .from('orders')
+    .insert({ user_id: userId, status: 'pending', currency: 'USD', subtotal, total: subtotal })
+    .select('id').single();
+  if (orderErr) throw orderErr;
+
+  const orderItems = items.map(item => ({
+    order_id: order.id, book_id: item.item_id, title: item.title,
+    unit_price: item.price, quantity: item.quantity,
+  }));
+  const { error: itemsErr } = await supabase.from('order_items').insert(orderItems);
+  if (itemsErr) throw itemsErr;
+
+  const { error: payErr } = await supabase
+    .from('orders').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', order.id);
+  if (payErr) throw payErr;
+
+  await supabase.from('cart_items').delete().eq('cart_id', cartId);
+
+  return order.id;
+}
+
+export async function fetchOrder(orderId) {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, status, currency, subtotal, total, paid_at, created_at, order_items ( id, title, unit_price, quantity )')
+    .eq('id', orderId)
+    .single();
+  if (error) return null;
+  return data;
 }
 
 /* ── Blogs ── */

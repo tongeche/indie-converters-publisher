@@ -5,12 +5,6 @@ import loveSunsetCoverImg   from '../assets/dammie-covers/dammie-02.png';
 import wishHorseCoverImg    from '../assets/dammie-covers/dammie-03.png';
 import './DashboardPreviewCta.css';
 
-const DEMO_EARNINGS = [
-  { title: 'The Lights in the Future',    sales: 142, amount: 348.60, cover: lightsFutureCoverImg },
-  { title: 'Love Before Sunset',          sales: 58,  amount: 97.40,  cover: loveSunsetCoverImg },
-  { title: 'If I Had a Wish and a Horse', sales: 21,  amount: 40.20,  cover: wishHorseCoverImg },
-];
-
 function IconDollar() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -19,55 +13,31 @@ function IconDollar() {
     </svg>
   );
 }
-function IconCalendar() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4.5" width="18" height="16" rx="2" />
-      <path d="M3 9.5h18" />
-      <path d="M8 2.5v4M16 2.5v4" />
-    </svg>
-  );
-}
-function IconLayers() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2 2 7l10 5 10-5-10-5Z" />
-      <path d="m2 17 10 5 10-5" />
-      <path d="m2 12 10 5 10-5" />
-    </svg>
-  );
-}
-function IconTrend() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 17 9 11l4 4 8-8" />
-      <path d="M15 7h6v6" />
-    </svg>
-  );
-}
-function IconBook() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
-    </svg>
-  );
-}
 
-const STATS = [
-  { icon: IconDollar,   value: '$2,940.18', label: 'All-time earnings', highlight: true },
-  { icon: IconCalendar, value: '$486.20',   label: 'This month' },
-  { icon: IconLayers,   value: '221',       label: 'Total sales' },
-  { icon: IconTrend,    value: '$2.86',     label: 'Avg. per sale' },
-  { icon: IconBook,     value: '5',         label: 'Books earning' },
+const CHART_BARS = [18, 24, 31, 42, 54, 70, 47, 38, 51, 34, 29, 63, 56, 74, 91, 68, 100, 58, 45, 33, 39, 36, 43, 67, 78, 86, 72, 52, 40, 48];
+
+const DEMO_BOOKS = [
+  { title: 'The Lights in the Future',    detail: '142 reader visits', amount: '$348.60', cover: lightsFutureCoverImg },
+  { title: 'Love Before Sunset',          detail: '58 retailer clicks', amount: '$97.40',  cover: loveSunsetCoverImg },
+  { title: 'If I Had a Wish and a Horse', detail: '21 catalogue saves', amount: '$40.20',  cover: wishHorseCoverImg },
 ];
+
+function IconExpand() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3H3v5" />
+      <path d="M16 3h5v5" />
+      <path d="M3 16v5h5" />
+      <path d="M21 16v5h-5" />
+    </svg>
+  );
+}
 
 export default function DashboardPreviewCta() {
   return (
     <section className="dashboard-cta" aria-labelledby="dashboard-cta-heading">
       <div className="container dashboard-cta-card">
         <div className="dashboard-cta-copy">
-          <span className="eyebrow">Author dashboard</span>
           <h2 id="dashboard-cta-heading">See your books making money</h2>
           <p>
             Every sale, on every retailer, rolled up into one place. Track royalties per book,
@@ -82,38 +52,87 @@ export default function DashboardPreviewCta() {
           </Link>
         </div>
 
-        <div className="dpc-window" aria-hidden="true">
-          <div className="dpc-window-bar">
-            <span className="dpc-window-dot dpc-window-dot--red" />
-            <span className="dpc-window-dot dpc-window-dot--amber" />
-            <span className="dpc-window-dot dpc-window-dot--green" />
-            <span className="dpc-window-url">indieconverters.com/dashboard/royalties</span>
-          </div>
+        <div className="dpc-showcase" aria-hidden="true">
+          <article className="dpc-product-card dpc-product-card--checkout">
+            <button className="dpc-expand-btn" type="button" tabIndex="-1" aria-label="Expand">
+              <IconExpand />
+            </button>
+            <h3>Watch each book find its readers</h3>
 
-          <div className="dpc-window-body">
-            <div className="dpc-stats-row">
-              {STATS.map(stat => (
-                <div className={`dpc-stat-card${stat.highlight ? ' dpc-stat-card--highlight' : ''}`} key={stat.label}>
-                  <span className="dpc-stat-icon"><stat.icon /></span>
-                  <strong>{stat.value}</strong>
-                  <span>{stat.label}</span>
+            <div className="dpc-checkout-scene">
+              <div className="dpc-checkout-panel">
+                <div className="dpc-mini-browser">
+                  <span />
+                  <span />
+                  <span />
                 </div>
-              ))}
-            </div>
-
-            <div className="dpc-book-list">
-              {DEMO_EARNINGS.map(book => (
-                <div className="dpc-book-row" key={book.title}>
-                  <img className="dpc-row-cover" src={book.cover} alt="" />
-                  <div className="dpc-row-info">
-                    <span className="dpc-row-title">{book.title}</span>
-                    <span className="dpc-row-sales">{book.sales} sales this month</span>
+                <div className="dpc-checkout-grid">
+                  <div>
+                    <label>Book activity</label>
+                    <div className="dpc-input">The Lights in the Future</div>
+                    <div className="dpc-pay-buttons">
+                      <span>Catalogue</span>
+                      <span>Retailers</span>
+                    </div>
+                    <div className="dpc-distributor-logos" aria-label="Distributor links">
+                      <span className="dpc-logo dpc-logo--amazon">amazon</span>
+                      <span className="dpc-logo dpc-logo--kobo">Kobo</span>
+                      <span className="dpc-logo dpc-logo--overdrive">OverDrive</span>
+                    </div>
                   </div>
-                  <span className="dpc-row-amount">${book.amount.toFixed(2)}</span>
+                  <div className="dpc-order-summary">
+                    <strong>Books gaining traction</strong>
+                    <div className="dpc-book-stack">
+                      {DEMO_BOOKS.map(book => (
+                        <div className="dpc-book-item" key={book.title}>
+                          <img src={book.cover} alt="" />
+                          <div>
+                            <p>{book.title}</p>
+                            <span>{book.detail}</span>
+                          </div>
+                          <b>{book.amount}</b>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
+          </article>
+
+          <article className="dpc-product-card dpc-product-card--billing">
+            <button className="dpc-expand-btn dpc-expand-btn--solid" type="button" tabIndex="-1" aria-label="Expand">
+              <IconExpand />
+            </button>
+            <h3>Understand your catalogue earnings</h3>
+
+            <div className="dpc-billing-stage">
+              <div className="dpc-plan-card">
+                <div className="dpc-plan-head">
+                  <span className="dpc-plan-icon"><IconDollar /></span>
+                  <div>
+                    <strong>Author dashboard</strong>
+                    <span>Updated from your reports</span>
+                  </div>
+                </div>
+                <p>Royalty snapshot</p>
+                <b>Sales, saves, and retailer clicks in one calm view</b>
+                <div className="dpc-meter">
+                  <span />
+                </div>
+              </div>
+
+              <div className="dpc-chart-card">
+                <span>Reader interest in the last 30 days</span>
+                <strong>$1,939.64</strong>
+                <div className="dpc-bars">
+                  {CHART_BARS.map((height, index) => (
+                    <i key={index} style={{ '--bar-height': `${height}%` }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </article>
         </div>
       </div>
     </section>

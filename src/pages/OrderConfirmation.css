@@ -1,0 +1,121 @@
+/* ════════════════════════════════════
+   Order confirmation
+   ════════════════════════════════════ */
+
+.order-page {
+  min-height: 100vh;
+  background: var(--parchment);
+  padding-top: 100px;
+  padding-bottom: 80px;
+}
+
+.order-loading {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+.order-notfound {
+  text-align: center;
+  padding: 60px 24px;
+}
+.order-notfound h1 {
+  font-family: 'Fraunces', serif;
+  color: var(--ink);
+  margin-bottom: 20px;
+}
+
+.order-card {
+  max-width: 560px;
+  text-align: center;
+  background: #fff;
+  border: 1px solid rgba(68, 28, 178, 0.08);
+  border-radius: 16px;
+  padding: 48px 40px;
+  box-shadow: 0 24px 60px rgba(27, 19, 48, 0.08);
+}
+
+.order-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(52, 199, 89, 0.12);
+  color: #1a7a35;
+  font-size: 1.6rem;
+  margin-bottom: 20px;
+}
+
+.order-card h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.7rem;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+
+.order-sub {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  margin-bottom: 28px;
+}
+.order-sub strong { color: var(--ink); }
+
+.order-items {
+  text-align: left;
+  border-top: 1px solid rgba(68, 28, 178, 0.1);
+  border-bottom: 1px solid rgba(68, 28, 178, 0.1);
+  padding: 16px 0;
+  margin-bottom: 16px;
+}
+
+.order-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.order-item-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.order-item-qty {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+}
+.order-item-price {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+.order-total-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.order-total-row strong {
+  font-family: 'Fraunces', serif;
+  font-size: 1.4rem;
+  color: var(--clay);
+}
+
+.order-note {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-bottom: 24px;
+}
+
+.order-continue-btn {
+  border-radius: 999px;
+  padding: 14px 32px;
+}

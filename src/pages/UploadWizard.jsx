@@ -993,7 +993,7 @@ export default function UploadWizard() {
     coverFile: null, coverPreview: '', coverDataUrl: '', coverColor: 'cover-clay',
     coverMode: 'template', coverTemplate: 'editorial', coverPalette: 'violet',
     coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '', coverArtPlacement: 'window',
-    price: '', isFree: false, buyUrl: '', buyPlatform: 'own',
+    price: '', isFree: false, buyUrl: '', buyPlatform: 'own', sellDirect: false,
     retailerLinks: [],
     releasePlan: 'schedule', releaseDate: dateInputFromNow(DEFAULT_RELEASE_LEAD_DAYS),
     bookStyle: 'indie-romance',
@@ -1816,6 +1816,7 @@ export default function UploadWizard() {
         slug: bookSlug, title: fd.title, subtitle: fd.subtitle || null,
         description: fd.description, cover_url: coverUrl, formats: fd.formats,
         keywords: fd.keywords, is_published: isPublishingNow, author_user_id: user.id,
+        author_id: author.id, book_type: fd.sellDirect ? 'published' : 'affiliate',
         manuscript_path: fd.manuscriptPath,
         pub_date: resolvedPubDate,
         pub_year: resolvedPubYear,
@@ -1832,6 +1833,14 @@ export default function UploadWizard() {
       if (be) throw new Error(`Book: ${be.message}`);
 
       await supabase.from('books_authors').insert({ book_id: book.id, author_id: author.id, position: 1 });
+
+      if (fd.sellDirect) {
+        const { error: pbe } = await supabase.from('published_books').insert({
+          book_id: book.id,
+          list_price: fd.isFree ? 0 : (fd.price ? parseFloat(fd.price) : 0),
+        });
+        if (pbe) throw new Error(`Direct-sale settings: ${pbe.message}`);
+      }
 
       const genres2 = [fd.genre, fd.genreSecondary !== fd.genre ? fd.genreSecondary : ''].filter(Boolean);
       for (const gs of genres2) {
@@ -2996,6 +3005,17 @@ export default function UploadWizard() {
                   </div>
                 </div>
 
+                <label className={`wz-toggle-card ${fd.sellDirect ? 'on' : ''}`}>
+                  <div>
+                    <strong>Sell directly through Indie Converters</strong>
+                    <span>
+                      We track your sales and payouts instead of just linking out to a retailer.
+                      Leave this off to keep linking out to wherever you already sell.
+                    </span>
+                  </div>
+                  <div className={`wz-toggle ${fd.sellDirect ? 'on' : ''}`} onClick={() => up('sellDirect', !fd.sellDirect)} role="switch" />
+                </label>
+
                 <label className={`wz-toggle-card ${fd.isFree ? 'on' : ''}`}>
                   <div><strong>This book is free</strong><span>Readers can download or access it without paying.</span></div>
                   <div className={`wz-toggle ${fd.isFree ? 'on' : ''}`} onClick={() => up('isFree', !fd.isFree)} role="switch" />
@@ -3619,6 +3639,7 @@ export default function UploadWizard() {
                   ]},
                   { title: 'Pricing', to: 6, rows: [
                     ['Price',     fd.isFree ? 'Free' : (fd.price ? `$${fd.price}` : '—')],
+                    ['Selling via', fd.sellDirect ? 'Direct through Indie Converters' : 'Retailer links'],
                     ['Best royalty estimate', royaltyEstimate.best ? `${formatRoyaltyMoney(royaltyEstimate.best.authorEarnings)} via ${royaltyEstimate.best.channel}` : '—'],
                     ...(fd.retailerLinks.filter(l => l.url?.trim()).length > 0
                       ? fd.retailerLinks.filter(l => l.url?.trim()).map(l => [

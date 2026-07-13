@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
 import SEO from '../components/SEO';
 import DashboardPreviewCta from '../components/DashboardPreviewCta';
+import PublishingProcessShowcase from '../components/PublishingProcessShowcase';
+import HowItWorksShowcase from '../components/HowItWorksShowcase';
 import { trackEvent } from '../lib/analytics';
 import { fetchBooks, fetchLandingQuotes } from '../lib/api';
 import mainHeroImg    from '../assets/main-hero.webp';
@@ -46,10 +48,7 @@ const DISTRIBUTION_CHANNELS = [
   { id: 'gardner', label: 'Gardner' },
 ];
 
-const DISTRIBUTION_ROWS = [
-  DISTRIBUTION_CHANNELS.filter((_, index) => index % 2 === 0),
-  DISTRIBUTION_CHANNELS.filter((_, index) => index % 2 === 1),
-];
+const DISTRIBUTION_ROWS = [DISTRIBUTION_CHANNELS];
 
 function DistributionLogo({ channel }) {
   if (channel.id === 'apple') {
@@ -232,50 +231,6 @@ function QuoteRotator({ quotes = FALLBACK_QUOTES }) {
   );
 }
 
-function ValuePropIcon({ type }) {
-  if (type === 'link') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7.25 16.75 16.75 7.25" />
-        <path d="M9 7.25h7.75V15" />
-        <path d="M10.25 5.25H6.5a2.25 2.25 0 0 0-2.25 2.25v10a2.25 2.25 0 0 0 2.25 2.25h10a2.25 2.25 0 0 0 2.25-2.25v-3.75" />
-      </svg>
-    );
-  }
-
-  if (type === 'convert') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7 3.75h6.25L17 7.5v12.75H7A2 2 0 0 1 5 18.25V5.75a2 2 0 0 1 2-2Z" />
-        <path d="M13 3.75V7.5h4" />
-        <path d="M8.5 12.25h6" />
-        <path d="m12.75 10 2.25 2.25-2.25 2.25" />
-        <path d="M15.5 16.75h-6" />
-        <path d="m11.75 14.5-2.25 2.25L11.75 19" />
-      </svg>
-    );
-  }
-
-  if (type === 'read') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4.75 5.5h5.5A3.75 3.75 0 0 1 14 9.25v10.25H8.5a3.75 3.75 0 0 0-3.75 3.75V5.5Z" />
-        <path d="M14 9.25a3.75 3.75 0 0 1 3.75-3.75h1.5v17.75a3.75 3.75 0 0 0-3.75-3.75H14" />
-        <path d="M10.25 9.25H7.75" />
-        <path d="m18.25 10.75.55 1.12 1.24.18-.9.88.21 1.24-1.1-.58-1.1.58.21-1.24-.9-.88 1.24-.18.55-1.12Z" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7.5 10.25V8a4.5 4.5 0 0 1 8.6-1.86" />
-      <path d="M6.75 10.25h10.5a2 2 0 0 1 2 2v5.5a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2v-5.5a2 2 0 0 1 2-2Z" />
-      <path d="M12 14.25v2.25" />
-    </svg>
-  );
-}
-
 const MOODS = [
   { verb: 'Ache',   label: 'Dark family tension',    desc: 'Books that pull at the fraying edges of the people closest to us.',                          accent: '#C084FC', img: imgAche   },
   { verb: 'Drift',  label: 'Quiet strange worlds',   desc: 'Stories where the uncanny sits just below the surface of the ordinary.',                     accent: '#67E8F9', img: imgDrift  },
@@ -289,37 +244,120 @@ const MOODS = [
 
 const VALUE_PROPS = [
   {
-    title: 'You own', highlight: 'your book', icon: 'unlock', photo: indieWriterImg, photoFloat: true,
+    title: 'You own', highlight: 'your book', photo: indieWriterImg,
     body: 'No exclusivity clauses, no rights grabs. Publish through Indie Converters and keep full ownership of your manuscript, your cover, and your sales — sell it anywhere, anytime, on your own terms.',
-    bg: 'var(--clay)', fg: '#F0EBFF',
+    cta: 'Read the author promise', to: '/publish#publish-faq',
   },
   {
-    title: 'Tools for', highlight: 'every stage', icon: 'convert',
+    title: 'Tools for', highlight: 'every stage',
     stack: [
       { src: lightsFutureCoverImg, title: 'The Lights in the Future', author: 'Tom Holink' },
       { src: loveSunsetCoverImg,   title: 'Love Before Sunset',       author: 'Jessica Pane' },
       { src: wishHorseCoverImg,    title: 'If I Had a Wish and a Horse', author: 'Jun Lint' },
     ],
     body: 'From a raw manuscript to a finished, reader-ready file. Our upload wizard formats interiors, builds distribution-ready EPUBs, calculates print covers, and estimates royalties — before you publish a single copy.',
-    bg: 'var(--ochre)', fg: '#1B1330',
+    cta: 'Start your upload', to: '/upload',
   },
   {
-    title: 'Explore and', highlight: 'support indie voices', icon: 'read', light: true, photo: indieReaderImg,
+    title: 'Explore and', highlight: 'support indie voices', photo: indieReaderImg,
     body: 'Readers browse by mood, genre, and story — not just bestseller lists. Free samples, curated collections, and honest author profiles make it easy to find indie work worth supporting.',
-    bg: 'var(--parchment)', fg: 'var(--clay)',
+    cta: 'Browse indie books', to: '/browse',
   },
 ];
+
+const VALUE_SECTION_CTAS = [
+  {
+    title: 'Ready to publish on your own terms?',
+    body: 'Start privately, preview every step, and decide when your book is ready for readers.',
+    primary: { label: 'Start an upload', to: '/upload' },
+    secondary: { label: 'Read publishing FAQs', to: '/publish#publish-faq' },
+    cards: [
+      {
+        icon: 'tag',
+        title: 'Know the cost',
+        body: 'Estimate formatting, print specs, and royalties before you commit.',
+        label: 'See publisher tools',
+        to: '/publish',
+      },
+      {
+        icon: 'code',
+        title: 'Prepare every format',
+        body: 'Build clean EPUB and print-ready files without losing control of your book.',
+        label: 'Open the upload wizard',
+        to: '/upload',
+      },
+    ],
+  },
+  {
+    title: 'Ready to find readers?',
+    body: 'Put your book in a place built for browsing, saving, sharing, and independent discovery.',
+    primary: { label: 'Browse indie books', to: '/browse' },
+    secondary: { label: 'Explore moods', to: '/moods' },
+    cards: [
+      {
+        icon: 'heart',
+        title: 'Build reader interest',
+        body: 'Use samples, mood shelves, and book pages that help people decide what to read next.',
+        label: 'Browse collections',
+        to: '/browse',
+      },
+      {
+        icon: 'chart',
+        title: 'Track what works',
+        body: 'Watch visits, saves, retailer clicks, and royalties come together in your dashboard.',
+        label: 'View dashboard',
+        to: '/dashboard',
+      },
+    ],
+  },
+];
+
+function ValueBridgeIcon({ type }) {
+  if (type === 'code') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m8.5 7-4.5 5 4.5 5" />
+        <path d="m15.5 7 4.5 5-4.5 5" />
+        <path d="m13.5 5-3 14" />
+      </svg>
+    );
+  }
+
+  if (type === 'heart') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 20.25s-7.25-4.38-8.75-9.38C2.1 7.02 4.55 4.25 7.8 4.25c1.9 0 3.25 1.03 4.2 2.36.95-1.33 2.3-2.36 4.2-2.36 3.25 0 5.7 2.77 4.55 6.62C19.25 15.87 12 20.25 12 20.25Z" />
+      </svg>
+    );
+  }
+
+  if (type === 'chart') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4.5 19.5h15" />
+        <path d="M6.5 16.5v-4" />
+        <path d="M11.5 16.5v-8" />
+        <path d="M16.5 16.5v-11" />
+        <path d="m14.5 5.5 2-2 2 2" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m20 12.5-7.5 7.5L4 11.5V4h7.5L20 12.5Z" />
+      <path d="M8.5 8.5h.01" />
+    </svg>
+  );
+}
 
 export default function Landing() {
   const navigate = useNavigate();
   const [allBooks, setAllBooks] = useState([]);
   const [quotes, setQuotes] = useState(FALLBACK_QUOTES);
   const [moodActive,      setMoodActive]      = useState(null);
-  const [moodDisplayed,   setMoodDisplayed]   = useState(null);
-  const [moodHeadingFade, setMoodHeadingFade] = useState(false);
   const [moodScrollState, setMoodScrollState] = useState({ atStart: true, atEnd: false });
   const heroRef = useRef(null);
-  const moodTimerRef = useRef(null);
   const moodTrackRef = useRef(null);
 
   useEffect(() => {
@@ -328,16 +366,6 @@ export default function Landing() {
       if (fetchedQuotes.length) setQuotes(fetchedQuotes);
     });
   }, []);
-
-  useEffect(() => {
-    clearTimeout(moodTimerRef.current);
-    setMoodHeadingFade(true);
-    moodTimerRef.current = setTimeout(() => {
-      setMoodDisplayed(moodActive);
-      setMoodHeadingFade(false);
-    }, 180);
-    return () => clearTimeout(moodTimerRef.current);
-  }, [moodActive]);
 
   function updateMoodScrollState() {
     const track = moodTrackRef.current;
@@ -458,24 +486,6 @@ export default function Landing() {
   const withCovers = allBooks.filter(b => b.coverUrl);
   const featured = withCovers.slice(0, 5);
 
-  function handlePortraitTilt(e) {
-    if (e.pointerType === 'touch') return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-
-    e.currentTarget.style.setProperty('--vp-rotate-x', `${(-y * 10).toFixed(2)}deg`);
-    e.currentTarget.style.setProperty('--vp-rotate-y', `${(x * 12).toFixed(2)}deg`);
-    e.currentTarget.style.setProperty('--vp-lift', '-8px');
-  }
-
-  function resetPortraitTilt(e) {
-    e.currentTarget.style.removeProperty('--vp-rotate-x');
-    e.currentTarget.style.removeProperty('--vp-rotate-y');
-    e.currentTarget.style.removeProperty('--vp-lift');
-  }
-
   function scrollToValueProps(e) {
     e.preventDefault();
     const el = document.getElementById('why-indie-converters');
@@ -560,8 +570,6 @@ export default function Landing() {
         </a>
       </section>
 
-      <DashboardPreviewCta />
-
       {/* ── Distribution channels ── */}
       <section className="distribution-strip" aria-labelledby="distribution-heading">
         <div className="container distribution-inner">
@@ -596,6 +604,10 @@ export default function Landing() {
         </div>
       </section>
 
+      <DashboardPreviewCta />
+
+      <PublishingProcessShowcase />
+
       {/* ── Featured Books ── */}
       <section className="section featured">
         <div className="container">
@@ -628,55 +640,88 @@ export default function Landing() {
 
       {/* ── Value stories ── */}
       <div className="value-stories" id="why-indie-converters">
-        {VALUE_PROPS.map((p, i) => (
-          <section
-            key={p.title}
-            className={`value-story value-story--${i + 1}${i % 2 === 1 ? ' value-story--reverse' : ''}${p.light ? ' value-story--light' : ''}`}
-          >
-            <div className="container value-story-inner">
-              <div className="value-story-panel">
-                <div className="value-story-copy">
-                  <h2>{p.title} <span>{p.highlight}</span></h2>
-                  <p>{p.body}</p>
-                </div>
+        {VALUE_PROPS.map((p, i) => {
+          const bridge = VALUE_SECTION_CTAS[i];
 
-                <div className="value-story-stage">
-                  {p.stack ? (
-                    <div className="vp-media vp-media--stack">
-                      {p.stack.map((book, idx) => (
-                        <div className={`vp-stack-item vp-stack-item--${idx + 1}`} key={book.title}>
-                          <BookCover title={book.title} author={book.author} coverUrl={book.src} />
-                        </div>
-                      ))}
-                    </div>
-                  ) : p.photo && p.photoFloat ? (
-                    <div
-                      className="vp-media vp-media--photo"
-                      onPointerMove={handlePortraitTilt}
-                      onPointerLeave={resetPortraitTilt}
-                    >
-                      <img src={p.photo} alt="" className="vp-media-photo" />
-                    </div>
-                  ) : p.photo ? (
-                    <div className="vp-media vp-media--fill">
+          return (
+            <Fragment key={p.title}>
+              <section
+                className={`value-story value-story--${i + 1}${p.stack ? ' value-story--stack-card' : ''}${p.photo ? ' value-story--photo-card' : ''}`}
+              >
+                <div className="value-story-inner">
+                  <div className="value-story-card">
+                    {p.photo && (
                       <img
                         src={p.photo}
                         alt=""
-                        className="vp-media-fill-img"
+                        className="value-story-card-img"
                         style={p.fillPosition ? { objectPosition: p.fillPosition } : undefined}
                       />
+                    )}
+                    {p.stack && (
+                      <div className="value-story-stack" aria-hidden="true">
+                        {p.stack.map((book, idx) => (
+                          <div className={`value-story-stack-item value-story-stack-item--${idx + 1}`} key={book.title}>
+                            <BookCover title={book.title} author={book.author} coverUrl={book.src} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="value-story-card-shade" />
+                    <div className="value-story-card-copy">
+                      <h2>{p.title} <span>{p.highlight}</span></h2>
+                      <p>{p.body}</p>
+                      <Link to={p.to} className="value-story-card-cta">
+                        {p.cta}
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="15" height="15" aria-hidden="true">
+                          <path d="M3 8h10M9 4l4 4-4 4" />
+                        </svg>
+                      </Link>
                     </div>
-                  ) : (
-                    <div className="vp-media" style={{ background: p.bg, color: p.fg }}>
-                      <span className="vp-media-dots" aria-hidden="true" />
-                      <span className="vp-media-icon"><ValuePropIcon type={p.icon} /></span>
-                    </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          </section>
-        ))}
+              </section>
+
+              {bridge && (
+                <section className="value-bridge" aria-label={bridge.title}>
+                  <div className="value-bridge-inner">
+                    <div className="value-bridge-main">
+                      <h2>{bridge.title}</h2>
+                      <p>{bridge.body}</p>
+                      <div className="value-bridge-actions">
+                        <Link to={bridge.primary.to} className="value-bridge-primary">
+                          {bridge.primary.label}
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="15" height="15" aria-hidden="true">
+                            <path d="M3 8h10M9 4l4 4-4 4" />
+                          </svg>
+                        </Link>
+                        <Link to={bridge.secondary.to} className="value-bridge-secondary">
+                          {bridge.secondary.label}
+                        </Link>
+                      </div>
+                    </div>
+
+                    {bridge.cards.map(card => (
+                      <article className="value-bridge-card" key={card.title}>
+                        <span className="value-bridge-icon">
+                          <ValueBridgeIcon type={card.icon} />
+                        </span>
+                        <h3>{card.title}</h3>
+                        <p>{card.body}</p>
+                        <Link to={card.to}>
+                          {card.label}
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+                            <path d="M3 8h10M9 4l4 4-4 4" />
+                          </svg>
+                        </Link>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </Fragment>
+          );
+        })}
       </div>
 
       {/* ── Mood shelf ── */}
@@ -684,27 +729,21 @@ export default function Landing() {
         <div className="container">
           <div className="mood-shelf-hero">
             <div className="mood-shelf-hero-left">
-              <div className="eyebrow" style={{ color: 'var(--ochre)' }}>Book Moods</div>
-              <h2 className={`mood-lheading ${moodHeadingFade ? 'mood-lheading--fade' : ''}`}>
-                {moodDisplayed ? (
-                  <>Books that make you{' '}
-                    <em style={{ color: moodDisplayed.accent }}>{moodDisplayed.verb.toLowerCase()}.</em>
-                  </>
-                ) : (
-                  <>Find your next read<br />by <em>feeling.</em></>
-                )}
-              </h2>
-              <p className="mood-lsub">Pick a feeling. We'll point you to the right shelf.</p>
+              <h2 className="mood-lheading">Find your next read by feeling</h2>
+              <button
+                className="btn mood-surprise-btn"
+                onClick={() => {
+                  const GENRES = ['literary-fiction', 'science-fiction', 'horror', 'thriller', 'nonfiction', 'fiction'];
+                  navigate(`/browse?genre=${GENRES[Math.floor(Math.random() * GENRES.length)]}`);
+                }}
+              >
+                Surprise me →
+              </button>
             </div>
-            <button
-              className="btn mood-surprise-btn"
-              onClick={() => {
-                const GENRES = ['literary-fiction', 'science-fiction', 'horror', 'thriller', 'nonfiction', 'fiction'];
-                navigate(`/browse?genre=${GENRES[Math.floor(Math.random() * GENRES.length)]}`);
-              }}
-            >
-              Surprise me →
-            </button>
+            <div className="mood-shelf-hero-copy">
+              <p className="mood-lsub">Pick a feeling. We'll point you to the right shelf.</p>
+              <p className="mood-lsub">From books that ache quietly to stories that burn, escape, haunt, or make you wonder, browse indie titles by the mood they leave behind.</p>
+            </div>
           </div>
           <div className="mood-carousel">
             <button
@@ -725,21 +764,23 @@ export default function Landing() {
                   className={`mood-lcard${m.img ? ' mood-lcard--img' : ''}${moodActive?.verb === m.verb ? ' mood-lcard--active' : ''}`}
                   style={!m.img ? { background: m.accentDark } : undefined}
                   onMouseEnter={() => setMoodActive(m)}
-                  onMouseLeave={() => setMoodActive(null)}
-                >
-                  {m.img && <img src={m.img} className="mood-lcard-photo" alt="" />}
-                  <div className="mood-lcard-overlay" />
-                  <div className="mood-lcard-body">
-                    <div className="mood-lcard-top">
-                      <span className="mood-lcard-verb" style={{ color: m.accent }}>{m.verb}</span>
-                      <span className="mood-lcard-label">{m.label}</span>
-                    </div>
-                    <div className="mood-lcard-reveal">
-                      <p className="mood-lcard-desc">{m.desc}</p>
-                      <span className="mood-lcard-cta" style={{ color: m.accent }}>See picks →</span>
-                    </div>
-                  </div>
-                </Link>
+	                  onMouseLeave={() => setMoodActive(null)}
+	                >
+	                  {m.img ? (
+                      <img src={m.img} className="mood-lcard-photo" alt="" />
+                    ) : (
+                      <span className="mood-lcard-photo mood-lcard-photo--fallback" style={{ background: m.accentDark }}>
+                        <span>{m.verb}</span>
+                      </span>
+                    )}
+	                  <div className="mood-lcard-body">
+	                    <div className="mood-lcard-top">
+	                      <span className="mood-lcard-verb" style={{ color: m.accent }}>{m.verb}</span>
+	                      <span className="mood-lcard-label">{m.label}</span>
+	                    </div>
+	                    <p className="mood-lcard-desc">{m.desc}</p>
+	                  </div>
+	                </Link>
               ))}
             </div>
 
@@ -755,6 +796,8 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      <HowItWorksShowcase />
 
       {/* ── Quote ── */}
       <section className="section quote-section">

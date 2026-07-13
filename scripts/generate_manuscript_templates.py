@@ -227,6 +227,8 @@ CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+  <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>"""
@@ -239,7 +241,11 @@ RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </Relationships>"""
 
 DOCUMENT_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>"""
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+  <Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+</Relationships>"""
 
 STYLES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -293,22 +299,6 @@ STYLES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>
       <w:sz w:val="20"/>
       <w:color w:val="5F557E"/>
-    </w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="ChapterTitle">
-    <w:name w:val="Chapter Title"/>
-    <w:basedOn w:val="Normal"/>
-    <w:qFormat/>
-    <w:pPr>
-      <w:pStyle w:val="Heading1"/>
-      <w:jc w:val="center"/>
-      <w:spacing w:before="520" w:after="380"/>
-    </w:pPr>
-    <w:rPr>
-      <w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/>
-      <w:b/>
-      <w:sz w:val="32"/>
-      <w:color w:val="1B1330"/>
     </w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading1">
@@ -446,11 +436,114 @@ APP_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </Properties>"""
 
 
+PARAGRAPH_FORMATS = {
+    "Normal": {
+        "p": '<w:spacing w:after="160" w:line="340" w:lineRule="auto"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:sz w:val="23"/><w:color w:val="1B1330"/>',
+    },
+    "Title": {
+        "p": '<w:jc w:val="center"/><w:spacing w:before="360" w:after="120"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:b/><w:sz w:val="42"/><w:color w:val="1B1330"/>',
+    },
+    "Subtitle": {
+        "p": '<w:jc w:val="center"/><w:spacing w:after="420"/>',
+        "r": '<w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/><w:color w:val="5F557E"/>',
+    },
+    "Heading1": {
+        "p": '<w:jc w:val="center"/><w:spacing w:before="520" w:after="380"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:b/><w:sz w:val="32"/><w:color w:val="1B1330"/>',
+    },
+    "Instruction": {
+        "p": '<w:spacing w:before="160" w:after="260" w:line="300" w:lineRule="auto"/><w:ind w:left="360" w:right="360"/>',
+        "r": '<w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:sz w:val="19"/><w:color w:val="5F557E"/>',
+    },
+    "FirstParagraph": {
+        "p": '<w:spacing w:after="160" w:line="340" w:lineRule="auto"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:sz w:val="23"/><w:color w:val="1B1330"/>',
+    },
+    "BodyText": {
+        "p": '<w:spacing w:after="160" w:line="340" w:lineRule="auto"/><w:ind w:firstLine="260"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:sz w:val="23"/><w:color w:val="1B1330"/>',
+    },
+    "Subheading": {
+        "p": '<w:spacing w:before="240" w:after="120"/>',
+        "r": '<w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:smallCaps/><w:sz w:val="19"/><w:color w:val="441CB2"/>',
+    },
+    "SceneBreak": {
+        "p": '<w:jc w:val="center"/><w:spacing w:before="220" w:after="220"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:sz w:val="20"/><w:color w:val="441CB2"/>',
+    },
+    "BlockQuote": {
+        "p": '<w:spacing w:before="220" w:after="220" w:line="320" w:lineRule="auto"/><w:ind w:left="540" w:right="540"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:i/><w:sz w:val="22"/><w:color w:val="3F375A"/>',
+    },
+    "CenteredText": {
+        "p": '<w:jc w:val="center"/><w:spacing w:after="180"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:sz w:val="23"/><w:color w:val="1B1330"/>',
+    },
+    "PoemTitle": {
+        "p": '<w:spacing w:before="240" w:after="200"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:b/><w:sz w:val="26"/><w:color w:val="1B1330"/>',
+    },
+    "PoemLine": {
+        "p": '<w:spacing w:after="60" w:line="300" w:lineRule="auto"/>',
+        "r": '<w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:sz w:val="23"/><w:color w:val="1B1330"/>',
+    },
+}
+
+
 def paragraph(text: str, style_id: str = "BodyText") -> str:
     style = "" if style_id == "Normal" else f'<w:pStyle w:val="{style_id}"/>'
+    formatting = PARAGRAPH_FORMATS.get(style_id, PARAGRAPH_FORMATS["BodyText"])
+    p_pr = f"<w:pPr>{style}{formatting['p']}</w:pPr>"
     if not text:
-        return f"<w:p><w:pPr>{style}</w:pPr></w:p>"
-    return f"<w:p><w:pPr>{style}</w:pPr><w:r><w:t>{escape(text)}</w:t></w:r></w:p>"
+        return f"<w:p>{p_pr}</w:p>"
+    return f"<w:p>{p_pr}<w:r><w:rPr>{formatting['r']}</w:rPr><w:t>{escape(text)}</w:t></w:r></w:p>"
+
+
+def header_xml(template: dict[str, object]) -> str:
+    title = escape(str(template["title"]))
+    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p>
+    <w:pPr>
+      <w:jc w:val="center"/>
+      <w:pBdr>
+        <w:bottom w:val="single" w:sz="4" w:space="1" w:color="D9D1F3"/>
+      </w:pBdr>
+    </w:pPr>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>
+        <w:sz w:val="16"/>
+        <w:color w:val="8E83A8"/>
+      </w:rPr>
+      <w:t>Indie Converters sample template - {title}</w:t>
+    </w:r>
+  </w:p>
+</w:hdr>"""
+
+
+def footer_xml() -> str:
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p>
+    <w:pPr>
+      <w:jc w:val="center"/>
+      <w:pBdr>
+        <w:top w:val="single" w:sz="4" w:space="1" w:color="D9D1F3"/>
+      </w:pBdr>
+    </w:pPr>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>
+        <w:sz w:val="16"/>
+        <w:color w:val="8E83A8"/>
+      </w:rPr>
+      <w:t>Starter template only - replace or remove this footer before publishing.</w:t>
+    </w:r>
+  </w:p>
+</w:ftr>"""
 
 
 def document_xml(template: dict[str, object]) -> str:
@@ -462,10 +555,12 @@ def document_xml(template: dict[str, object]) -> str:
         body.append(paragraph(str(text), str(style_id)))
 
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
     {''.join(body)}
     <w:sectPr>
+      <w:headerReference w:type="default" r:id="rIdHeader"/>
+      <w:footerReference w:type="default" r:id="rIdFooter"/>
       <w:pgSz w:w="{twips(float(page["width"]))}" w:h="{twips(float(page["height"]))}"/>
       <w:pgMar w:top="{twips(float(page["top"]))}" w:right="{twips(float(page["right"]))}" w:bottom="{twips(float(page["bottom"]))}" w:left="{twips(float(page["left"]))}" w:header="720" w:footer="720" w:gutter="{twips(float(page["gutter"]))}"/>
     </w:sectPr>
@@ -494,6 +589,8 @@ def write_docx(template: dict[str, object]) -> None:
         docx.writestr("word/_rels/document.xml.rels", DOCUMENT_RELS)
         docx.writestr("word/document.xml", document_xml(template))
         docx.writestr("word/styles.xml", STYLES)
+        docx.writestr("word/header1.xml", header_xml(template))
+        docx.writestr("word/footer1.xml", footer_xml())
         docx.writestr("docProps/core.xml", core_xml(template))
         docx.writestr("docProps/app.xml", APP_XML)
     print(f"Generated {target}")

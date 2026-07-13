@@ -42,6 +42,7 @@ function bookStatus(book) {
 function IconBooks()     { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>; }
 function IconCoin()      { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2m0 8v2M9.17 9.17A4 4 0 0 1 16 12a4 4 0 0 1-6.83 2.83"/></svg>; }
 function IconChart()     { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6"  y1="20" x2="6"  y2="14"/></svg>; }
+function IconReceipt()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2Z"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/></svg>; }
 function IconBriefcase() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>; }
 function IconUpload()    { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
 function IconUser()      { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
@@ -167,6 +168,12 @@ export default function Dashboard() {
             <IconCoin /> Buy Links
           </button>
           <button
+            className={`dash-nav-link ${view === 'sales' ? 'dash-nav-link--active' : ''}`}
+            onClick={() => switchView('sales')}
+          >
+            <IconReceipt /> Sales
+          </button>
+          <button
             className={`dash-nav-link ${view === 'reports' ? 'dash-nav-link--active' : ''}`}
             onClick={() => switchView('reports')}
           >
@@ -221,6 +228,7 @@ export default function Dashboard() {
         <div className="dash-content">
           {view === 'books'    && <BooksView    books={books} loading={loading} selected={selected} openBook={openBook} saveCounts={saveCounts} />}
           {view === 'buylinks' && <BuyLinksView books={books} />}
+          {view === 'sales'    && <SalesView />}
           {view === 'reports'  && <ReportsView  books={books} saveCounts={saveCounts} />}
           {view === 'briefs'   && <BriefsView   user={user} />}
           {view === 'profile'  && <ProfileView  user={user} />}
@@ -441,6 +449,78 @@ function ReportsView({ books, saveCounts }) {
                     <td>—</td>
                   </tr>
                 ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+/* ── Sales view ──────────────────────────────────────────────── */
+function formatMoney(amount, currency = 'USD') {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(Number(amount) || 0);
+}
+
+function SalesView() {
+  const [sales, setSales]     = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from('sales')
+      .select('id, sale_amount, distributor_cut_percentage, net_amount_to_author, sale_date, books(title, slug), distributors(name)')
+      .order('sale_date', { ascending: false })
+      .then(({ data }) => {
+        setSales(data ?? []);
+        setLoading(false);
+      });
+  }, []);
+
+  const totalGross = sales.reduce((s, r) => s + Number(r.sale_amount || 0), 0);
+  const totalNet    = sales.reduce((s, r) => s + Number(r.net_amount_to_author || 0), 0);
+
+  return (
+    <>
+      <header className="dash-header">
+        <div>
+          <h1 className="dash-title">Sales</h1>
+          <p className="dash-subtitle">Individual sales for books you sell directly through Indie Converters.</p>
+        </div>
+      </header>
+
+      <div className="dash-stats-row">
+        <StatCard value={sales.length}            label="Total sales" />
+        <StatCard value={formatMoney(totalGross)}  label="Gross revenue" />
+        <StatCard value={formatMoney(totalNet)}    label="Net to you" highlight />
+      </div>
+
+      <div className="dash-section-title">Recent sales</div>
+      <div className="dash-table-wrap">
+        <table className="dash-table">
+          <thead>
+            <tr>
+              <th>Book</th>
+              <th>Distributor</th>
+              <th>Sale amount</th>
+              <th>Net to author</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading
+              ? <tr><td colSpan={5} className="dash-table-empty">Loading…</td></tr>
+              : sales.length === 0
+                ? <tr><td colSpan={5} className="dash-table-empty">No sales yet. Sales appear here once a book set to sell directly through Indie Converters starts selling.</td></tr>
+                : sales.map(s => (
+                    <tr key={s.id}>
+                      <td className="dash-table-book">{s.books?.title || '—'}</td>
+                      <td>{s.distributors?.name || '—'}</td>
+                      <td>{formatMoney(s.sale_amount)}</td>
+                      <td>{formatMoney(s.net_amount_to_author)}</td>
+                      <td>{new Date(s.sale_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                    </tr>
+                  ))
             }
           </tbody>
         </table>

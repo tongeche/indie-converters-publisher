@@ -29,6 +29,10 @@ import HelpCategory from './pages/HelpCategory';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import SavedBooks from './pages/SavedBooks';
+import Shop from './pages/Shop';
+import Cart from './pages/Cart';
+import Checkout from './pages/Checkout';
+import OrderConfirmation from './pages/OrderConfirmation';
 import ComingSoon from './pages/ComingSoon';
 import CheckVerify from './pages/CheckVerify';
 import PrintCoverCalculator from './pages/PrintCoverCalculator';
@@ -42,6 +46,7 @@ export default function App() {
         <Routes>
           <Route path="/"           element={<Landing />}      />
           <Route path="/browse"     element={<Browse />}       />
+          <Route path="/shop"       element={<Shop />}         />
           <Route path="/book/:id"   element={<BookDetail />}   />
           <Route path="/author/:id" element={<AuthorProfile />} />
           <Route path="/moods"      element={<Moods />}        />
@@ -64,6 +69,15 @@ export default function App() {
           } />
           <Route path="/saved" element={
             <ProtectedRoute><SavedBooks /></ProtectedRoute>
+          } />
+          <Route path="/cart" element={
+            <ProtectedRoute><Cart /></ProtectedRoute>
+          } />
+          <Route path="/checkout" element={
+            <ProtectedRoute><Checkout /></ProtectedRoute>
+          } />
+          <Route path="/order/:id" element={
+            <ProtectedRoute><OrderConfirmation /></ProtectedRoute>
           } />
           <Route path="/check"               element={<CheckVerify />} />
           <Route path="/tools/print-cover-calculator" element={<PrintCoverCalculator />} />

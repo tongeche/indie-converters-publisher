@@ -1,16 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import BookCover from '../components/BookCover';
 import SEO from '../components/SEO';
-import { fetchBook, fetchRelatedBooks, toggleSave, checkSaved } from '../lib/api';
+import { fetchBook, fetchRelatedBooks, toggleSave, checkSaved, addToCart } from '../lib/api';
+import { convertToDisplayCurrency, formatDisplayMoney, isConvertedCurrency } from '../lib/currency';
 import './BookDetail.css';
-
-const CURRENCY_SYMBOLS = { USD: '$', GBP: '£', EUR: '€' };
-function currencySymbol(code) {
-  return CURRENCY_SYMBOLS[code] || `${code} `;
-}
 
 function Stars({ rating }) {
   const full  = Math.floor(rating);
@@ -41,10 +37,22 @@ function extractColor(imgEl) {
 }
 
 function heroGradient(c) {
-  if (!c) return { background: 'linear-gradient(175deg,#3a3a3c 0%,#1c1c1e 100%)' };
+  if (!c) return { '--bd-hero-top': '#3a3a3c', '--bd-hero-bottom': '#1c1c1e' };
   const t = `rgb(${Math.round(c.r*.38)},${Math.round(c.g*.38)},${Math.round(c.b*.38)})`;
   const b = `rgb(${Math.round(c.r*.18)},${Math.round(c.g*.18)},${Math.round(c.b*.18)})`;
-  return { background: `linear-gradient(175deg, ${t} 0%, ${b} 100%)` };
+  return { '--bd-hero-top': t, '--bd-hero-bottom': b };
+}
+
+function coverImageStyle(url, color) {
+  const style = heroGradient(color);
+  if (url) style['--bd-cover-bg'] = `url("${url.replace(/"/g, '\\"')}")`;
+  return style;
+}
+
+function retailerDisplayName(link, book) {
+  if (link.slug === 'publisher-site' && book.publisher) return book.publisher;
+  if (/publisher/i.test(link.label) && book.publisher) return book.publisher;
+  return link.label;
 }
 
 export default function BookDetail() {
@@ -58,15 +66,15 @@ export default function BookDetail() {
   const [savePending, setSavePending] = useState(false);
   const [heroColor,   setHeroColor]  = useState(null);
   const [coverCorsBlocked, setCoverCorsBlocked] = useState(false);
-  const [buyOpen,     setBuyOpen]    = useState(false);
+  const [buyModalOpen, setBuyModalOpen] = useState(false);
   const [copied,      setCopied]     = useState(false);
-  const actionsRef = useRef(null);
+  const [buyingNow,   setBuyingNow]  = useState(false);
 
   useEffect(() => {
     setLoading(true);
     setHeroColor(null);
     setCoverCorsBlocked(false);
-    setBuyOpen(false);
+    setBuyModalOpen(false);
     fetchBook(id).then(b => {
       setBook(b);
       if (b) {
@@ -80,18 +88,6 @@ export default function BookDetail() {
     if (!book?.dbId || !user) { setSaved(false); return; }
     checkSaved(book.dbId, user.id).then(setSaved);
   }, [book?.dbId, user?.id]);
-
-  /* Close the buy dropdown on outside click */
-  useEffect(() => {
-    if (!buyOpen) return;
-    function handler(e) {
-      if (actionsRef.current && !actionsRef.current.contains(e.target)) {
-        setBuyOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [buyOpen]);
 
   const handleCoverLoad = useCallback((e) => {
     const color = extractColor(e.currentTarget);
@@ -148,6 +144,20 @@ export default function BookDetail() {
     }
   }
 
+  async function handleBuyNow() {
+    if (!user) { navigate('/login', { state: { from: `/book/${book.id}` } }); return; }
+    if (buyingNow) return;
+    setBuyingNow(true);
+    try {
+      await addToCart(user.id, book, 1);
+      navigate('/checkout');
+    } catch (err) {
+      console.error('[handleBuyNow] failed:', err?.message ?? err);
+    } finally {
+      setBuyingNow(false);
+    }
+  }
+
   async function handleShare() {
     const shareData = {
       title: book.title,
@@ -189,6 +199,15 @@ export default function BookDetail() {
   const buyLinks = book.buyLinks?.length > 0
     ? book.buyLinks
     : book.buyLink ? [{ label: 'Get book', url: book.buyLink }] : [];
+  const pricedBuyLinks = buyLinks
+    .map(link => ({
+      link,
+      displayPrice: link.price != null ? convertToDisplayCurrency(link.price, link.currency) : null,
+    }))
+    .filter(item => item.displayPrice != null);
+  const bestDisplayPrice = pricedBuyLinks.length
+    ? Math.min(...pricedBuyLinks.map(item => item.displayPrice))
+    : null;
 
   return (
     <div className="bd-page">
@@ -199,7 +218,7 @@ export default function BookDetail() {
       />
 
       {/* ═══════════════ HERO ═══════════════ */}
-      <section className="bd-hero" style={heroGradient(heroColor)}>
+      <section className="bd-hero" style={coverImageStyle(book.coverUrl, heroColor)}>
 
         {/* Mobile-only top-right action buttons: Save and Share */}
         <div className="bd-hero-actions">
@@ -294,52 +313,25 @@ export default function BookDetail() {
               </div>
 
               {/* Actions row */}
-              <div className="bd-actions" ref={actionsRef}>
+              <div className="bd-actions">
                 <div className="bd-actions-row">
-                  {/* Get it button */}
-                  {buyLinks.length > 0 && (
+                  {/* Direct-sale books: single "Get now" pill, no dropdown needed */}
+                  {book.isDirectSale ? (
+                    <button
+                      className="bd-buy-btn bd-buy-btn--primary"
+                      onClick={handleBuyNow}
+                      disabled={buyingNow}
+                    >
+                      {buyingNow ? 'Adding…' : `Get now · ${formatDisplayMoney(book.directSalePrice, 'USD')}`}
+                    </button>
+                  ) : buyLinks.length > 0 && (
                     <div className="bd-buy-wrap">
                       <button
-                        className={`bd-buy-btn${buyOpen ? ' active' : ''}`}
-                        onClick={() => setBuyOpen(o => !o)}
+                        className="bd-buy-btn"
+                        onClick={() => setBuyModalOpen(true)}
                       >
-                        {(() => {
-                          const shown = book.lowestPrice ?? book.price;
-                          const symbol = book.lowestPrice != null ? currencySymbol(book.lowestCurrency) : '$';
-                          return shown ? `Get it · from ${symbol}${Number(shown).toFixed(2)}` : 'Get it';
-                        })()}
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12" className={`bd-chevron${buyOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
+                        Get it
                       </button>
-
-                      {buyOpen && (
-                        <div className="bd-buy-dropdown">
-                          {buyLinks.map(link => (
-                            <a
-                              key={link.slug ?? link.label}
-                              href={link.url}
-                              className="bd-buy-option"
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={() => setBuyOpen(false)}
-                            >
-                              <span className="bd-buy-option-label">
-                                {link.label}
-                                {book.lowestPrice != null && link.price === book.lowestPrice && (
-                                  <span className="bd-buy-best-badge">Best price</span>
-                                )}
-                                {link.verified && (
-                                  <span className="bd-buy-verified-badge" title="Automatically cross-checked against Google Books">Verified</span>
-                                )}
-                              </span>
-                              <span className="bd-buy-option-right">
-                                {link.price != null && <span className="bd-buy-option-price">{currencySymbol(link.currency)}{Number(link.price).toFixed(2)}</span>}
-                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
-                              </span>
-                            </a>
-                          ))}
-                          <p className="bd-buy-disclaimer">Prices are entered by the author or our team unless marked Verified, and may not be current — confirm on the retailer's site before buying.</p>
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -401,6 +393,58 @@ export default function BookDetail() {
             </div>
           </div>
         </section>
+      )}
+
+      {buyModalOpen && (
+        <div className="bd-retailer-modal-backdrop" role="presentation" onClick={() => setBuyModalOpen(false)}>
+          <section
+            className="bd-retailer-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bd-retailer-title"
+            onClick={event => event.stopPropagation()}
+          >
+            <button type="button" className="bd-retailer-close" onClick={() => setBuyModalOpen(false)} aria-label="Close retailer options">×</button>
+            <div className="bd-retailer-head">
+              <div>
+                <span className="bd-retailer-eyebrow">Retailer options</span>
+                <h2 id="bd-retailer-title">Select store</h2>
+              </div>
+            </div>
+
+            <div className="bd-retailer-list">
+              {buyLinks.map(link => (
+                <a
+                  key={`${link.slug ?? link.label}-${link.url}`}
+                  href={link.url}
+                  className="bd-retailer-option"
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setBuyModalOpen(false)}
+                >
+                  <span className="bd-retailer-label">
+                    <strong>{retailerDisplayName(link, book)}</strong>
+                    <span>
+                      {link.price != null && bestDisplayPrice != null && convertToDisplayCurrency(link.price, link.currency) === bestDisplayPrice && (
+                        <em className="bd-buy-best-badge">Best price</em>
+                      )}
+                      {link.verified && (
+                        <em className="bd-buy-verified-badge" title="Automatically cross-checked against Google Books">Verified</em>
+                      )}
+                    </span>
+                  </span>
+                  <span className="bd-retailer-right">
+                    {link.price != null ? <b>{formatDisplayMoney(link.price, link.currency)}</b> : <small>No price listed</small>}
+                  </span>
+                </a>
+              ))}
+            </div>
+
+            <p className="bd-retailer-disclaimer">
+              Prices are shown in EUR{buyLinks.some(link => link.price != null && isConvertedCurrency(link.currency)) ? ' as converted estimates' : ''}. Final prices, taxes, delivery, and availability are confirmed on the retailer site.
+            </p>
+          </section>
+        </div>
       )}
     </div>
   );
