@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import mammoth from 'mammoth/mammoth.browser';
+import DOMPurify from 'dompurify';
 import { validateManuscript, analyseHtml, analyseTxt } from '../lib/manuscriptValidator';
 import { calculateRoyaltyEstimates, formatRoyaltyMoney } from '../lib/royaltyCalculator';
 import { calculatePrintCover, formatInches as formatCoverInches, TRIM_SIZE_OPTIONS } from '../lib/printCoverCalculator';
@@ -1583,8 +1584,12 @@ export default function UploadWizard() {
     const ext = file.name.split('.').pop().toLowerCase();
     try {
       if (ext === 'docx') {
-        const { value: html }    = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+        const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
         const { value: rawText } = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        // mammoth carries hyperlink hrefs through verbatim from the docx's OOXML
+        // relationships, which can contain javascript: URIs — sanitize before
+        // this ever reaches dangerouslySetInnerHTML.
+        const html = DOMPurify.sanitize(rawHtml);
         setMsHtml(html); setMsStructure(analyseHtml(html, file.size, { wordsPerPage: selectedTrim.wordsPerPage })); setMsText(rawText);
       } else if (ext === 'txt' || ext === 'rtf') {
         const text = await file.text();
