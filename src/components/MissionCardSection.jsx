@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import booksSaleViewImg from '../assets/books-sale-view.png';
+import booksSaleViewImg from '../assets/books-sale-view.webp';
 import './MissionCardSection.css';
 
 export default function MissionCardSection() {

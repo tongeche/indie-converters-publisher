@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import allAuthorsImg from '../assets/all-authors.png';
+import allAuthorsImg from '../assets/all-authors.webp';
 import './OurStorySection.css';
 
 export default function OurStorySection() {

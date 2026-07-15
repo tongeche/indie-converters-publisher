@@ -1,4 +1,4 @@
-import bookAnalysisImg from '../assets/book-analysis.png';
+import bookAnalysisImg from '../assets/book-analysis.webp';
 import './PublishingAnalyticsSection.css';
 
 export default function PublishingAnalyticsSection() {

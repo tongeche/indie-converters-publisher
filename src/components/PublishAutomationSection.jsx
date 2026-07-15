@@ -1,8 +1,8 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowsRotate, faBullseye, faChartLine } from '@fortawesome/free-solid-svg-icons';
-import feature1Dashboard from '../assets/feature1-dashboard.png';
-import feature2Invoice from '../assets/feature2-invoice.png';
-import featurePublishNow from '../assets/feauture-publishnow.png';
+import feature1Dashboard from '../assets/feature1-dashboard.webp';
+import feature2Invoice from '../assets/feature2-invoice.webp';
+import featurePublishNow from '../assets/feauture-publishnow.webp';
 import './PublishAutomationSection.css';
 
 const CARDS = [
