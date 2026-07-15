@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
+import { AssistantHandoffForm, AssistantHandoffSuccess } from '../components/AssistantHandoffForm';
 import SEO from '../components/SEO';
 import OurStorySection from '../components/OurStorySection';
 import MissionCardSection from '../components/MissionCardSection';
@@ -14,6 +15,7 @@ import {
   fetchLandingQuotes,
   getAssistantVisitorId,
   saveAssistantMessage,
+  submitAssistantHandoff,
 } from '../lib/api';
 import {
   ASSISTANT_PROMPTS,
@@ -374,6 +376,23 @@ const MOODS = [
 ];
 
 const ASSISTANT_CONSENT_STORAGE_KEY = 'ic_assistant_consent';
+const HUMAN_SUPPORT_INTENT = /(?:talk|speak|connect|chat).{0,24}(?:human|person|someone|agent|team)|\b(?:human support|real person|support agent|team member)\b/i;
+const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
+
+function assistantContactName(user) {
+  return user?.user_metadata?.full_name || user?.user_metadata?.name || '';
+}
+
+function createAssistantHandoffForm(user) {
+  return {
+    contactName: assistantContactName(user),
+    contactEmail: user?.email || '',
+    topic: '',
+    message: '',
+    company: '',
+    formStartedAt: Date.now(),
+  };
+}
 
 function readAssistantConsent() {
   if (typeof window === 'undefined') return { messages: false, storage: false };
@@ -401,11 +420,17 @@ export default function Landing() {
   const [moodScrollState, setMoodScrollState] = useState({ atStart: true, atEnd: false });
   const [featuredScrollState, setFeaturedScrollState] = useState({ atStart: true, atEnd: false });
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantStarted, setAssistantStarted] = useState(false);
+  const [assistantView, setAssistantView] = useState('welcome');
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantPending, setAssistantPending] = useState(false);
   const [assistantConsent, setAssistantConsent] = useState(() => readAssistantConsent());
   const [assistantMessages, setAssistantMessages] = useState(() => [createWelcomeMessage(user)]);
+  const [handoffForm, setHandoffForm] = useState(() => createAssistantHandoffForm(user));
+  const [handoffErrors, setHandoffErrors] = useState({});
+  const [handoffPending, setHandoffPending] = useState(false);
+  const [handoffSubmissionError, setHandoffSubmissionError] = useState('');
+  const [handoffReturnView, setHandoffReturnView] = useState('welcome');
+  const [handoffReceiptEmail, setHandoffReceiptEmail] = useState('');
   const moodTrackRef = useRef(null);
   const featuredTrackRef = useRef(null);
   const assistantMessagesRef = useRef(null);
@@ -463,6 +488,11 @@ export default function Landing() {
       if (messages.length !== 1 || messages[0]?.id !== 'welcome') return messages;
       return [createWelcomeMessage(user)];
     });
+    setHandoffForm(form => ({
+      ...form,
+      contactName: form.contactName || assistantContactName(user),
+      contactEmail: form.contactEmail || user?.email || '',
+    }));
   }, [user]);
 
   const withCovers = allBooks.filter(b => b.coverUrl);
@@ -490,7 +520,12 @@ export default function Landing() {
     updateFeaturedScrollState();
     window.addEventListener('resize', updateFeaturedScrollState);
     return () => window.removeEventListener('resize', updateFeaturedScrollState);
-  }, [featured]);
+    // `featured` is a new array reference every render (derived inline from
+    // allBooks) -- depending on it directly reruns this effect every render,
+    // which calls setState and forces another render, forever. Depend on the
+    // length instead: a stable primitive that only changes once the books
+    // actually finish loading.
+  }, [featured.length]);
 
   function scrollToValueProps(e) {
     e.preventDefault();
@@ -559,25 +594,89 @@ export default function Landing() {
     }
   }
 
+  function acceptAssistantConsent() {
+    if (assistantConsent.acceptedAt || typeof window === 'undefined') return assistantConsent;
+    const acceptedAt = new Date().toISOString();
+    const nextConsent = { messages: true, storage: true, acceptedAt };
+    window.localStorage.setItem(ASSISTANT_CONSENT_STORAGE_KEY, JSON.stringify(nextConsent));
+    setAssistantConsent(nextConsent);
+    return nextConsent;
+  }
+
   function startAssistant(prompt) {
-    let activeConsent = assistantConsent;
-    if (!assistantConsent.acceptedAt && typeof window !== 'undefined') {
-      const acceptedAt = new Date().toISOString();
-      const nextConsent = { messages: true, storage: true, acceptedAt };
-      window.localStorage.setItem(ASSISTANT_CONSENT_STORAGE_KEY, JSON.stringify(nextConsent));
-      setAssistantConsent(nextConsent);
-      activeConsent = nextConsent;
-    }
-    setAssistantStarted(true);
+    const activeConsent = acceptAssistantConsent();
+    setAssistantView('chat');
     ensureAssistantSession(activeConsent).catch(error => {
       console.error('[assistant] failed to create session:', error?.message || error);
     });
     if (prompt) sendAssistantMessage(prompt);
   }
 
+  function openHumanHandoff(returnView = assistantView) {
+    setHandoffReturnView(returnView === 'chat' ? 'chat' : 'welcome');
+    setHandoffErrors({});
+    setHandoffSubmissionError('');
+    setHandoffForm(form => ({ ...form, formStartedAt: Date.now() }));
+    setAssistantView('handoff');
+    trackEvent('Human Support Opened', { location: returnView === 'chat' ? 'assistant-chat' : 'assistant-welcome' });
+  }
+
+  function updateHandoffField(field, value) {
+    setHandoffForm(form => ({ ...form, [field]: value }));
+    setHandoffErrors(errors => ({ ...errors, [field]: '' }));
+    setHandoffSubmissionError('');
+  }
+
+  async function handleHandoffSubmit(event) {
+    event.preventDefault();
+    const contactName = handoffForm.contactName.trim();
+    const contactEmail = handoffForm.contactEmail.trim().toLowerCase();
+    const message = handoffForm.message.trim();
+    const nextErrors = {};
+    if (contactName.length > 100) nextErrors.contactName = 'Use 100 characters or fewer.';
+    if (!EMAIL_PATTERN.test(contactEmail)) nextErrors.contactEmail = 'Enter a valid email.';
+    if (!handoffForm.topic) nextErrors.topic = 'Choose a topic.';
+    if (message.length < 10) nextErrors.message = 'Add a little more detail.';
+    if (Object.keys(nextErrors).length) {
+      setHandoffErrors(nextErrors);
+      return;
+    }
+
+    setHandoffPending(true);
+    setHandoffSubmissionError('');
+    const activeConsent = acceptAssistantConsent();
+    try {
+      const sessionId = await ensureAssistantSession(activeConsent);
+      await submitAssistantHandoff({
+        sessionId,
+        visitorId: user ? null : getAssistantVisitorId(),
+        contactName: contactName || null,
+        contactEmail,
+        topic: handoffForm.topic,
+        message,
+        pageUrl: typeof window !== 'undefined' ? window.location.href : '/',
+        consentAcceptedAt: activeConsent.acceptedAt,
+        company: handoffForm.company,
+        formStartedAt: handoffForm.formStartedAt,
+      });
+      setHandoffReceiptEmail(contactEmail);
+      setAssistantView('handoff-success');
+      trackEvent('Human Support Request Submitted', { topic: handoffForm.topic });
+    } catch (error) {
+      setHandoffSubmissionError(error?.message || 'We could not send your request. Please try again.');
+    } finally {
+      setHandoffPending(false);
+    }
+  }
+
   function sendAssistantMessage(text) {
     const trimmed = text.trim();
     if (!trimmed || assistantPending) return;
+    if (HUMAN_SUPPORT_INTENT.test(trimmed)) {
+      setAssistantInput('');
+      openHumanHandoff('chat');
+      return;
+    }
 
     const userMessage = {
       id: `user-${Date.now()}`,
@@ -587,7 +686,7 @@ export default function Landing() {
     };
 
     setAssistantInput('');
-    setAssistantStarted(true);
+    setAssistantView('chat');
     setAssistantPending(true);
     setAssistantMessages(messages => [...messages, userMessage]);
     persistAssistantMessage(userMessage);
@@ -627,9 +726,16 @@ export default function Landing() {
     setAssistantPending(false);
     setAssistantInput('');
     setAssistantMessages([createWelcomeMessage(user)]);
+    setAssistantView('chat');
     assistantSessionIdRef.current = null;
     assistantSessionPromiseRef.current = null;
   }
+
+  const assistantPanelMode = assistantView === 'chat'
+    ? 'chat'
+    : assistantView === 'welcome'
+      ? 'welcome'
+      : 'handoff';
 
   return (
     <div className="landing">
@@ -890,7 +996,7 @@ export default function Landing() {
       <div className={`landing-assistant${assistantOpen ? ' landing-assistant--open' : ''}`}>
         {assistantOpen && (
           <aside
-            className={`landing-assistant-panel landing-assistant-panel--${assistantStarted ? 'chat' : 'welcome'}`}
+            className={`landing-assistant-panel landing-assistant-panel--${assistantPanelMode}`}
             aria-label="Indie Converters assistant"
           >
             <div className="landing-assistant-brand-row">
@@ -911,37 +1017,63 @@ export default function Landing() {
               </button>
             </div>
 
-            {!assistantStarted ? (
+            {assistantView === 'welcome' ? (
               <>
                 <div className="landing-assistant-intro">
-                  <p>Hello.</p>
-                  <h2>How can we help?</h2>
+                  <p>Hi, I’m Indie.</p>
+                  <h2>How can I help?</h2>
                 </div>
 
                 <div className="landing-assistant-card">
                   <div className="landing-assistant-avatars" aria-hidden="true">
+                    <span>AI</span>
                     <span>IC</span>
-                    <span>TO</span>
                   </div>
-                  <h3>Start a conversation</h3>
-                  <p>Ask about publishing, book discovery, retailer links, or getting your manuscript ready.</p>
+                  <h3>Choose how to continue</h3>
+                  <p>I can help now, or you can leave a request for the Indie Converters team.</p>
                   <button
                     type="button"
                     className="landing-assistant-start"
                     onClick={() => startAssistant()}
                   >
-                    Start a conversation
+                    Chat with Indie
+                  </button>
+                  <button
+                    type="button"
+                    className="landing-assistant-human"
+                    onClick={() => openHumanHandoff('welcome')}
+                  >
+                    Talk to a human
                   </button>
                   <p className="landing-assistant-consent-note">
-                    By starting, you agree to Indie Converters <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.
+                    By continuing, you agree to Indie Converters <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.
                   </p>
                 </div>
               </>
+            ) : assistantView === 'handoff' ? (
+              <AssistantHandoffForm
+                form={handoffForm}
+                errors={handoffErrors}
+                pending={handoffPending}
+                submissionError={handoffSubmissionError}
+                onChange={updateHandoffField}
+                onSubmit={handleHandoffSubmit}
+                onBack={() => setAssistantView(handoffReturnView)}
+              />
+            ) : assistantView === 'handoff-success' ? (
+              <AssistantHandoffSuccess
+                email={handoffReceiptEmail}
+                onContinue={() => startAssistant()}
+                onClose={() => setAssistantOpen(false)}
+              />
             ) : (
               <div className="landing-assistant-chat">
                 <div className="landing-assistant-chat-head">
-                  <span>Assistant chat</span>
-                  <button type="button" onClick={resetAssistantChat}>New chat</button>
+                  <span>Chat with Indie</span>
+                  <div className="landing-assistant-chat-actions">
+                    <button type="button" className="landing-assistant-human-link" onClick={() => openHumanHandoff('chat')}>Human help</button>
+                    <button type="button" onClick={resetAssistantChat}>New chat</button>
+                  </div>
                 </div>
                 <div className="landing-assistant-messages" ref={assistantMessagesRef}>
                   {assistantMessages.map(message => (
