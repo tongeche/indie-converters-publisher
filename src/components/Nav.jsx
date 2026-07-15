@@ -15,6 +15,12 @@ const IconBrief    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentC
 const IconUserOk   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>;
 const IconSearch   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
 const IconLearn    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>;
+const IconRoute    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 7.2 15.8 16.8"/></svg>;
+const IconCoin     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="M12 7v10"/><path d="M15 9.3c0-1.3-1.4-2-3-2s-3 .8-3 2 1.4 1.7 3 2 3 .7 3 2-1.4 2-3 2-3-.7-3-2"/></svg>;
+const IconUpload   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><path d="M12 15.5V4"/><path d="M6.5 9.5 12 4l5.5 5.5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>;
+const IconCalc     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><rect x="4.5" y="2.5" width="15" height="19" rx="2"/><path d="M8 7h8"/><path d="M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16v3"/></svg>;
+const IconRuler    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><rect x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6 8v3M10 8v3M14 8v4M18 8v3"/></svg>;
+const IconCheck    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.3 2.3 4.7-4.6"/></svg>;
 const Chevron      = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" width="11" height="11" className="nav-chevron"><path d="M4 6l4 4 4-4"/></svg>;
 
 /* ── Nav config ── */
@@ -58,7 +64,33 @@ const NAV = [
       },
     ],
   },
-  { to: '/publish',    label: 'Publish'         },
+  {
+    to: '/publish',
+    label: 'Publish',
+    mega: true,
+    groups: [
+      {
+        heading: 'Get started',
+        to: '/publish',
+        items: [
+          { to: '/publish#publish-process',    label: 'How it works',       desc: 'The path from manuscript to listed book',       Icon: IconRoute  },
+          { to: '/upload',                     label: 'Start your upload',  desc: 'Begin the guided publishing wizard',            Icon: IconUpload },
+          { to: '/publish#publish-essentials', label: 'Costs & royalties', desc: 'What you keep on a direct sale',                Icon: IconCoin   },
+          { to: '/publish#publish-faq',        label: 'FAQ',                desc: 'Common questions about publishing here',        Icon: IconHelp   },
+        ],
+      },
+      {
+        heading: 'Tools & resources',
+        to: '/publish/templates',
+        items: [
+          { to: '/publish/templates',            label: 'Manuscript templates',   desc: 'Free Word starter files for every format',   Icon: IconPen   },
+          { to: '/tools/revenue-calculator',      label: 'Revenue calculator',      desc: 'Estimate royalties across retailers',      Icon: IconCalc   },
+          { to: '/tools/print-cover-calculator',  label: 'Print cover calculator',  desc: 'Get exact trim size and spine width',      Icon: IconRuler  },
+          { to: '/check',                         label: 'Check & Verify',         desc: 'Validate your manuscript before submitting', Icon: IconCheck },
+        ],
+      },
+    ],
+  },
 ];
 
 export default function Nav() {
@@ -99,6 +131,7 @@ export default function Nav() {
   }
 
   function isDropdownActive(item) {
+    if (item.to && location.pathname.startsWith(item.to)) return true;
     if (item.dropdown) return item.dropdown.some(sub => location.pathname.startsWith(sub.to));
     if (item.groups) {
       return item.groups.some(group =>
@@ -137,31 +170,41 @@ export default function Nav() {
               onMouseLeave={scheduleClose}
             >
               {/* Desktop trigger */}
-              <button className={`nav-link nav-dropdown-trigger${isDropdownActive(item) ? ' nav-link--active' : ''}`}>
-                {item.label} <Chevron />
-              </button>
+              {item.to ? (
+                <Link to={item.to} className={`nav-link nav-dropdown-trigger${isDropdownActive(item) ? ' nav-link--active' : ''}`}>
+                  {item.label} <Chevron />
+                </Link>
+              ) : (
+                <button className={`nav-link nav-dropdown-trigger${isDropdownActive(item) ? ' nav-link--active' : ''}`}>
+                  {item.label} <Chevron />
+                </button>
+              )}
 
               {/* Desktop dropdown panel — stays alive while hovered */}
               <div
-                className="nav-dropdown"
+                className={`nav-dropdown${item.mega ? ' nav-dropdown--mega' : ''}`}
                 onMouseEnter={() => openMenu(item.label)}
                 onMouseLeave={scheduleClose}
               >
-                {item.groups ? item.groups.map((group, gi) => (
-                  <div className="nav-dropdown-section" key={group.heading}>
-                    <Link to={group.to} className="nav-dropdown-section-heading">{group.heading}</Link>
-                    {group.items.map(({ to, label, desc, Icon }) => (
-                      <Link key={label} to={to} className="nav-dropdown-item">
-                        <div className="nav-dropdown-icon"><Icon /></div>
-                        <div className="nav-dropdown-text">
-                          <span className="nav-dropdown-label">{label}</span>
-                          <span className="nav-dropdown-desc">{desc}</span>
-                        </div>
-                      </Link>
+                {item.groups ? (
+                  <div className={item.mega ? 'nav-dropdown-columns' : undefined}>
+                    {item.groups.map((group, gi) => (
+                      <div className="nav-dropdown-section" key={group.heading}>
+                        <Link to={group.to} className="nav-dropdown-section-heading">{group.heading}</Link>
+                        {group.items.map(({ to, label, desc, Icon }) => (
+                          <Link key={label} to={to} className="nav-dropdown-item">
+                            <div className="nav-dropdown-icon"><Icon /></div>
+                            <div className="nav-dropdown-text">
+                              <span className="nav-dropdown-label">{label}</span>
+                              <span className="nav-dropdown-desc">{desc}</span>
+                            </div>
+                          </Link>
+                        ))}
+                        {!item.mega && gi < item.groups.length - 1 && <div className="nav-dropdown-sep" />}
+                      </div>
                     ))}
-                    {gi < item.groups.length - 1 && <div className="nav-dropdown-sep" />}
                   </div>
-                )) : item.dropdown.map(({ to, label, desc, Icon }) => (
+                ) : item.dropdown.map(({ to, label, desc, Icon }) => (
                   <Link key={label} to={to} className="nav-dropdown-item">
                     <div className="nav-dropdown-icon"><Icon /></div>
                     <div className="nav-dropdown-text">
@@ -216,29 +259,35 @@ export default function Nav() {
 
           {user ? (
             <div className="nav-user-group">
-              <Link to="/dashboard" className="nav-link">Dashboard</Link>
-              <Link
-                to="/saved"
-                className="nav-saved-btn"
-                title="Saved books"
-                aria-label="Saved books"
-              >
-                <svg viewBox="0 0 24 24" fill={location.pathname === '/saved' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" width="18" height="18">
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                </svg>
+              <Link to="/dashboard" className="nav-link nav-dashboard-link">
+                <div className="nav-avatar" title={name}>{initials}</div>
+                Dashboard
               </Link>
-              <Link
-                to="/cart"
-                className="nav-saved-btn"
-                title="Cart"
-                aria-label="Cart"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
-                  <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-                </svg>
-              </Link>
-              <div className="nav-avatar" title={name}>{initials}</div>
+              <div className="nav-user-icons">
+                <Link
+                  to="/saved"
+                  className="nav-saved-btn"
+                  title="Saved books"
+                  aria-label="Saved books"
+                >
+                  <svg viewBox="0 0 24 24" fill={location.pathname === '/saved' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                  </svg>
+                  <span className="nav-user-icon-label">Saved books</span>
+                </Link>
+                <Link
+                  to="/cart"
+                  className="nav-saved-btn"
+                  title="Cart"
+                  aria-label="Cart"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+                    <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                  </svg>
+                  <span className="nav-user-icon-label">Cart</span>
+                </Link>
+              </div>
               <button className="nav-signout" onClick={() => signOut()}>Sign out</button>
             </div>
           ) : (

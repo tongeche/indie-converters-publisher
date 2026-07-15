@@ -1,0 +1,304 @@
+.book-discovery {
+  position: sticky;
+  z-index: 80;
+  top: 64px;
+  border-bottom: 1px solid rgba(27, 19, 48, 0.11);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 10px 28px rgba(27, 19, 48, 0.055);
+}
+
+.book-discovery.is-filtering {
+  z-index: 130;
+}
+
+.book-discovery-inner {
+  display: flex;
+  width: 100%;
+  max-width: 1240px;
+  min-height: 74px;
+  align-items: center;
+  gap: 9px;
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.book-discovery-search {
+  position: relative;
+  display: flex;
+  min-width: 320px;
+  min-height: 50px;
+  flex: 1 1 480px;
+  align-items: center;
+  gap: 11px;
+  padding: 0 12px 0 15px;
+  border: 1px solid rgba(27, 19, 48, 0.18);
+  background: #fff;
+  color: #655d72;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.book-discovery-search:focus-within {
+  border-color: var(--clay);
+  box-shadow: 0 0 0 3px rgba(68, 28, 178, 0.09);
+}
+
+.book-discovery-search > svg {
+  width: 21px;
+  height: 21px;
+  flex-shrink: 0;
+}
+
+.book-discovery-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.book-discovery-search input::placeholder {
+  color: #8a8294;
+}
+
+.book-discovery-shortcut {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border: 1px solid rgba(27, 19, 48, 0.12);
+  background: #f8f7fa;
+  color: #777080;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.62rem;
+}
+
+.book-discovery-clear {
+  display: inline-flex;
+  width: 27px;
+  height: 27px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #71697d;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.book-discovery-filters {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.book-discovery-filters .filter-pill {
+  min-height: 44px;
+  padding: 9px 12px;
+  border-width: 1px;
+  border-radius: 0;
+  font-size: 0.76rem;
+}
+
+.book-discovery-sheet-heading,
+.book-discovery-sheet-actions,
+.book-discovery-mobile-toggle,
+.book-discovery-backdrop {
+  display: none;
+}
+
+.book-discovery-count {
+  flex-shrink: 0;
+  color: #756d80;
+  font-size: 0.72rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .book-discovery-inner {
+    min-height: 68px;
+    gap: 8px;
+    padding: 10px 16px;
+  }
+
+  .book-discovery-search {
+    min-width: 0;
+    min-height: 47px;
+    padding-left: 13px;
+  }
+
+  .book-discovery-shortcut,
+  .book-discovery-count {
+    display: none;
+  }
+
+  .book-discovery-mobile-toggle {
+    display: inline-flex;
+    min-height: 47px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 12px;
+    border: 1px solid rgba(27, 19, 48, 0.18);
+    background: #fff;
+    color: var(--ink);
+    font-size: 0.76rem;
+    font-weight: 700;
+  }
+
+  .book-discovery-mobile-toggle svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .book-discovery-mobile-toggle > span {
+    display: inline-flex;
+    min-width: 18px;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    background: var(--clay);
+    color: #fff;
+    font-size: 0.62rem;
+  }
+
+  .book-discovery-mobile-toggle.is-active {
+    border-color: var(--clay);
+    color: var(--clay);
+  }
+
+  .book-discovery-filters {
+    position: fixed;
+    z-index: 140;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    max-height: min(680px, calc(100vh - 48px));
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    padding: 22px 18px max(18px, env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(27, 19, 48, 0.12);
+    border-radius: 18px 18px 0 0;
+    background: #fff;
+    box-shadow: 0 -24px 70px rgba(18, 11, 34, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(104%);
+    transition: transform 240ms ease, opacity 200ms ease;
+  }
+
+  .book-discovery-filters.is-open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  .book-discovery-sheet-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid rgba(27, 19, 48, 0.1);
+  }
+
+  .book-discovery-sheet-heading > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .book-discovery-sheet-heading span {
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 750;
+  }
+
+  .book-discovery-sheet-heading small {
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+  }
+
+  .book-discovery-sheet-heading > button {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(27, 19, 48, 0.12);
+    background: #fff;
+    color: var(--ink);
+    font-size: 1.25rem;
+  }
+
+  .book-discovery-filters .filter-pill-dropdown,
+  .book-discovery-filters .filter-pill {
+    width: 100%;
+  }
+
+  .book-discovery-filters .filter-pill {
+    min-height: 48px;
+    justify-content: space-between;
+    padding-inline: 15px;
+  }
+
+  .book-discovery-sheet-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr;
+    gap: 8px;
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(27, 19, 48, 0.1);
+  }
+
+  .book-discovery-sheet-actions > button {
+    min-height: 46px;
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    font-weight: 750;
+  }
+
+  .book-discovery-reset {
+    border: 1px solid var(--clay);
+    background: #fff;
+    color: var(--clay);
+  }
+
+  .book-discovery-apply {
+    border: 1px solid var(--clay);
+    background: var(--clay);
+    color: #fff;
+  }
+
+  .book-discovery-sheet-actions > .book-discovery-apply:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .book-discovery-backdrop {
+    position: fixed;
+    z-index: 120;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: rgba(12, 8, 24, 0.44);
+    backdrop-filter: blur(4px);
+  }
+}
+
+@media (max-width: 480px) {
+  .book-discovery-search input {
+    font-size: 0.82rem;
+  }
+
+  .book-discovery-mobile-toggle {
+    padding-inline: 10px;
+  }
+}

@@ -9,7 +9,9 @@
   box-shadow: 0 1px 0 var(--sand);
 }
 .nav--transparent {
-  background: transparent;
+  background: rgba(255,255,255,.82);
+  border-bottom: 1px solid rgba(68,28,178,.08);
+  backdrop-filter: blur(14px);
 }
 
 .nav-inner {
@@ -42,6 +44,7 @@
   transition: color 250ms ease;
   line-height: 1;
 }
+.nav--transparent .nav-logo-text { color: var(--ink); }
 .nav--solid .nav-logo-text { color: var(--ink); }
 .nav-logo-text strong { font-weight: 700; }
 
@@ -62,9 +65,11 @@
   transition: color 180ms ease, background 180ms ease;
   white-space: nowrap;
 }
+.nav--transparent .nav-link { color: var(--ink-soft); }
 .nav--solid .nav-link { color: var(--ink-soft); }
 
 .nav-link:hover { color: var(--cream); background: rgba(255,255,255,0.08); }
+.nav--transparent .nav-link:hover { color: var(--clay); background: var(--parchment-dim); }
 .nav--solid .nav-link:hover { color: var(--clay); background: var(--sand); }
 
 .nav-link--active { color: var(--ochre) !important; }
@@ -84,6 +89,17 @@
   gap: 4px;
   margin-left: 12px;
 }
+.nav-dashboard-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-user-icons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nav-user-icon-label { display: none; }
 .nav-avatar {
   width: 30px;
   height: 30px;
@@ -98,6 +114,7 @@
   flex-shrink: 0;
   margin: 0 4px;
 }
+.nav-dashboard-link .nav-avatar { margin: 0; }
 .nav-signout {
   background: none;
   border: 1px solid rgba(255,255,255,0.2);
@@ -223,6 +240,27 @@
   line-height: 1.4;
 }
 
+/* Wide mega-menu variant (e.g. "Publish") — columns sit side by side
+   instead of stacking, anchored to the trigger's right edge so a wide
+   panel doesn't overflow past the viewport for nav items near the end
+   of the bar. */
+.nav-dropdown--mega {
+  left: auto;
+  right: 0;
+  min-width: 680px;
+  padding: 16px;
+  border-radius: 8px;
+}
+.nav-dropdown-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 32px;
+}
+.nav-dropdown-columns .nav-dropdown-section:not(:first-child) {
+  border-left: 1px solid var(--sand);
+  padding-left: 24px;
+}
+
 /* Grouped sections inside a single dropdown (e.g. "Services") */
 .nav-dropdown-section-heading {
   display: block;
@@ -340,4 +378,45 @@
   .nav-dropdown          { display: none; }
   .nav-mobile-trigger    { display: inline-flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
   .nav-dropdown-group    { width: 100%; display: flex; flex-direction: column; }
+
+  /* Signed-in user block: give it real breathing room instead of
+     squeezing Dashboard/icons/avatar/sign-out into one desktop-style row */
+  .nav-user-group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    margin: 12px 0 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--sand);
+    gap: 10px;
+  }
+  .nav-dashboard-link {
+    width: 100%;
+    padding: 8px 12px;
+  }
+  .nav-dashboard-link .nav-avatar { width: 26px; height: 26px; }
+  .nav-user-icons {
+    width: 100%;
+    gap: 8px;
+  }
+  .nav-saved-btn {
+    flex: 1;
+    width: auto;
+    height: 44px;
+    gap: 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(27,19,48,0.12);
+    color: var(--ink-soft);
+  }
+  .nav-user-icon-label {
+    display: inline;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .nav-signout {
+    width: 100%;
+    text-align: center;
+    padding: 10px 12px;
+    border-color: rgba(27,19,48,0.16);
+  }
 }

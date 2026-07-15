@@ -2,98 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchBlogs } from '../lib/api';
 import { HELP_CATEGORIES as CATEGORIES } from '../lib/helpCategories';
+import { ASSISTANT_FAQS as FAQS } from '../lib/assistantKnowledge';
 import SEO from '../components/SEO';
 import './HelpCenter.css';
 
 const POPULAR_TAGS = ['Getting started', 'EPUB', 'Book metadata', 'Author marketing'];
-
-const FAQS = [
-  {
-    topic: 'Getting Started',
-    q: 'What is IndieConverters?',
-    a: 'IndieConverters is a home for indie authors and the readers who love them — book discovery, publishing tools, and a marketplace to hire cover designers, editors, and other freelance help.',
-  },
-  {
-    topic: 'Getting Started',
-    q: 'Do I need an account to browse books?',
-    a: "No. Anyone can browse the catalog, explore mood-based recommendations, and view author profiles without signing up. You'll need an account to save books, publish, or hire freelancers.",
-  },
-  {
-    topic: 'Getting Started',
-    q: 'Is IndieConverters free to use?',
-    a: 'Yes. Browsing, saving books, and publishing are free during our early-access period. Freelancers set their own rates for hired work.',
-  },
-  {
-    topic: 'Publishing a Book',
-    q: 'Do I give up any rights by publishing here?',
-    a: 'None whatsoever. You retain full copyright. We make no claim on your work. You can remove your listing at any time.',
-  },
-  {
-    topic: 'Publishing a Book',
-    q: 'What file formats do you accept?',
-    a: 'We accept .docx (Word), .odt (LibreOffice), .rtf, and plain .txt. If your manuscript is in a different format, contact us — Pandoc supports dozens more.',
-  },
-  {
-    topic: 'Publishing a Book',
-    q: 'Is there a fee to publish?',
-    a: "Converting and listing your book is free during our early-access period. We're working on a sustainable model that doesn't require exclusivity or large upfront fees.",
-  },
-  {
-    topic: 'Publishing a Book',
-    q: 'Can readers buy the book directly on this site?',
-    a: "Not yet, and possibly never — that's a deliberate choice. We list your book and send readers to wherever you sell it. You set the price and keep the relationship with your audience.",
-  },
-  {
-    topic: 'Publishing a Book',
-    q: 'What happens to my uploaded manuscript file?',
-    a: "It's stored securely and used only to generate your EPUB and PDF. We don't share it or use it for any other purpose.",
-  },
-  {
-    topic: 'Publishing a Book',
-    q: "Can I update my book after it's published?",
-    a: 'Yes. You can re-upload a revised manuscript and regenerate the EPUB/PDF at any time. Your listing URL stays the same.',
-  },
-  {
-    topic: 'Finding & Saving Books',
-    q: "How do I find books that match what I'm in the mood for?",
-    a: 'Use Book Moods on the browse page — pick a feeling like Ache, Drift, or Wonder and we\'ll surface books that match it, alongside genre and keyword search.',
-  },
-  {
-    topic: 'Finding & Saving Books',
-    q: 'Can I save books to read later?',
-    a: 'Yes — sign in and tap the save icon on any book to add it to your saved list, accessible anytime from your account.',
-  },
-  {
-    topic: 'Author Profiles',
-    q: 'How do I set up my author profile?',
-    a: 'Once you publish your first book, go to your dashboard and fill in your author profile — bio, photo, and social links all appear on your public author page.',
-  },
-  {
-    topic: 'Author Profiles',
-    q: 'Can I link my social media and website?',
-    a: 'Yes, your author profile supports links to your website and social channels so readers can follow you outside IndieConverters.',
-  },
-  {
-    topic: 'Freelancers & Hiring',
-    q: 'How do I hire a freelancer?',
-    a: 'Post a brief describing what you need — cover design, editing, ghostwriting — and freelancers with matching skills can reach out directly. No bidding wars.',
-  },
-  {
-    topic: 'Freelancers & Hiring',
-    q: 'How do I get hired as a freelancer?',
-    a: 'Create a freelancer profile listing your skills, rates, and portfolio, then respond to briefs that match your services.',
-  },
-  {
-    topic: 'Account & Settings',
-    q: 'How do I reset my password or change my email?',
-    a: 'Go to Account Settings from your dashboard to update your password, email, and notification preferences.',
-  },
-  {
-    topic: 'Account & Settings',
-    q: 'How do I delete my account?',
-    a: "Email us at info@indieconverters.uk and we'll close your account and remove your data.",
-  },
-];
 
 export default function HelpCenter() {
   const [query, setQuery]             = useState('');

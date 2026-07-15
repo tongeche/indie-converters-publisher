@@ -1,5 +1,54 @@
 import { supabase } from './supabase';
 
+const ASSISTANT_VISITOR_STORAGE_KEY = 'ic_assistant_visitor_id';
+
+function makeClientId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function getAssistantVisitorId() {
+  if (typeof window === 'undefined') return makeClientId();
+  const existing = window.localStorage.getItem(ASSISTANT_VISITOR_STORAGE_KEY);
+  if (existing) return existing;
+  const visitorId = makeClientId();
+  window.localStorage.setItem(ASSISTANT_VISITOR_STORAGE_KEY, visitorId);
+  return visitorId;
+}
+
+export async function createAssistantSession({ id, userId, visitorId, consentAcceptedAt, pageUrl }) {
+  const sessionId = id || makeClientId();
+  const { error } = await supabase
+    .from('assistant_sessions')
+    .insert({
+      id: sessionId,
+      user_id: userId || null,
+      visitor_id: userId ? null : visitorId,
+      page_url: pageUrl || null,
+      consent_accepted_at: consentAcceptedAt,
+    });
+
+  if (error) throw error;
+  return sessionId;
+}
+
+export async function saveAssistantMessage({ sessionId, userId, visitorId, role, content, metadata = {} }) {
+  if (!sessionId || !content?.trim()) return null;
+  const { error } = await supabase
+    .from('assistant_messages')
+    .insert({
+      session_id: sessionId,
+      user_id: userId || null,
+      visitor_id: userId ? null : visitorId,
+      role,
+      content,
+      metadata,
+    });
+
+  if (error) throw error;
+  return true;
+}
+
 /* ── Landing: dynamic quote cards ── */
 export async function fetchLandingQuotes() {
   try {
@@ -642,33 +691,21 @@ export async function removeFromCart(itemId) {
   if (error) throw error;
 }
 
-// Creates a pending order from the given cart items, then immediately
-// simulates a successful payment (no real payment provider is wired in
-// yet — see the note in 20260712120000_orders_and_checkout_schema.sql).
-// Returns the new order id. Clears the cart on success.
-export async function checkoutCart(userId, cartId, items) {
-  const subtotal = items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
-
-  const { data: order, error: orderErr } = await supabase
-    .from('orders')
-    .insert({ user_id: userId, status: 'pending', currency: 'USD', subtotal, total: subtotal })
-    .select('id').single();
-  if (orderErr) throw orderErr;
-
-  const orderItems = items.map(item => ({
-    order_id: order.id, book_id: item.item_id, title: item.title,
-    unit_price: item.price, quantity: item.quantity,
-  }));
-  const { error: itemsErr } = await supabase.from('order_items').insert(orderItems);
-  if (itemsErr) throw itemsErr;
-
-  const { error: payErr } = await supabase
-    .from('orders').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', order.id);
-  if (payErr) throw payErr;
-
-  await supabase.from('cart_items').delete().eq('cart_id', cartId);
-
-  return order.id;
+// Creates a pending order from the caller's current cart (server-side, with
+// prices re-derived from published_books) and a Stripe Managed Payments
+// Checkout Session for it. Returns the Stripe-hosted URL to redirect to;
+// the order is only marked 'paid' by the stripe-webhook function once
+// Stripe confirms the payment.
+export async function createCheckoutSession() {
+  const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+    body: { origin: window.location.origin },
+  });
+  if (error) {
+    const body = await error.context?.json?.().catch(() => null);
+    throw new Error(body?.error || error.message || 'Failed to start checkout.');
+  }
+  if (data?.error) throw new Error(data.error);
+  return data; // { url, orderId }
 }
 
 export async function fetchOrder(orderId) {

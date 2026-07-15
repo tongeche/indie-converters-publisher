@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchCart, checkoutCart } from '../lib/api';
+import { fetchCart, createCheckoutSession } from '../lib/api';
 import { convertToDisplayCurrency, formatDisplayMoney } from '../lib/currency';
 import SEO from '../components/SEO';
 import './Checkout.css';
@@ -47,14 +47,14 @@ export default function Checkout() {
     event.preventDefault();
     if (placing || cart.items.length === 0) return;
     if (!termsAccepted) {
-      setError('Please accept the terms before placing this test order.');
+      setError('Please accept the terms before continuing to payment.');
       return;
     }
     setPlacing(true);
     setError('');
     try {
-      const orderId = await checkoutCart(user.id, cart.cartId, cart.items);
-      navigate(`/order/${orderId}`);
+      const { url } = await createCheckoutSession();
+      window.location.href = url;
     } catch (err) {
       setError(err?.message || 'Something went wrong placing your order.');
       setPlacing(false);
@@ -108,10 +108,10 @@ export default function Checkout() {
 
           <div className="checkout-title-row">
             <div>
-              <span className="eyebrow">Test mode</span>
+              <span className="eyebrow">Stripe test mode</span>
               <h1>Complete your order</h1>
             </div>
-            <span className="checkout-mode-pill">Simulated payment</span>
+            <span className="checkout-mode-pill">Secure Stripe checkout</span>
           </div>
 
           <section className="checkout-section">
@@ -241,8 +241,8 @@ export default function Checkout() {
           </section>
 
           <div className="checkout-sim-banner">
-            <strong>Test mode</strong>
-            <span>No live payment will be taken. This button creates a successful test order using the selected method; the fields are ready for backend wiring later.</span>
+            <strong>Stripe test mode</strong>
+            <span>You'll be redirected to Stripe to complete payment securely. No real charge will be made — use a Stripe test card (e.g. 4242 4242 4242 4242, any future expiry/CVC).</span>
           </div>
 
           <label className="checkout-terms">
@@ -251,13 +251,13 @@ export default function Checkout() {
               checked={termsAccepted}
               onChange={event => setTermsAccepted(event.target.checked)}
             />
-            <span>I agree to the Terms and understand this is a direct Indie Converters test purchase. After payment, readers receive confirmation and access or fulfillment instructions where applicable.</span>
+            <span>I agree to the Terms. After payment, readers receive confirmation and access or fulfillment instructions where applicable.</span>
           </label>
 
           {error && <p className="checkout-error">{error}</p>}
 
           <button className="checkout-submit" disabled={placing || !termsAccepted}>
-            {placing ? 'Placing order…' : `Place test order · ${formatDisplayMoney(total, 'EUR')}`}
+            {placing ? 'Redirecting to Stripe…' : `Continue to Stripe · ${formatDisplayMoney(total, 'EUR')}`}
           </button>
         </form>
 

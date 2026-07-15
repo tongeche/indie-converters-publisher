@@ -1,11 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import BookCover from '../components/BookCover';
+import BookDiscoveryBar from '../components/BookDiscoveryBar';
+import BookOfTheWeek from '../components/BookOfTheWeek';
 import SEO from '../components/SEO';
+import { FilterPill } from '../components/FilterPillBar';
 import { useAuth } from '../context/AuthContext';
 import { fetchBooks, fetchGenres, fetchSavedBooks, fetchRelatedBooks, fetchBooksGroupedByGenre } from '../lib/api';
+import { pickBookOfTheWeek } from '../lib/bookOfTheWeek';
 import allBooksHero from '../assets/all-books-hero.webp';
 import './Browse.css';
+
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'title',  label: 'Title A–Z' },
+];
 
 const FORMATS   = ['eBook', 'Paperback', 'Hardcover', 'Audiobook'];
 const LANGUAGES = ['English','Spanish','French','German','Portuguese','Italian','Dutch','Arabic','Japanese','Swahili'];
@@ -34,12 +43,8 @@ export default function Browse() {
   const [offset,      setOffset]      = useState(0);
   const [genres,      setGenres]      = useState([]);
   const [recommended, setRecommended] = useState([]);
-  const [genreOpen,   setGenreOpen]   = useState(false);
-  const [formatOpen,  setFormatOpen]  = useState(false);
   const [rows,        setRows]        = useState([]);
   const [rowsLoading, setRowsLoading] = useState(true);
-  const genreDropdownRef  = useRef(null);
-  const formatDropdownRef = useRef(null);
   const hasMore = books.length < total;
 
   // Keep inputValue in sync when URL changes externally (back/forward)
@@ -58,30 +63,6 @@ export default function Browse() {
     setRowsLoading(true);
     fetchBooksGroupedByGenre().then(setRows).finally(() => setRowsLoading(false));
   }, []);
-
-  // Close the genre dropdown on outside click
-  useEffect(() => {
-    if (!genreOpen) return;
-    function handler(e) {
-      if (genreDropdownRef.current && !genreDropdownRef.current.contains(e.target)) {
-        setGenreOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [genreOpen]);
-
-  // Close the format dropdown on outside click
-  useEffect(() => {
-    if (!formatOpen) return;
-    function handler(e) {
-      if (formatDropdownRef.current && !formatDropdownRef.current.contains(e.target)) {
-        setFormatOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [formatOpen]);
 
   // Debounce search input → URL
   useEffect(() => {
@@ -117,7 +98,7 @@ export default function Browse() {
         setRecommended(recs.filter(b => !savedSlugs.has(b.slug)).slice(0, 8));
       });
     });
-  }, [user?.id]);
+  }, [user]);
 
   // ── Filter helpers ─────────────────────────────────────────────
   function setParam(key, value) {
@@ -140,6 +121,15 @@ export default function Browse() {
     setInputValue('');
   }
 
+  function clearBrowseFilters() {
+    const p = new URLSearchParams(searchParams);
+    p.delete('genre');
+    p.delete('format');
+    p.delete('lang');
+    p.delete('indie');
+    setSearchParams(p, { replace: true });
+  }
+
   async function loadMore() {
     setLoadingMore(true);
     const next = offset + LIMIT;
@@ -153,6 +143,8 @@ export default function Browse() {
   }
 
   const hasFilters = activeGenres.length > 0 || activeFormats.length > 0 || language || query || indieOnly;
+  const activeFilterCount = activeGenres.length + activeFormats.length + Number(Boolean(language)) + Number(indieOnly);
+  const collectionBookOfTheWeek = pickBookOfTheWeek(recommended, { preferDirectSale: false });
 
   return (
     <div className="browse">
@@ -175,121 +167,58 @@ export default function Browse() {
         </div>
       </div>
 
-      {/* ── Personalised recommendations ── */}
-      {recommended.length > 0 && (
-        <section className="browse-reco">
-          <div className="container">
-            <h2 className="browse-reco-title">Because you've saved books like these</h2>
-          </div>
-          <div className="browse-reco-scroll-wrap">
-            <div className="browse-reco-scroll">
-              {recommended.map(b => (
-                <Link to={`/book/${b.slug}`} key={b.slug} className="browse-reco-card">
-                  <div className="browse-reco-cover">
-                    <BookCover title={b.title} author={b.author} colorClass={b.coverColor} coverUrl={b.coverUrl} size="sm" />
-                  </div>
-                  <span className="browse-reco-label">{b.title}</span>
-                  <span className="browse-reco-author">{b.author}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
+      {/* ── Persistent discovery bar ── */}
+      <BookDiscoveryBar
+        value={inputValue}
+        onChange={setInputValue}
+        resultLabel={loading ? 'Searching…' : `${total} ${total === 1 ? 'book' : 'books'}`}
+        applyLabel={loading ? 'results' : `${total} ${total === 1 ? 'book' : 'books'}`}
+        activeFilterCount={activeFilterCount}
+        onClearFilters={clearBrowseFilters}
+      >
+        <FilterPill
+          label="Format"
+          multi
+          options={FORMATS.map(format => ({ value: format, label: format }))}
+          value={activeFormats}
+          onToggleValue={format => toggleMulti('format', format)}
+        />
+
+        <FilterPill
+          label="Language"
+          options={[{ value: '', label: 'Language' }, ...LANGUAGES.map(item => ({ value: item, label: item }))]}
+          value={language}
+          onChange={value => setParam('lang', value)}
+        />
+
+        <FilterPill
+          label="Genre"
+          options={[{ value: '', label: 'All genres' }, ...genres.map(item => ({ value: item.slug, label: item.label }))]}
+          value={activeGenres[0] || ''}
+          onChange={value => setParam('genre', value)}
+        />
+
+        <FilterPill
+          label="Sort"
+          options={SORT_OPTIONS}
+          value={sort}
+          onChange={value => setParam('sort', value)}
+        />
+      </BookDiscoveryBar>
+
+      {/* ── Personalised weekly recommendation ── */}
+      {collectionBookOfTheWeek && (
+        <div className="browse-weekly-feature">
+          <BookOfTheWeek
+            book={collectionBookOfTheWeek}
+            supportingText="A weekly recommendation inspired by the books you've saved."
+          />
+        </div>
       )}
 
       {/* ── Main layout ── */}
       <div className="container browse-layout">
         <main className="browse-main">
-
-          {/* Search + filters + sort bar */}
-          <div className="browse-controls">
-            <div className="search-wrap">
-              <span className="search-icon">⌕</span>
-              <input
-                type="search"
-                className="search-input"
-                placeholder="Search by title, author, or keyword…"
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-              />
-              {inputValue && (
-                <button className="search-clear" onClick={() => setInputValue('')} aria-label="Clear search">×</button>
-              )}
-            </div>
-
-            <div className="browse-genre-dropdown" ref={formatDropdownRef}>
-              <button
-                type="button"
-                className={`browse-genre-btn${activeFormats.length > 0 ? ' on' : ''}`}
-                onClick={() => setFormatOpen(o => !o)}
-                aria-expanded={formatOpen}
-              >
-                <span>{activeFormats.length === 0 ? 'Format' : activeFormats.length === 1 ? activeFormats[0] : `Format · ${activeFormats.length}`}</span>
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12" className={`browse-genre-chevron${formatOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
-              </button>
-              {formatOpen && (
-                <div className="browse-genre-panel">
-                  {FORMATS.map(f => (
-                    <button
-                      key={f}
-                      type="button"
-                      className={`browse-genre-option${activeFormats.includes(f) ? ' active' : ''}`}
-                      onClick={() => toggleMulti('format', f)}
-                    >
-                      <span className={`browse-format-check${activeFormats.includes(f) ? ' checked' : ''}`} aria-hidden="true" />
-                      {f}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <select className="browse-lang-select" value={language}
-              onChange={e => setParam('lang', e.target.value)}>
-              <option value="">Language</option>
-              {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-
-            <div className="browse-genre-dropdown" ref={genreDropdownRef}>
-              <button
-                type="button"
-                className={`browse-genre-btn${activeGenres.length > 0 ? ' on' : ''}`}
-                onClick={() => setGenreOpen(o => !o)}
-                aria-expanded={genreOpen}
-              >
-                <span>{activeGenres.length > 0 ? (genres.find(g => g.slug === activeGenres[0])?.label || 'Genre') : 'Genre'}</span>
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12" className={`browse-genre-chevron${genreOpen ? ' open' : ''}`}><path d="M4 6l4 4 4-4"/></svg>
-              </button>
-              {genreOpen && (
-                <div className="browse-genre-panel">
-                  <button
-                    type="button"
-                    className={`browse-genre-option${activeGenres.length === 0 ? ' active' : ''}`}
-                    onClick={() => { setParam('genre', ''); setGenreOpen(false); }}
-                  >
-                    All genres
-                  </button>
-                  {genres.map(g => (
-                    <button
-                      key={g.slug}
-                      type="button"
-                      className={`browse-genre-option${activeGenres[0] === g.slug ? ' active' : ''}`}
-                      onClick={() => { setParam('genre', activeGenres[0] === g.slug ? '' : g.slug); setGenreOpen(false); }}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <select className="sort-select" value={sort}
-              onChange={e => setParam('sort', e.target.value)}>
-              <option value="newest">Newest</option>
-              <option value="title">Title A–Z</option>
-            </select>
-          </div>
-
           {hasFilters ? (
             <>
               {/* Active filter pills */}

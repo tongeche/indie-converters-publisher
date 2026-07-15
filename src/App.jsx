@@ -10,6 +10,7 @@ import AuthorProfile from './pages/AuthorProfile';
 import Moods from './pages/Moods';
 import Blog from './pages/News';
 import Publish from './pages/Publish';
+import PublishTemplates from './pages/PublishTemplates';
 import UploadWizard from './pages/UploadWizard';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -42,6 +43,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <div className="page-rails" aria-hidden="true" />
         <Nav />
         <Routes>
           <Route path="/"           element={<Landing />}      />
@@ -56,6 +58,7 @@ export default function App() {
           <Route path="/news"       element={<Blog />}         />
           <Route path="/news/:slug" element={<BlogPost />}     />
           <Route path="/publish"    element={<Publish />}      />
+          <Route path="/publish/templates" element={<PublishTemplates />} />
           <Route path="/login"      element={<Login />}        />
           <Route path="/signup"     element={<Signup />}       />
           <Route path="/upload"     element={

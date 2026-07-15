@@ -11,8 +11,28 @@ export default function OrderConfirmation() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+
+    async function load() {
+      const o = await fetchOrder(id);
+      if (cancelled) return;
+      setOrder(o);
+      setLoading(false);
+
+      // Stripe's webhook confirms payment asynchronously, so it may not
+      // have landed yet when the shopper is redirected back here. Poll
+      // briefly for the paid transition rather than showing a stale
+      // "pending" state.
+      if (o?.status === 'pending' && attempts < 5) {
+        attempts += 1;
+        setTimeout(load, 2000);
+      }
+    }
+
     setLoading(true);
-    fetchOrder(id).then(o => { setOrder(o); setLoading(false); });
+    load();
+    return () => { cancelled = true; };
   }, [id]);
 
   if (loading) {
@@ -56,7 +76,7 @@ export default function OrderConfirmation() {
         </div>
 
         <p className="order-note">
-          This purchase was processed in test mode — no real payment was charged.
+          This purchase was processed via Stripe test mode — no real payment was charged.
         </p>
 
         <Link to="/browse" className="btn btn-primary order-continue-btn">Continue browsing</Link>

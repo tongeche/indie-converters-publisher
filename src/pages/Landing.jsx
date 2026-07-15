@@ -1,18 +1,29 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
 import SEO from '../components/SEO';
-import DashboardPreviewCta from '../components/DashboardPreviewCta';
-import PublishingProcessShowcase from '../components/PublishingProcessShowcase';
-import HowItWorksShowcase from '../components/HowItWorksShowcase';
+import OurStorySection from '../components/OurStorySection';
+import MissionCardSection from '../components/MissionCardSection';
+import PublishAutomationSection from '../components/PublishAutomationSection';
+import PublishingAnalyticsSection from '../components/PublishingAnalyticsSection';
+import EndPageCta from '../components/EndPageCta';
 import { trackEvent } from '../lib/analytics';
-import { fetchBooks, fetchLandingQuotes } from '../lib/api';
+import {
+  createAssistantSession,
+  fetchBooks,
+  fetchLandingQuotes,
+  getAssistantVisitorId,
+  saveAssistantMessage,
+} from '../lib/api';
+import {
+  ASSISTANT_PROMPTS,
+  createWelcomeMessage,
+  formatAssistantTime,
+  getAssistantPageContext,
+  requestAssistantReply,
+} from '../lib/assistant';
+import { useAuth } from '../context/AuthContext';
 import mainHeroImg    from '../assets/main-hero.webp';
-import indieWriterImg from '../assets/indie-writer.png';
-import indieReaderImg from '../assets/indie-author-readothers.png';
-import lightsFutureCoverImg from '../assets/dammie-covers/dammie01.png';
-import loveSunsetCoverImg   from '../assets/dammie-covers/dammie-02.png';
-import wishHorseCoverImg    from '../assets/dammie-covers/dammie-03.png';
 import imgAche   from '../assets/moods/Ache.webp';
 import imgDrift  from '../assets/moods/Drift.webp';
 import imgHaunt  from '../assets/moods/haunt.webp';
@@ -21,8 +32,6 @@ import imgBurn   from '../assets/moods/Burn.webp';
 import imgWonder from '../assets/moods/Wonder.webp';
 import imgEscape from '../assets/moods/Escape.webp';
 import './Landing.css';
-
-const HERO_DOTS = Array.from({ length: 56 }, (_, index) => index);
 
 const DISTRIBUTION_CHANNELS = [
   { id: 'apple', label: 'Apple Books' },
@@ -104,34 +113,131 @@ function DistributionLogo({ channel }) {
   );
 }
 
-const TICKER_WORDS = ['publishing.', 'finding.', 'reading.'];
+const HERO_SERVICES = [
+  { to: '/upload', icon: 'formatting', title: 'Book Formatting', body: 'Polished, credible interiors ready for print.' },
+  { to: '/upload', icon: 'epub', title: 'EPUB Conversion', body: 'Clean, responsive files for every e-reader.' },
+  { to: '/tools/print-cover-calculator', icon: 'cover', title: 'Publishing Tools', body: 'Cover dimensions and tools for your workflow.' },
+  { to: '/publish', icon: 'distribution', title: 'Distribution', body: 'Reach retailers, bookstores and libraries.' },
+  { to: '/shop', icon: 'storefront', title: 'Author Storefront', body: 'One space to showcase and sell your books.' },
+  { to: '/hire', icon: 'experts', title: 'Professionals', body: 'Editors, designers, illustrators and writers.' },
+  { to: '/upload', icon: 'manuscript', title: 'Manuscript', body: 'Refine your manuscript from draft to final file.' },
+  { to: '/check', icon: 'review', title: 'File Review', body: 'Catch formatting issues before you upload.' },
+  { to: '/help', icon: 'resources', title: 'Resources', body: 'Guides, templates and tools for every stage.' },
+];
 
-function HeroTicker() {
-  const [cur, setCur]        = useState(0);
-  const [animating, setAnim] = useState(false);
-  const nxt = (cur + 1) % TICKER_WORDS.length;
-
-  useEffect(() => {
-    const id = setInterval(() => setAnim(a => a ? a : true), 3500);
-    return () => clearInterval(id);
-  }, []);
-
-  function onDone() {
-    setCur(nxt);
-    setAnim(false);
-  }
+function ServiceIcon({ name }) {
+  const paths = {
+    formatting: (
+      <>
+        <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5z" />
+        <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z" />
+      </>
+    ),
+    epub: (
+      <>
+        <path d="M7 2.75h7l4 4V21.25H7z" />
+        <path d="M14 2.75v4h4M10 11h5M10 14h5M10 17h3" />
+      </>
+    ),
+    cover: (
+      <>
+        <rect x="5" y="4" width="14" height="16" rx="1" />
+        <path d="M8.5 4v16M3 7h2M3 12h2M3 17h2M19 7h2M19 12h2M19 17h2" />
+      </>
+    ),
+    distribution: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3c2.3 2.5 3.5 5.5 3.5 9s-1.2 6.5-3.5 9c-2.3-2.5-3.5-5.5-3.5-9S9.7 5.5 12 3" />
+      </>
+    ),
+    storefront: (
+      <>
+        <path d="M4 10v10h16V10M3 4h18l-1 6a3 3 0 0 1-4 1.5A3 3 0 0 1 12 10a3 3 0 0 1-4 1.5A3 3 0 0 1 4 10z" />
+        <path d="M9 20v-5h6v5" />
+      </>
+    ),
+    experts: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3.5 20v-2a5.5 5.5 0 0 1 11 0v2M16 5.5a3 3 0 0 1 0 5.5M17 14a5 5 0 0 1 3.5 4.75V20" />
+      </>
+    ),
+    manuscript: (
+      <>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+      </>
+    ),
+    review: (
+      <>
+        <circle cx="10" cy="10" r="7" />
+        <path d="m21 21-4.35-4.35" />
+        <path d="M7 10l2 2 4-4" />
+      </>
+    ),
+    resources: (
+      <>
+        <path d="M9 18h6M10 22h4" />
+        <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2.3h6c0-1.1.4-1.8 1-2.3A7 7 0 0 0 12 2Z" />
+      </>
+    ),
+  };
 
   return (
-    <span className="hero-ticker">
-      <span className={`hero-tw${animating ? ' tw-exit' : ''}`} onAnimationEnd={onDone}>
-        {TICKER_WORDS[cur]}
-      </span>
-      {animating && (
-        <span className="hero-tw tw-enter" aria-hidden="true">
-          {TICKER_WORDS[nxt]}
-        </span>
-      )}
-    </span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths[name]}
+    </svg>
+  );
+}
+
+function HeroSwirl() {
+  const rays = Array.from({ length: 108 }, (_, index) => {
+    const progress = index / 107;
+    const spread = (progress - 0.5) * 1080;
+    const drift = Math.sin(index * 2.17) * 24;
+    const height = 150 + ((index * 83) % 500);
+    const startX = 600 + Math.sin(index * 1.41) * 20;
+    const endX = 600 + spread + drift;
+    const opacity = 0.2 + ((index * 17) % 55) / 100;
+
+    return {
+      id: index,
+      x1: startX,
+      x2: endX,
+      y2: height,
+      opacity,
+      delay: `${-((index * 0.13) % 4.8).toFixed(2)}s`,
+      duration: `${(4.8 + ((index * 11) % 30) / 10).toFixed(1)}s`,
+      radius: 1.3 + (index % 4) * 0.35,
+    };
+  });
+
+  return (
+    <div className="hero-swirl" aria-hidden="true">
+      <div className="hero-swirl-glow" />
+      <svg className="hero-swirl-rays" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMax slice">
+        <defs>
+          <linearGradient id="hero-ray-gradient" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#5b2be0" />
+            <stop offset="46%" stopColor="#d946b8" />
+            <stop offset="100%" stopColor="#ff6f7d" />
+          </linearGradient>
+        </defs>
+        <g>
+          {rays.map(ray => (
+            <g
+              key={ray.id}
+              className="hero-swirl-ray"
+              style={{ '--ray-delay': ray.delay, '--ray-duration': ray.duration, '--ray-opacity': ray.opacity }}
+            >
+              <line x1={ray.x1} y1="930" x2={ray.x2} y2={ray.y2} />
+              <circle cx={ray.x2} cy={ray.y2} r={ray.radius} />
+            </g>
+          ))}
+        </g>
+      </svg>
+    </div>
   );
 }
 
@@ -158,6 +264,14 @@ const FALLBACK_QUOTES = [
   },
 ];
 
+function quoteSizeClass(text) {
+  const len = text.length;
+  if (len > 170) return ' quote-text--xxlong';
+  if (len > 120) return ' quote-text--xlong';
+  if (len > 70)  return ' quote-text--long';
+  return '';
+}
+
 function QuoteRotator({ quotes = FALLBACK_QUOTES }) {
   const quoteItems = (quotes?.length ? quotes : FALLBACK_QUOTES)
     .map(item => typeof item === 'string'
@@ -169,9 +283,10 @@ function QuoteRotator({ quotes = FALLBACK_QUOTES }) {
         })
     .filter(item => item.quote);
 
-  const [idx, setIdx]       = useState(0);
-  const [fading, setFading] = useState(false);
+  const [idx, setIdx]     = useState(0);
+  const [phase, setPhase] = useState('idle'); // 'idle' | 'exit' | 'enter'
   const nextIdxRef = useRef(0);
+  const rafRef     = useRef(0);
   const activeQuote = quoteItems[idx] || quoteItems[0];
 
   useEffect(() => {
@@ -179,53 +294,69 @@ function QuoteRotator({ quotes = FALLBACK_QUOTES }) {
   }, [idx, quoteItems.length]);
 
   useEffect(() => {
-    if (quoteItems.length < 2) return undefined;
+    if (quoteItems.length < 2 || phase !== 'idle') return undefined;
     const id = setInterval(() => {
       nextIdxRef.current = (idx + 1) % quoteItems.length;
-      setFading(true);
+      setPhase('exit');
     }, 5000);
     return () => clearInterval(id);
-  }, [idx, quoteItems.length]);
+  }, [idx, phase, quoteItems.length]);
+
+  // After the outgoing slide finishes sliding out, swap content and jump it
+  // to the entry position with transitions disabled, then release into the
+  // entry transition on the next two frames (avoids the browser collapsing
+  // the "jump" and the "animate in" into a single, wrong-direction tween).
+  useEffect(() => {
+    if (phase !== 'enter') return undefined;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(() => setPhase('idle'));
+    });
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [phase]);
 
   function onTransitionEnd(e) {
-    if (e.propertyName !== 'opacity' || !fading) return;
+    if (e.propertyName !== 'opacity' || phase !== 'exit') return;
     setIdx(nextIdxRef.current);
-    setFading(false);
+    setPhase('enter');
   }
 
   function goTo(i) {
-    if (i === idx || fading) return;
+    if (i === idx || phase !== 'idle') return;
     nextIdxRef.current = i;
-    setFading(true);
+    setPhase('exit');
   }
 
   if (!activeQuote) return null;
 
   return (
     <div className="quote-card">
-      <span className="quote-mark" aria-hidden="true">
-        <span />
-        <span />
-      </span>
-      <blockquote
-        className={`quote-text${fading ? ' quote-text--fade' : ''}${activeQuote.quote.length > 92 ? ' quote-text--long' : ''}`}
+      <div
+        className={`quote-slide${phase === 'exit' ? ' quote-slide--exit' : ''}${phase === 'enter' ? ' quote-slide--enter' : ''}`}
         onTransitionEnd={onTransitionEnd}
       >
-        {activeQuote.quote}
-      </blockquote>
-      <div className="quote-footer-row">
-        <div className="quote-controls" aria-label="Quote navigation">
-          {quoteItems.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              className={`quote-dot${i === idx ? ' quote-dot--active' : ''}`}
-              aria-label={`Show quote ${i + 1}`}
-              onClick={() => goTo(i)}
-            />
-          ))}
+        <span className="quote-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9.983 3v7.391c0 5.704-3.731 9.57-8.983 10.609l-.995-2.151c2.432-.917 3.995-3.638 3.995-5.849h-4v-10h9.983zm14.017 0v7.391c0 5.704-3.748 9.571-9 10.609l-.996-2.151c2.433-.917 3.996-3.638 3.996-5.849h-4v-10h10z" />
+          </svg>
+        </span>
+        <blockquote className={`quote-text${quoteSizeClass(activeQuote.quote)}`}>
+          {activeQuote.quote}
+        </blockquote>
+        <div className="quote-attribution">
+          <strong className="quote-author">{activeQuote.author}</strong>
+          {activeQuote.role && <span className="quote-role">{activeQuote.role}</span>}
         </div>
-        <strong className="quote-brand">indieconverters</strong>
+      </div>
+      <div className="quote-controls" aria-label="Quote navigation">
+        {quoteItems.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            className={`quote-dot${i === idx ? ' quote-dot--active' : ''}`}
+            aria-label={`Show quote ${i + 1}`}
+            onClick={() => goTo(i)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -242,126 +373,48 @@ const MOODS = [
   { verb: 'Grieve', label: 'Quiet loss & resilience',desc: 'Stories that sit with grief honestly, without rushing toward resolution.',                   accent: '#94A3B8', accentDark: '#334155' },
 ];
 
-const VALUE_PROPS = [
-  {
-    title: 'You own', highlight: 'your book', photo: indieWriterImg,
-    body: 'No exclusivity clauses, no rights grabs. Publish through Indie Converters and keep full ownership of your manuscript, your cover, and your sales — sell it anywhere, anytime, on your own terms.',
-    cta: 'Read the author promise', to: '/publish#publish-faq',
-  },
-  {
-    title: 'Tools for', highlight: 'every stage',
-    stack: [
-      { src: lightsFutureCoverImg, title: 'The Lights in the Future', author: 'Tom Holink' },
-      { src: loveSunsetCoverImg,   title: 'Love Before Sunset',       author: 'Jessica Pane' },
-      { src: wishHorseCoverImg,    title: 'If I Had a Wish and a Horse', author: 'Jun Lint' },
-    ],
-    body: 'From a raw manuscript to a finished, reader-ready file. Our upload wizard formats interiors, builds distribution-ready EPUBs, calculates print covers, and estimates royalties — before you publish a single copy.',
-    cta: 'Start your upload', to: '/upload',
-  },
-  {
-    title: 'Explore and', highlight: 'support indie voices', photo: indieReaderImg,
-    body: 'Readers browse by mood, genre, and story — not just bestseller lists. Free samples, curated collections, and honest author profiles make it easy to find indie work worth supporting.',
-    cta: 'Browse indie books', to: '/browse',
-  },
-];
+const ASSISTANT_CONSENT_STORAGE_KEY = 'ic_assistant_consent';
 
-const VALUE_SECTION_CTAS = [
-  {
-    title: 'Ready to publish on your own terms?',
-    body: 'Start privately, preview every step, and decide when your book is ready for readers.',
-    primary: { label: 'Start an upload', to: '/upload' },
-    secondary: { label: 'Read publishing FAQs', to: '/publish#publish-faq' },
-    cards: [
-      {
-        icon: 'tag',
-        title: 'Know the cost',
-        body: 'Estimate formatting, print specs, and royalties before you commit.',
-        label: 'See publisher tools',
-        to: '/publish',
-      },
-      {
-        icon: 'code',
-        title: 'Prepare every format',
-        body: 'Build clean EPUB and print-ready files without losing control of your book.',
-        label: 'Open the upload wizard',
-        to: '/upload',
-      },
-    ],
-  },
-  {
-    title: 'Ready to find readers?',
-    body: 'Put your book in a place built for browsing, saving, sharing, and independent discovery.',
-    primary: { label: 'Browse indie books', to: '/browse' },
-    secondary: { label: 'Explore moods', to: '/moods' },
-    cards: [
-      {
-        icon: 'heart',
-        title: 'Build reader interest',
-        body: 'Use samples, mood shelves, and book pages that help people decide what to read next.',
-        label: 'Browse collections',
-        to: '/browse',
-      },
-      {
-        icon: 'chart',
-        title: 'Track what works',
-        body: 'Watch visits, saves, retailer clicks, and royalties come together in your dashboard.',
-        label: 'View dashboard',
-        to: '/dashboard',
-      },
-    ],
-  },
-];
-
-function ValueBridgeIcon({ type }) {
-  if (type === 'code') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="m8.5 7-4.5 5 4.5 5" />
-        <path d="m15.5 7 4.5 5-4.5 5" />
-        <path d="m13.5 5-3 14" />
-      </svg>
-    );
+function readAssistantConsent() {
+  if (typeof window === 'undefined') return { messages: false, storage: false };
+  try {
+    const saved = window.localStorage.getItem(ASSISTANT_CONSENT_STORAGE_KEY);
+    if (!saved) return { messages: false, storage: false };
+    const parsed = JSON.parse(saved);
+    return {
+      messages: Boolean(parsed.messages),
+      storage: Boolean(parsed.storage),
+      acceptedAt: parsed.acceptedAt || null,
+    };
+  } catch {
+    return { messages: false, storage: false };
   }
-
-  if (type === 'heart') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 20.25s-7.25-4.38-8.75-9.38C2.1 7.02 4.55 4.25 7.8 4.25c1.9 0 3.25 1.03 4.2 2.36.95-1.33 2.3-2.36 4.2-2.36 3.25 0 5.7 2.77 4.55 6.62C19.25 15.87 12 20.25 12 20.25Z" />
-      </svg>
-    );
-  }
-
-  if (type === 'chart') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4.5 19.5h15" />
-        <path d="M6.5 16.5v-4" />
-        <path d="M11.5 16.5v-8" />
-        <path d="M16.5 16.5v-11" />
-        <path d="m14.5 5.5 2-2 2 2" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="m20 12.5-7.5 7.5L4 11.5V4h7.5L20 12.5Z" />
-      <path d="M8.5 8.5h.01" />
-    </svg>
-  );
 }
 
 export default function Landing() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [allBooks, setAllBooks] = useState([]);
+  const [assistantBooks, setAssistantBooks] = useState([]);
   const [quotes, setQuotes] = useState(FALLBACK_QUOTES);
   const [moodActive,      setMoodActive]      = useState(null);
   const [moodScrollState, setMoodScrollState] = useState({ atStart: true, atEnd: false });
-  const heroRef = useRef(null);
+  const [featuredScrollState, setFeaturedScrollState] = useState({ atStart: true, atEnd: false });
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantStarted, setAssistantStarted] = useState(false);
+  const [assistantInput, setAssistantInput] = useState('');
+  const [assistantPending, setAssistantPending] = useState(false);
+  const [assistantConsent, setAssistantConsent] = useState(() => readAssistantConsent());
+  const [assistantMessages, setAssistantMessages] = useState(() => [createWelcomeMessage(user)]);
   const moodTrackRef = useRef(null);
+  const featuredTrackRef = useRef(null);
+  const assistantMessagesRef = useRef(null);
+  const assistantSessionIdRef = useRef(null);
+  const assistantSessionPromiseRef = useRef(null);
 
   useEffect(() => {
     fetchBooks({ limit: 48, indieOnly: true }).then(({ books }) => setAllBooks(books));
+    fetchBooks({ limit: 120 }).then(({ books }) => setAssistantBooks(books));
     fetchLandingQuotes().then(fetchedQuotes => {
       if (fetchedQuotes.length) setQuotes(fetchedQuotes);
     });
@@ -392,99 +445,52 @@ export default function Landing() {
   }, []);
 
   useEffect(() => {
-    const hero = heroRef.current;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!hero || reduceMotion) return undefined;
+    if (!assistantOpen || !assistantMessagesRef.current) return;
+    assistantMessagesRef.current.scrollTop = assistantMessagesRef.current.scrollHeight;
+  }, [assistantMessages, assistantOpen, assistantPending]);
 
-    let frame = 0;
-    let pointerX = 0;
-    let pointerY = 0;
-
-    const resetDots = () => {
-      hero.querySelectorAll('.hero-dot').forEach(dot => {
-        dot.style.removeProperty('--dot-alpha');
-        dot.style.removeProperty('--dot-scale');
-        dot.style.removeProperty('--dot-shift-x');
-        dot.style.removeProperty('--dot-shift-y');
-      });
+  useEffect(() => {
+    if (!assistantOpen) return undefined;
+    const closeOnEscape = event => {
+      if (event.key === 'Escape') setAssistantOpen(false);
     };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [assistantOpen]);
 
-    const updateHeroMotion = () => {
-      frame = 0;
-      const heroRect = hero.getBoundingClientRect();
-      const localX = pointerX - heroRect.left;
-      const localY = pointerY - heroRect.top;
-      const xProgress = Math.max(0, Math.min(localX / heroRect.width, 1));
-      const yProgress = Math.max(0, Math.min(localY / heroRect.height, 1));
-      const xOffset = xProgress - 0.5;
-      const yOffset = yProgress - 0.5;
-
-      hero.classList.add('hero--interactive');
-      hero.style.setProperty('--hero-parallax-x', `${(-xOffset * 18).toFixed(2)}px`);
-      hero.style.setProperty('--hero-parallax-y', `${(-yOffset * 12).toFixed(2)}px`);
-      hero.style.setProperty('--hero-dots-x', `${(xOffset * 10).toFixed(2)}px`);
-      hero.style.setProperty('--hero-dots-y', `${(yOffset * 8).toFixed(2)}px`);
-      hero.style.setProperty('--hero-spotlight-x', `${(xProgress * 100).toFixed(2)}%`);
-      hero.style.setProperty('--hero-spotlight-y', `${(yProgress * 100).toFixed(2)}%`);
-      hero.style.setProperty('--hero-spotlight-opacity', '0.95');
-
-      hero.querySelectorAll('.hero-dot').forEach(dot => {
-        const dotRect = dot.getBoundingClientRect();
-        const dotX = dotRect.left + dotRect.width / 2;
-        const dotY = dotRect.top + dotRect.height / 2;
-        const diffX = pointerX - dotX;
-        const diffY = pointerY - dotY;
-        const distance = Math.hypot(diffX, diffY);
-        const force = Math.max(0, 1 - distance / 145);
-
-        if (force <= 0) {
-          dot.style.removeProperty('--dot-alpha');
-          dot.style.removeProperty('--dot-scale');
-          dot.style.removeProperty('--dot-shift-x');
-          dot.style.removeProperty('--dot-shift-y');
-          return;
-        }
-
-        dot.style.setProperty('--dot-alpha', (0.34 + force * 0.56).toFixed(2));
-        dot.style.setProperty('--dot-scale', (1 + force * 1.25).toFixed(2));
-        dot.style.setProperty('--dot-shift-x', `${((diffX / Math.max(distance, 1)) * force * 5).toFixed(2)}px`);
-        dot.style.setProperty('--dot-shift-y', `${((diffY / Math.max(distance, 1)) * force * 5).toFixed(2)}px`);
-      });
-    };
-
-    const handlePointerMove = event => {
-      if (event.pointerType === 'touch') return;
-      pointerX = event.clientX;
-      pointerY = event.clientY;
-      if (!frame) frame = requestAnimationFrame(updateHeroMotion);
-    };
-
-    const handlePointerLeave = () => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = 0;
-      hero.classList.remove('hero--interactive');
-      hero.style.setProperty('--hero-parallax-x', '0px');
-      hero.style.setProperty('--hero-parallax-y', '0px');
-      hero.style.setProperty('--hero-dots-x', '0px');
-      hero.style.setProperty('--hero-dots-y', '0px');
-      hero.style.setProperty('--hero-spotlight-x', '64%');
-      hero.style.setProperty('--hero-spotlight-y', '34%');
-      hero.style.setProperty('--hero-spotlight-opacity', '0.48');
-      resetDots();
-    };
-
-    hero.addEventListener('pointermove', handlePointerMove);
-    hero.addEventListener('pointerleave', handlePointerLeave);
-
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      hero.removeEventListener('pointermove', handlePointerMove);
-      hero.removeEventListener('pointerleave', handlePointerLeave);
-    };
-  }, []);
+  useEffect(() => {
+    setAssistantMessages(messages => {
+      if (messages.length !== 1 || messages[0]?.id !== 'welcome') return messages;
+      return [createWelcomeMessage(user)];
+    });
+  }, [user]);
 
   const withCovers = allBooks.filter(b => b.coverUrl);
-  const featured = withCovers.slice(0, 5);
+  const featured = withCovers.slice(0, 12);
+
+  function updateFeaturedScrollState() {
+    const track = featuredTrackRef.current;
+    if (!track) return;
+    setFeaturedScrollState({
+      atStart: track.scrollLeft <= 2,
+      atEnd: track.scrollLeft + track.clientWidth >= track.scrollWidth - 2,
+    });
+  }
+
+  function scrollFeatured(direction) {
+    const track = featuredTrackRef.current;
+    if (!track) return;
+    const card = track.querySelector('.featured-card');
+    const gap = parseFloat(getComputedStyle(track).columnGap || getComputedStyle(track).gap) || 10;
+    const step = (card?.getBoundingClientRect().width || track.clientWidth / 3) + gap;
+    track.scrollBy({ left: direction * step, behavior: 'smooth' });
+  }
+
+  useEffect(() => {
+    updateFeaturedScrollState();
+    window.addEventListener('resize', updateFeaturedScrollState);
+    return () => window.removeEventListener('resize', updateFeaturedScrollState);
+  }, [featured]);
 
   function scrollToValueProps(e) {
     e.preventDefault();
@@ -492,6 +498,137 @@ export default function Landing() {
     if (!el) return;
     const top = el.getBoundingClientRect().top + window.scrollY - 84;
     window.scrollTo({ top, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+
+  async function ensureAssistantSession(consent = assistantConsent) {
+    if (assistantSessionIdRef.current) return assistantSessionIdRef.current;
+    if (assistantSessionPromiseRef.current) return assistantSessionPromiseRef.current;
+
+    const acceptedAt = consent.acceptedAt || new Date().toISOString();
+    assistantSessionPromiseRef.current = (async () => {
+      const sessionId = await createAssistantSession({
+        userId: user?.id || null,
+        visitorId: user ? null : getAssistantVisitorId(),
+        consentAcceptedAt: acceptedAt,
+        pageUrl: typeof window !== 'undefined' ? window.location.href : '/',
+      });
+
+      assistantSessionIdRef.current = sessionId;
+
+      const welcome = assistantMessages.find(message => message.id === 'welcome');
+      if (welcome) {
+        await saveAssistantMessage({
+          sessionId,
+          userId: user?.id || null,
+          visitorId: user ? null : getAssistantVisitorId(),
+          role: 'assistant',
+          content: welcome.text,
+          metadata: { source: 'welcome' },
+        });
+      }
+
+      return sessionId;
+    })();
+
+    try {
+      return await assistantSessionPromiseRef.current;
+    } finally {
+      assistantSessionPromiseRef.current = null;
+    }
+  }
+
+  async function persistAssistantMessage(message, sessionIdOverride) {
+    try {
+      const sessionId = sessionIdOverride || await ensureAssistantSession();
+      await saveAssistantMessage({
+        sessionId,
+        userId: user?.id || null,
+        visitorId: user ? null : getAssistantVisitorId(),
+        role: message.role,
+        content: message.text,
+        metadata: {
+          client_message_id: message.id,
+          has_book_results: Boolean(message.books?.length),
+          book_slugs: message.books?.map(book => book.slug) || [],
+          assistant_context: message.context || null,
+          assistant_sources: message.sources || [],
+        },
+      });
+    } catch (error) {
+      console.error('[assistant] failed to persist message:', error?.message || error);
+    }
+  }
+
+  function startAssistant(prompt) {
+    let activeConsent = assistantConsent;
+    if (!assistantConsent.acceptedAt && typeof window !== 'undefined') {
+      const acceptedAt = new Date().toISOString();
+      const nextConsent = { messages: true, storage: true, acceptedAt };
+      window.localStorage.setItem(ASSISTANT_CONSENT_STORAGE_KEY, JSON.stringify(nextConsent));
+      setAssistantConsent(nextConsent);
+      activeConsent = nextConsent;
+    }
+    setAssistantStarted(true);
+    ensureAssistantSession(activeConsent).catch(error => {
+      console.error('[assistant] failed to create session:', error?.message || error);
+    });
+    if (prompt) sendAssistantMessage(prompt);
+  }
+
+  function sendAssistantMessage(text) {
+    const trimmed = text.trim();
+    if (!trimmed || assistantPending) return;
+
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      text: trimmed,
+      time: formatAssistantTime(),
+    };
+
+    setAssistantInput('');
+    setAssistantStarted(true);
+    setAssistantPending(true);
+    setAssistantMessages(messages => [...messages, userMessage]);
+    persistAssistantMessage(userMessage);
+
+    window.setTimeout(async () => {
+      const searchableBooks = assistantBooks.length ? assistantBooks : allBooks;
+      const pageUrl = typeof window !== 'undefined' ? window.location.href : '/';
+      const pageContext = getAssistantPageContext(typeof window !== 'undefined' ? window.location.pathname : '/');
+      const reply = await requestAssistantReply({
+        message: trimmed,
+        books: searchableBooks,
+        sessionId: assistantSessionIdRef.current,
+        pageUrl,
+        pageContext,
+      });
+      const assistantReply = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        time: formatAssistantTime(),
+        ...reply,
+      };
+      setAssistantMessages(messages => [
+        ...messages,
+        assistantReply,
+      ]);
+      setAssistantPending(false);
+      persistAssistantMessage(assistantReply);
+    }, 420);
+  }
+
+  function handleAssistantSubmit(event) {
+    event.preventDefault();
+    sendAssistantMessage(assistantInput);
+  }
+
+  function resetAssistantChat() {
+    setAssistantPending(false);
+    setAssistantInput('');
+    setAssistantMessages([createWelcomeMessage(user)]);
+    assistantSessionIdRef.current = null;
+    assistantSessionPromiseRef.current = null;
   }
 
   return (
@@ -503,56 +640,47 @@ export default function Landing() {
       />
 
       {/* ── Hero ── */}
-      <section className="hero" ref={heroRef}>
-        <div className="hero-bg" style={{ backgroundImage: `url(${mainHeroImg})` }} />
-        <div className="hero-overlay" />
-        <div className="hero-spotlight" aria-hidden="true" />
+      <section className="hero">
+        <HeroSwirl />
+        <div className="hero-glow hero-glow--one" aria-hidden="true" />
+        <div className="hero-glow hero-glow--two" aria-hidden="true" />
 
-        <div className="hero-dot-field hero-dot-field--right" aria-hidden="true">
-          {HERO_DOTS.map(index => (
-            <span
-              key={`right-${index}`}
-              className="hero-dot"
-              style={{ '--dot-delay': `${(index % 14) * 0.08}s` }}
-            />
-          ))}
-        </div>
+        <div className="hero-inner container">
+          <div className="hero-copy">
+            <h1 className="hero-heading">Independent publishing, made easier</h1>
+            <p className="hero-sub">
+              Write, publish, distribute and sell your book—all from one simple platform.
+            </p>
+            <div className="hero-ctas">
+              <Link
+                to="/upload"
+                className="btn hero-btn-primary"
+                onClick={() => trackEvent('Start Publishing Click', { location: 'hero' })}
+              >
+                Publish your book <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </div>
 
-        <div className="hero-dot-field hero-dot-field--lower" aria-hidden="true">
-          {HERO_DOTS.map(index => (
-            <span
-              key={`lower-${index}`}
-              className="hero-dot"
-              style={{ '--dot-delay': `${((index + 5) % 14) * 0.08}s` }}
-            />
-          ))}
-        </div>
-
-        <div className="hero-left">
-          <h1 className="hero-heading">
-            Books worth<br />
-            <HeroTicker />
-          </h1>
-
-          <p className="hero-sub">
-            We give authors a simple way to bring their work online, and help readers find good books.
-          </p>
-
-          <div className="hero-ctas">
-            <Link
-              to="/upload"
-              className="btn hero-btn-primary"
-              onClick={() => trackEvent('Start Publishing Click', { location: 'hero' })}
-            >
-              Start Publishing
-            </Link>
-            <Link
-              to="/browse"
-              className="hero-text-link"
-              onClick={() => trackEvent('Browse Books Click', { location: 'hero' })}
-            >
-              Browse Books →
-            </Link>
+          <div className="hero-product" aria-label="Indie Converters publishing workspace preview">
+            <div className="hero-feature-visual">
+              <img src={mainHeroImg} alt="Independent author using Indie Converters" />
+            </div>
+            <div className="hero-feature-services">
+              <div className="hero-services-heading">
+                <span>Services</span>
+                <Link to="/publish">Explore all →</Link>
+              </div>
+              <div className="hero-tool-grid">
+                {HERO_SERVICES.map(service => (
+                  <Link key={service.title} to={service.to} className="hero-tool-card">
+                    <span className="hero-tool-icon"><ServiceIcon name={service.icon} /></span>
+                    <strong>{service.title}</strong>
+                    <small>{service.body}</small>
+                  </Link>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -569,6 +697,8 @@ export default function Landing() {
           </span>
         </a>
       </section>
+
+      <OurStorySection />
 
       {/* ── Distribution channels ── */}
       <section className="distribution-strip" aria-labelledby="distribution-heading">
@@ -604,10 +734,6 @@ export default function Landing() {
         </div>
       </section>
 
-      <DashboardPreviewCta />
-
-      <PublishingProcessShowcase />
-
       {/* ── Featured Books ── */}
       <section className="section featured">
         <div className="container">
@@ -616,116 +742,62 @@ export default function Landing() {
               <div className="eyebrow">Featured work</div>
               <h2>Hand-picked indie titles</h2>
             </div>
-            <Link to="/browse" className="featured-see-all">
-              Browse all books
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
-                <path d="M3 8h10M9 4l4 4-4 4" />
-              </svg>
-            </Link>
-          </div>
-          <div className="books-shelf">
-            {featured.map(book => (
-              <Link to={`/book/${book.slug}`} key={book.slug} className="shelf-item">
-                <BookCover title={book.title} author={book.author} colorClass={book.coverColor} coverUrl={book.coverUrl} />
-                <div className="shelf-meta">
-                  <span className="shelf-genre">{book.genre}</span>
-                  <span className="shelf-title">{book.title}</span>
-                  <span className="shelf-author">{book.author}</span>
-                </div>
+            <div className="featured-controls">
+              <Link to="/browse" className="featured-see-all">
+                Browse all books
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+                  <path d="M3 8h10M9 4l4 4-4 4" />
+                </svg>
               </Link>
-            ))}
+              <div className="featured-arrows">
+                <button
+                  type="button"
+                  className="featured-arrow featured-arrow--prev"
+                  onClick={() => scrollFeatured(-1)}
+                  disabled={featuredScrollState.atStart}
+                  aria-label="Previous books"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M15 6l-6 6 6 6"/></svg>
+                </button>
+                <button
+                  type="button"
+                  className="featured-arrow featured-arrow--next"
+                  onClick={() => scrollFeatured(1)}
+                  disabled={featuredScrollState.atEnd}
+                  aria-label="Next books"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M9 6l6 6-6 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="featured-carousel">
+            <div className="featured-track" ref={featuredTrackRef} onScroll={updateFeaturedScrollState}>
+              {featured.map(book => (
+                <Link to={`/book/${book.slug}`} key={book.slug} className="featured-card">
+                  <div className="featured-card-cover">
+                    <BookCover title={book.title} author={book.author} colorClass={book.coverColor} coverUrl={book.coverUrl} />
+                    <div className="featured-card-overlay">
+                      <span className="featured-card-badge">{book.genre}</span>
+                      <h3 className="featured-card-title">{book.title}</h3>
+                      <span className="featured-card-author">{book.author}</span>
+                      {book.blurb && <p className="featured-card-blurb">{book.blurb}</p>}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── Value stories ── */}
-      <div className="value-stories" id="why-indie-converters">
-        {VALUE_PROPS.map((p, i) => {
-          const bridge = VALUE_SECTION_CTAS[i];
+      <MissionCardSection />
 
-          return (
-            <Fragment key={p.title}>
-              <section
-                className={`value-story value-story--${i + 1}${p.stack ? ' value-story--stack-card' : ''}${p.photo ? ' value-story--photo-card' : ''}`}
-              >
-                <div className="value-story-inner">
-                  <div className="value-story-card">
-                    {p.photo && (
-                      <img
-                        src={p.photo}
-                        alt=""
-                        className="value-story-card-img"
-                        style={p.fillPosition ? { objectPosition: p.fillPosition } : undefined}
-                      />
-                    )}
-                    {p.stack && (
-                      <div className="value-story-stack" aria-hidden="true">
-                        {p.stack.map((book, idx) => (
-                          <div className={`value-story-stack-item value-story-stack-item--${idx + 1}`} key={book.title}>
-                            <BookCover title={book.title} author={book.author} coverUrl={book.src} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="value-story-card-shade" />
-                    <div className="value-story-card-copy">
-                      <h2>{p.title} <span>{p.highlight}</span></h2>
-                      <p>{p.body}</p>
-                      <Link to={p.to} className="value-story-card-cta">
-                        {p.cta}
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="15" height="15" aria-hidden="true">
-                          <path d="M3 8h10M9 4l4 4-4 4" />
-                        </svg>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {bridge && (
-                <section className="value-bridge" aria-label={bridge.title}>
-                  <div className="value-bridge-inner">
-                    <div className="value-bridge-main">
-                      <h2>{bridge.title}</h2>
-                      <p>{bridge.body}</p>
-                      <div className="value-bridge-actions">
-                        <Link to={bridge.primary.to} className="value-bridge-primary">
-                          {bridge.primary.label}
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="15" height="15" aria-hidden="true">
-                            <path d="M3 8h10M9 4l4 4-4 4" />
-                          </svg>
-                        </Link>
-                        <Link to={bridge.secondary.to} className="value-bridge-secondary">
-                          {bridge.secondary.label}
-                        </Link>
-                      </div>
-                    </div>
-
-                    {bridge.cards.map(card => (
-                      <article className="value-bridge-card" key={card.title}>
-                        <span className="value-bridge-icon">
-                          <ValueBridgeIcon type={card.icon} />
-                        </span>
-                        <h3>{card.title}</h3>
-                        <p>{card.body}</p>
-                        <Link to={card.to}>
-                          {card.label}
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                            <path d="M3 8h10M9 4l4 4-4 4" />
-                          </svg>
-                        </Link>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </Fragment>
-          );
-        })}
-      </div>
+      <PublishingAnalyticsSection />
 
       {/* ── Mood shelf ── */}
-      <section className="section mood-shelf">
+      <section className="section mood-shelf" id="why-indie-converters">
         <div className="container">
           <div className="mood-shelf-hero">
             <div className="mood-shelf-hero-left">
@@ -797,29 +869,163 @@ export default function Landing() {
         </div>
       </section>
 
-      <HowItWorksShowcase />
+      <PublishAutomationSection />
 
       {/* ── Quote ── */}
       <section className="section quote-section">
+        <div className="quote-section-dots" aria-hidden="true" />
         <div className="container quote-container">
           <QuoteRotator quotes={quotes} />
         </div>
       </section>
 
-      {/* ── Bottom CTA ── */}
-      <section className="landing-cta">
-        <div className="container landing-cta-inner">
-          <span className="landing-cta-kicker">Ready to get started?</span>
-          <h2 className="landing-cta-heading">Create your free account</h2>
-          <Link
-            to="/signup"
-            className="btn landing-cta-btn"
-            onClick={() => trackEvent('Create Account Click', { location: 'landing-bottom-cta' })}
+      <EndPageCta
+        title="Ready to publish independently?"
+        subtitle="Create your free account and begin when you are ready."
+        actionLabel="Create your free account"
+        to="/signup"
+        onAction={() => trackEvent('Create Account Click', { location: 'landing-bottom-cta' })}
+      />
+
+      <div className={`landing-assistant${assistantOpen ? ' landing-assistant--open' : ''}`}>
+        {assistantOpen && (
+          <aside
+            className={`landing-assistant-panel landing-assistant-panel--${assistantStarted ? 'chat' : 'welcome'}`}
+            aria-label="Indie Converters assistant"
           >
-            Create a free account
-          </Link>
-        </div>
-      </section>
+            <div className="landing-assistant-brand-row">
+              <div className="landing-assistant-brand">
+                <span className="landing-assistant-logo" aria-hidden="true">.in</span>
+                <span>indie<strong>converters</strong></span>
+              </div>
+              <button
+                type="button"
+                className="landing-assistant-close"
+                onClick={() => setAssistantOpen(false)}
+                aria-label="Close assistant"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m7 7 10 10" />
+                  <path d="M17 7 7 17" />
+                </svg>
+              </button>
+            </div>
+
+            {!assistantStarted ? (
+              <>
+                <div className="landing-assistant-intro">
+                  <p>Hello.</p>
+                  <h2>How can we help?</h2>
+                </div>
+
+                <div className="landing-assistant-card">
+                  <div className="landing-assistant-avatars" aria-hidden="true">
+                    <span>IC</span>
+                    <span>TO</span>
+                  </div>
+                  <h3>Start a conversation</h3>
+                  <p>Ask about publishing, book discovery, retailer links, or getting your manuscript ready.</p>
+                  <button
+                    type="button"
+                    className="landing-assistant-start"
+                    onClick={() => startAssistant()}
+                  >
+                    Start a conversation
+                  </button>
+                  <p className="landing-assistant-consent-note">
+                    By starting, you agree to Indie Converters <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="landing-assistant-chat">
+                <div className="landing-assistant-chat-head">
+                  <span>Assistant chat</span>
+                  <button type="button" onClick={resetAssistantChat}>New chat</button>
+                </div>
+                <div className="landing-assistant-messages" ref={assistantMessagesRef}>
+                  {assistantMessages.map(message => (
+                    <div key={message.id} className={`landing-assistant-message landing-assistant-message--${message.role}`}>
+                      <p>{message.text}</p>
+                      <time>{message.time}</time>
+                      {message.books?.length > 0 && (
+                        <div className="landing-assistant-books">
+                          {message.books.map(book => (
+                            <Link key={book.slug} to={`/book/${book.slug}`} className="landing-assistant-book">
+                              {book.coverUrl ? (
+                                <img src={book.coverUrl} alt="" />
+                              ) : (
+                                <span className="landing-assistant-book-cover" aria-hidden="true">.in</span>
+                              )}
+                              <span className="landing-assistant-book-copy">
+                                <strong>{book.title}</strong>
+                                <small>{book.author}</small>
+                                {(book.genreLabel || book.genre || book.formatLabel || book.priceLabel) && (
+                                  <span className="landing-assistant-book-meta">
+                                    {[book.genreLabel || book.genre, book.formatLabel, book.priceLabel].filter(Boolean).join(' · ')}
+                                  </span>
+                                )}
+                              </span>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {assistantPending && (
+                    <div className="landing-assistant-message landing-assistant-message--assistant landing-assistant-message--typing">
+                      <span></span><span></span><span></span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="landing-assistant-prompts" aria-label="Suggested questions">
+                  {ASSISTANT_PROMPTS.map(prompt => (
+                    <button key={prompt} type="button" onClick={() => sendAssistantMessage(prompt)}>
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+
+                <form className="landing-assistant-form" onSubmit={handleAssistantSubmit}>
+                  <input
+                    value={assistantInput}
+                    onChange={event => setAssistantInput(event.target.value)}
+                    placeholder="Ask about publishing or books..."
+                    aria-label="Ask Indie Converters assistant"
+                  />
+                  <button type="submit" disabled={!assistantInput.trim() || assistantPending}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 12h13" />
+                      <path d="m13 6 6 6-6 6" />
+                    </svg>
+                  </button>
+                </form>
+              </div>
+            )}
+          </aside>
+        )}
+
+        <button
+          type="button"
+          className="landing-assistant-toggle"
+          aria-label={assistantOpen ? 'Close assistant' : 'Open assistant'}
+          aria-expanded={assistantOpen}
+          onClick={() => setAssistantOpen(open => !open)}
+        >
+          {assistantOpen ? (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5.5 18.5c-1.1-1.2-1.8-2.8-1.8-4.5 0-4 3.7-7.2 8.3-7.2s8.3 3.2 8.3 7.2-3.7 7.2-8.3 7.2c-1 0-2-.2-2.9-.5L5 21l.5-2.5Z" />
+              <path d="M8.5 13.5h7" />
+              <path d="M8.5 10.5h5" />
+            </svg>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

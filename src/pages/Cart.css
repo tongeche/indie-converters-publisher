@@ -368,8 +368,10 @@
   }
 
   .cart-header {
-    align-items: start;
+    align-items: center;
     flex-direction: column;
+    text-align: center;
+    gap: 12px;
   }
 
   .cart-list-head {

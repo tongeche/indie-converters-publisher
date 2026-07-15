@@ -31,6 +31,36 @@ img { display: block; max-width: 100%; }
 .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 .section { padding: 80px 0; }
 
+/* ── Persistent page rails ──
+   Two fixed vertical guide lines marking the centered-container edges
+   (1120px wide), rendered once in App.jsx as the very first element in
+   the DOM. Because it's unpositioned in stacking terms (no z-index) and
+   comes first in source order, every later full-bleed section (nav,
+   hero, footer, footer CTA band) simply paints over it wherever it has
+   its own opaque background -- no per-page wiring needed. Sections left
+   at their default (centered, no full-bleed background) let the rail
+   show through in their side gutters, framing the content column. */
+.page-rails {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.page-rails::before,
+.page-rails::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(27, 19, 48, 0.09);
+}
+.page-rails::before { left: calc(50% - 560px); }
+.page-rails::after { left: calc(50% + 560px); }
+
+@media (max-width: 1180px) {
+  .page-rails { display: none; }
+}
+
 /* ── Eyebrow ── */
 .eyebrow {
   display: inline-block;

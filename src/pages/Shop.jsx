@@ -2,10 +2,28 @@ import { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import BookCover from '../components/BookCover';
+import BookDiscoveryBar from '../components/BookDiscoveryBar';
+import BookOfTheWeek from '../components/BookOfTheWeek';
 import SEO from '../components/SEO';
+import { FilterPill } from '../components/FilterPillBar';
 import { fetchShopBooks, addToCart } from '../lib/api';
+import { pickBookOfTheWeek } from '../lib/bookOfTheWeek';
 import { convertToDisplayCurrency, formatDisplayMoney, isConvertedCurrency } from '../lib/currency';
 import './Shop.css';
+
+const PRICE_OPTIONS = [
+  { value: 'all',    label: 'Any price' },
+  { value: 'u10',     label: 'Under €10' },
+  { value: 'u20',     label: 'Under €20' },
+  { value: 'u30',     label: 'Under €30' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'newest',     label: 'Newest' },
+  { value: 'title',      label: 'Title A–Z' },
+  { value: 'price-low',  label: 'Price low' },
+  { value: 'price-high', label: 'Price high' },
+];
 
 function formatBookPrice(book) {
   if (book?.isDirectSale) return formatDisplayMoney(book.directSalePrice, 'USD');
@@ -45,15 +63,6 @@ function ShopIcon({ type }) {
     );
   }
 
-  if (type === 'search') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M10.8 18.1a7.3 7.3 0 1 1 0-14.6 7.3 7.3 0 0 1 0 14.6Z" />
-        <path d="m16.2 16.2 4.3 4.3" />
-      </svg>
-    );
-  }
-
   if (type === 'book') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -78,11 +87,11 @@ export default function Shop() {
   const [books,     setBooks]     = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [buyingId,  setBuyingId]  = useState(null);
-  const [query,     setQuery]     = useState('');
-  const [genre,     setGenre]     = useState('all');
-  const [format,    setFormat]    = useState('all');
-  const [sort,      setSort]      = useState('newest');
-  const [modalBook, setModalBook] = useState(null);
+  const [query,       setQuery]       = useState('');
+  const [genre,       setGenre]       = useState('all');
+  const [priceFilter, setPriceFilter] = useState('all');
+  const [sort,        setSort]        = useState('newest');
+  const [modalBook,   setModalBook]   = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -95,22 +104,27 @@ export default function Shop() {
     return Array.from(set).sort();
   }, [books]);
 
-  const formats = useMemo(() => {
-    const set = new Set();
-    books.forEach(book => book.formats?.forEach(f => set.add(f)));
-    return Array.from(set).sort();
-  }, [books]);
+  const genreOptions = useMemo(() => (
+    [{ value: 'all', label: 'All genres' }, ...genres.slice(0, 12).map(g => ({ value: g, label: genreLabel(g) }))]
+  ), [genres]);
+
+  const priceCeiling = priceFilter === 'u10' ? 10 : priceFilter === 'u20' ? 20 : priceFilter === 'u30' ? 30 : null;
 
   const filteredBooks = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const result = books.filter(book => {
-      const matchesQuery = !needle
-        || book.title.toLowerCase().includes(needle)
-        || book.author.toLowerCase().includes(needle)
-        || book.blurb?.toLowerCase().includes(needle);
+      const searchableText = [
+        book.title,
+        book.author,
+        book.blurb,
+        ...(book.genres || []),
+        ...(book.formats || []),
+        book.language,
+      ].filter(Boolean).join(' ').toLowerCase();
+      const matchesQuery = !needle || searchableText.includes(needle);
       const matchesGenre = genre === 'all' || book.genres?.includes(genre);
-      const matchesFormat = format === 'all' || book.formats?.includes(format);
-      return matchesQuery && matchesGenre && matchesFormat;
+      const matchesPrice = priceCeiling == null || sortablePrice(book, Infinity) < priceCeiling;
+      return matchesQuery && matchesGenre && matchesPrice;
     });
 
     return [...result].sort((a, b) => {
@@ -119,7 +133,15 @@ export default function Shop() {
       if (sort === 'title') return a.title.localeCompare(b.title);
       return 0;
     });
-  }, [books, format, genre, query, sort]);
+  }, [books, priceCeiling, genre, query, sort]);
+
+  const bookOfTheWeek = useMemo(() => pickBookOfTheWeek(books), [books]);
+  const activeFilterCount = Number(genre !== 'all') + Number(priceFilter !== 'all');
+
+  function clearShopFilters() {
+    setGenre('all');
+    setPriceFilter('all');
+  }
 
   async function handleGetNow(book) {
     if (!user) { navigate('/login', { state: { from: '/shop' } }); return; }
@@ -143,59 +165,48 @@ export default function Shop() {
         path="/shop"
       />
       <div className="shop-shell">
-        <aside className="shop-filter-panel">
-          <div className="shop-filter-group">
-            <h2>Category</h2>
-            <button type="button" className={genre === 'all' ? 'active' : ''} onClick={() => setGenre('all')}>All books</button>
-            {genres.slice(0, 8).map(g => (
-              <button key={g} type="button" className={genre === g ? 'active' : ''} onClick={() => setGenre(g)}>
-                {genreLabel(g)}
-              </button>
-            ))}
-          </div>
-
-          <div className="shop-filter-group">
-            <h2>Format</h2>
-            <button type="button" className={format === 'all' ? 'active' : ''} onClick={() => setFormat('all')}>Any format</button>
-            {formats.map(f => (
-              <button key={f} type="button" className={format === f ? 'active' : ''} onClick={() => setFormat(f)}>
-                {f}
-              </button>
-            ))}
-          </div>
-
-          <div className="shop-filter-note">
-            <strong>{books.filter(book => book.isDirectSale).length}</strong>
-            <span>books can be bought directly today.</span>
-          </div>
-        </aside>
+        <BookDiscoveryBar
+          value={query}
+          onChange={setQuery}
+          resultLabel={loading ? 'Loading books…' : `${filteredBooks.length} ${filteredBooks.length === 1 ? 'title' : 'titles'}`}
+          applyLabel={loading ? 'results' : `${filteredBooks.length} ${filteredBooks.length === 1 ? 'title' : 'titles'}`}
+          activeFilterCount={activeFilterCount}
+          onClearFilters={clearShopFilters}
+        >
+          <FilterPill
+            label="All genres"
+            options={genreOptions}
+            value={genre}
+            onChange={setGenre}
+          />
+          <FilterPill label="Mood" onClick={() => navigate('/moods')} />
+          <FilterPill
+            label="Any price"
+            options={PRICE_OPTIONS}
+            value={priceFilter}
+            onChange={setPriceFilter}
+          />
+          <FilterPill
+            label="Newest"
+            options={SORT_OPTIONS}
+            value={sort}
+            onChange={setSort}
+          />
+        </BookDiscoveryBar>
 
         <main className="shop-catalog">
-          <header className="shop-topbar">
-            <label className="shop-search">
-              <ShopIcon type="search" />
-              <input
-                type="search"
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                placeholder="Search title, author, or mood"
-              />
-            </label>
-            <select value={sort} onChange={event => setSort(event.target.value)} aria-label="Sort books">
-              <option value="newest">Newest</option>
-              <option value="title">Title</option>
-              <option value="price-low">Price low</option>
-              <option value="price-high">Price high</option>
-            </select>
-          </header>
-
-          <div className="shop-section-heading">
-            <div>
-              <span className="eyebrow">Indie bookshop</span>
-              <h1>Books you can buy or discover now</h1>
-            </div>
-            <span>{filteredBooks.length} titles</span>
-          </div>
+          {loading ? (
+            <div className="shop-weekly-skeleton" aria-label="Loading book of the week" />
+          ) : (
+            <BookOfTheWeek
+              book={bookOfTheWeek}
+              buying={buyingId === bookOfTheWeek?.dbId}
+              onBuy={handleGetNow}
+              onPreview={setModalBook}
+              price={bookOfTheWeek ? formatBookPrice(bookOfTheWeek) : null}
+              headingLevel={1}
+            />
+          )}
 
           {loading ? (
             <div className="shop-grid">
@@ -211,7 +222,7 @@ export default function Shop() {
             <div className="shop-empty">
               <h2>No matching books</h2>
               <p>Try clearing a filter or searching by author name.</p>
-              <button type="button" className="btn btn-primary" onClick={() => { setQuery(''); setGenre('all'); setFormat('all'); }}>Clear filters</button>
+              <button type="button" className="btn btn-primary" onClick={() => { setQuery(''); setGenre('all'); setPriceFilter('all'); }}>Clear filters</button>
             </div>
           ) : (
             <div className="shop-grid">
