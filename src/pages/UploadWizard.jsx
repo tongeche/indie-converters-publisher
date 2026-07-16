@@ -4,12 +4,15 @@ import mammoth from 'mammoth/mammoth.browser';
 import DOMPurify from 'dompurify';
 import { validateManuscript, analyseHtml, analyseTxt, analyseImages, countManualPageBreaks } from '../lib/manuscriptValidator';
 import { calculateRoyaltyEstimates, formatRoyaltyMoney } from '../lib/royaltyCalculator';
-import { calculatePrintCover, formatInches as formatCoverInches, TRIM_SIZE_OPTIONS } from '../lib/printCoverCalculator';
+import { calculatePrintCover, formatInches as formatCoverInches, TRIM_SIZE_OPTIONS, COVER_SAFE_MARGIN_IN, COVER_BLEED_IN } from '../lib/printCoverCalculator';
 import { useAuth } from '../context/AuthContext';
 import SEO from '../components/SEO';
 import RetailerLinksEditor, { RETAILER_OPTIONS } from '../components/RetailerLinksEditor';
 import PublishingAssistant from '../components/PublishingAssistant';
 import { supabase } from '../lib/supabase';
+import sampleCover1 from '../assets/dammie-covers/dammie-01.webp';
+import sampleCover2 from '../assets/dammie-covers/dammie-02.webp';
+import sampleCover3 from '../assets/dammie-covers/dammie-03.webp';
 import './UploadWizard.css';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -60,6 +63,7 @@ const ASSISTANT_FIELD_DEFINITIONS = {
   series: { label: 'Series name', purpose: 'The name shared by books in the same series.', maxLength: 160 },
   seriesVolume: { label: 'Volume / Part', purpose: 'The book’s numeric position in its series.' },
   description: { label: 'Description', purpose: 'Back-cover and retailer copy that explains the premise and gives readers a reason to read.', required: true, maxLength: 4000 },
+  audience: { label: 'Target audience', purpose: 'The primary reader age classification for this edition.' },
   genre: { label: 'Primary genre', purpose: 'The main reader-facing market category.', required: true },
   genreSecondary: { label: 'Secondary genre', purpose: 'An optional second market category.' },
   keywords: { label: 'Keywords', purpose: 'Up to seven specific search phrases readers may use to discover the book.' },
@@ -182,6 +186,12 @@ const BM_ITEMS = [
     tip: 'A list of your other published books — helps readers discover more.',
     required: false,
     template: () => '[Book Title] (Year)\n[Book Title] (Year)',
+  },
+  { key: 'readerCta',
+    label: 'Reader Call to Action',
+    tip: 'Invite readers to review, subscribe, visit your website, or continue with another book.',
+    required: false,
+    template: () => 'Enjoyed this book? [Invite the reader to take one clear next step.]\n\n[Website or destination]',
   },
   { key: 'bibliography',
     label: 'Bibliography / References',
@@ -367,6 +377,20 @@ const COVER_ART_PLACEMENTS = [
   { id: 'full', label: 'Full bleed' },
 ];
 
+// Bundled sample covers for trying the "upload finished cover" flow without
+// a real file on hand. Picking one sets both front and back to the same
+// image, since a real uploaded cover set is one continuous design.
+const COVER_SAMPLES = [
+  { id: 'sample1', label: 'Romance', src: sampleCover1, file: 'romance-background.webp' },
+  { id: 'sample2', label: 'Sci-fi', src: sampleCover2, file: 'sci-fi-background.webp' },
+  { id: 'sample3', label: 'Illustrated', src: sampleCover3, file: 'illustrated-background.webp' },
+];
+
+const BACK_COVER_BLOCK_LABELS = {
+  blurb: 'Book description',
+  bio: 'Author bio',
+};
+
 const COVER_DEVICE_PREVIEWS = [
   { id: 'desktop', label: 'Desktop' },
   { id: 'tablet', label: 'Tablet' },
@@ -393,6 +417,13 @@ const GENRE_KEYWORDS = {
   'young-adult':    ['coming-of-age', 'first love', 'identity', 'friendship', 'mental health', 'diverse voices', 'high school', 'dystopian'],
   children:         ['picture book', 'adventure', 'animals', 'friendship', 'diversity', 'imagination', 'humor', 'school life'],
 };
+
+// A real keyword the author already chose (About step) beats a generic
+// genre-mapped one, since it actually describes their book.
+function buildCoverArtQuery(genreSlug, genreLabel, keywords) {
+  const keyword = (keywords || []).find(Boolean) || (GENRE_KEYWORDS[genreSlug] || [])[0] || '';
+  return [genreLabel || genreSlug, keyword, 'book cover'].filter(Boolean).join(' ').trim();
+}
 
 // Advisory-only signal words for the mature-content suggestion in Step 1 —
 // this never blocks or auto-sets anything, it just surfaces a dismissible
@@ -529,6 +560,11 @@ const PRICE_PRESETS = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function slugify(s) {
   return s.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+}
+
+function likelyCentralName(value = '') {
+  const ignored = new Set(['The', 'This', 'That', 'Their', 'Reader', 'Readers', 'Book', 'Story']);
+  return (String(value).match(/\b[A-Z][a-z]{2,}\b/g) || []).find(name => !ignored.has(name)) || '';
 }
 
 function isValidISBN13(isbn) {
@@ -911,6 +947,127 @@ function CoverPreviewArt({ coverPreview, title, subtitle, author, genreLabel, te
   );
 }
 
+// Real EAN-13 encoding (the standard ISBN barcodes use) rather than a
+// generic icon — a barcode icon has ~6 sparse bars, a real one has 95
+// modules of varying width, which is what actually reads as authentic.
+const EAN13_L = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+const EAN13_G = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
+const EAN13_R = ['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
+const EAN13_PARITY = ['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
+
+function ean13Bars(digits13) {
+  const first = Number(digits13[0]);
+  const left = digits13.slice(1, 7).split('').map(Number);
+  const right = digits13.slice(7, 13).split('').map(Number);
+  const parity = EAN13_PARITY[first];
+  const leftBars = left.map((d, i) => (parity[i] === 'L' ? EAN13_L[d] : EAN13_G[d])).join('');
+  const rightBars = right.map(d => EAN13_R[d]).join('');
+  return `101${leftBars}01010${rightBars}101`;
+}
+
+// One reusable barcode graphic — a real ISBN barcode's own artwork never
+// changes between books, so there's nothing to regenerate per template.
+function BackCoverBarcode({ isbn }) {
+  const rawDigits = (isbn || '').replace(/[-\s]/g, '');
+  const digits13 = (rawDigits.length === 13 ? rawDigits : '9780000000000').padEnd(13, '0').slice(0, 13);
+  const bars = ean13Bars(digits13);
+  const moduleWidth = 1.1;
+  const barHeight = 46;
+
+  return (
+    <div className="wz-back-barcode" aria-label="ISBN barcode placeholder">
+      <span className="wz-back-barcode-label">ISBN {isbn?.trim() || 'pending'}</span>
+      <svg
+        viewBox={`0 0 ${bars.length * moduleWidth} ${barHeight}`}
+        width={bars.length * moduleWidth}
+        height={barHeight}
+        shapeRendering="crispEdges"
+      >
+        <rect x="0" y="0" width={bars.length * moduleWidth} height={barHeight} fill="#fff" />
+        {bars.split('').map((bit, i) => bit === '1' && (
+          <rect key={i} x={i * moduleWidth} y="0" width={moduleWidth} height={barHeight} fill="#14100c" />
+        ))}
+      </svg>
+      <span>{rawDigits || digits13}</span>
+    </div>
+  );
+}
+
+function CoverBackPreview({
+  coverPreview, description, authorBio, authorName, authorPhoto, isbn, templateId, paletteId, artPreview,
+  blockOrder, showBio, boldLede, marginPercent, small = false,
+}) {
+  if (coverPreview) {
+    return <img src={coverPreview} alt="Back cover" className="wz-cover-preview-img" />;
+  }
+
+  const palette = coverPalette(paletteId);
+  const template = coverTemplate(templateId);
+  const blurb = (description || '').trim() || 'Your back-cover description will appear here once you add it in the About step.';
+  const bio = (authorBio || '').trim();
+  const authorInitials = (authorName || '').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+  const showBioBlock = !!showBio && !!bio;
+
+  const sentences = boldLede ? (blurb.match(/[^.!?]+[.!?]*/g) || [blurb]) : null;
+  const lede = boldLede ? sentences[0].trim() : null;
+  const rest = boldLede ? sentences.slice(1).join(' ').trim() : blurb;
+
+  const blockMap = {
+    blurb: (
+      <div key="blurb" className="wz-back-block">
+        {lede && <p className="wz-back-lede">{lede}</p>}
+        <p className="wz-back-blurb">{rest}</p>
+      </div>
+    ),
+    bio: showBioBlock ? (
+      <div key="bio" className="wz-back-block wz-back-bio">
+        <span className="wz-back-bio-label">About the author</span>
+        <div className="wz-back-bio-row">
+          {authorPhoto
+            ? <img className="wz-back-bio-avatar" src={authorPhoto} alt={authorName} />
+            : <span className="wz-back-bio-avatar wz-back-bio-avatar--fallback">{authorInitials}</span>}
+          <div className="wz-back-bio-text">
+            <strong className="wz-back-bio-name">{authorName}</strong>
+            <p>{bio}</p>
+          </div>
+        </div>
+      </div>
+    ) : null,
+  };
+  const orderedBlocks = (blockOrder?.length ? blockOrder : ['blurb', 'bio']).map(id => blockMap[id]).filter(Boolean);
+
+  // No independent back palette — the back always inherits whatever the
+  // front actually shows: the same image (full-bleed, same tint treatment)
+  // when one's set, otherwise the same solid palette. That's the only way
+  // front and back are guaranteed to match, since a printed book can't have
+  // mismatched covers.
+  return (
+    <div
+      className={`wz-template-cover wz-template-cover--back wz-template-cover--${template.id} ${artPreview ? 'wz-template-cover--has-art wz-template-cover--art-full' : ''} ${small ? 'wz-template-cover--small' : ''}`}
+      style={{
+        '--cover-bg': palette.bg,
+        '--cover-bg2': palette.bg2,
+        '--cover-ink': palette.ink,
+        '--cover-muted': palette.muted,
+        '--cover-accent': palette.accent,
+        '--cover-soft': palette.soft,
+        ...(marginPercent != null ? { padding: `${marginPercent}%` } : {}),
+      }}
+    >
+      {artPreview && <span className="wz-template-art" style={{ backgroundImage: `url(${artPreview})` }} />}
+      <span className="wz-template-mark">.in</span>
+      {marginPercent != null && !small && (
+        <span className="wz-back-safe-guide" style={{ inset: `${marginPercent}%` }} aria-hidden="true" />
+      )}
+      <div className="wz-back-blocks">{orderedBlocks}</div>
+      <div className="wz-back-footer">
+        <span className="wz-back-author">{authorName}</span>
+        <BackCoverBarcode isbn={isbn} />
+      </div>
+    </div>
+  );
+}
+
 function estimatePages(wordCount, wordsPerPage = 250) {
   const words = Number(wordCount) || 0;
   const pageWords = Math.max(1, Number(wordsPerPage) || 250);
@@ -1066,10 +1223,15 @@ export default function UploadWizard() {
   const [msPage,       setMsPage]       = useState(0);
   const [msSpread,     setMsSpread]     = useState(false);
   const [pageTurnDir,  setPageTurnDir]  = useState('');
+  const [outgoingMsPage, setOutgoingMsPage] = useState(null);
+  const [stageView,    setStageView]    = useState('plain');
   const [msLoading,    setMsLoading]    = useState(false);
   const [authorProfile,setAuthorProfile]= useState(null);
   const [authorProfileLoading, setAuthorProfileLoading] = useState(() => Boolean(user?.id));
   const [coverPreviewDevice, setCoverPreviewDevice] = useState('desktop');
+  const [coverSide, setCoverSide] = useState('front');
+  const [coverBackMode, setCoverBackMode] = useState('layout');
+  const [coverArtSearch, setCoverArtSearch] = useState({ status: 'idle', query: '', results: [] });
   const [matureSuggestionDismissed, setMatureSuggestionDismissed] = useState(false);
   const [bsPage,        setBsPage]        = useState(0);
   const [bsPageTurnDir, setBsPageTurnDir] = useState('');
@@ -1077,6 +1239,7 @@ export default function UploadWizard() {
   const fileRef  = useRef(null);
   const coverRef = useRef(null);
   const coverArtRef = useRef(null);
+  const backCoverRef = useRef(null);
   const pageTurnTimerRef = useRef(null);
   const bsPageTurnTimerRef = useRef(null);
   const bsTouchStartXRef = useRef(null);
@@ -1113,11 +1276,15 @@ export default function UploadWizard() {
     coverFile: null, coverPreview: '', coverDataUrl: '', coverColor: 'cover-clay',
     coverMode: 'template', coverTemplate: 'editorial', coverPalette: 'violet',
     coverArtFile: null, coverArtPreview: '', coverArtDataUrl: '', coverArtPlacement: 'window',
+    backBlockOrder: ['blurb', 'bio'], backShowBio: true, backBoldLede: false,
+    backCoverFile: null, backCoverPreview: '', backCoverDataUrl: '',
     price: '', isFree: false, buyUrl: '', buyPlatform: 'own', sellDirect: false,
     retailerLinks: [],
     releasePlan: 'schedule', releaseDate: dateInputFromNow(DEFAULT_RELEASE_LEAD_DAYS),
     bookStyle: 'indie-romance',
     distributionChannels: [],
+    distributionStrategy: '', distributionPriority: '',
+    assistantFacts: { centralSubject: '' },
     frontMatter: {
       copyright:   { enabled: true,  content: '' },
       toc:         { enabled: false, entries: [] },
@@ -1130,6 +1297,7 @@ export default function UploadWizard() {
       aboutAuthor:      { enabled: true,  content: '' },
       acknowledgements: { enabled: false, content: '' },
       alsoBy:           { enabled: false, content: '' },
+      readerCta:        { enabled: false, content: '' },
       bibliography:     { enabled: false, content: '' },
       glossary:         { enabled: false, content: '' },
       readingGroup:     { enabled: false, content: '' },
@@ -1217,6 +1385,10 @@ export default function UploadWizard() {
     || TRIM_SIZE_OPTIONS.find(option => option.id === '6x9')
     || TRIM_SIZE_OPTIONS[0];
   const printCoverBindingType = fd.formats.includes('Hardcover') && !fd.formats.includes('Paperback') ? 'hardcover' : 'paperback';
+  // % padding on a fixed-aspect-ratio box is based on width for every side,
+  // so this single percentage keeps the safe margin proportionally correct
+  // on both axes without needing to measure rendered pixels.
+  const backMarginPercent = hasPrintFormat ? (COVER_SAFE_MARGIN_IN / printCoverTrim.width) * 100 : null;
   const printCoverEstimate = useMemo(() => (
     hasPrintFormat
       ? calculatePrintCover({
@@ -1372,6 +1544,8 @@ export default function UploadWizard() {
     setMsHtml(null);
     setMsText(null);
     setMsPage(0);
+    setPageTurnDir('');
+    setOutgoingMsPage(null);
     setMsImages([]);
     setMsPageBreaks(0);
     setMsSpelling(null);
@@ -1387,6 +1561,35 @@ export default function UploadWizard() {
       ...p,
       [section]: { ...p[section], [key]: { ...p[section][key], [field]: val } },
     }));
+  }
+
+  function applyAssistantDistributionStrategy({ strategy, priority }) {
+    const allWideChannels = DISTRIBUTION_CHANNELS.flatMap(group => group.channels.map(channel => channel.id));
+    setFd(previous => ({
+      ...previous,
+      distributionStrategy: strategy,
+      distributionPriority: priority,
+      distributionChannels: strategy === 'amazon_exclusive' ? ['amazon'] : strategy === 'wide' ? allWideChannels : [],
+      sellDirect: strategy === 'direct_first' ? true : previous.sellDirect,
+    }));
+    return true;
+  }
+
+  function rememberAssistantBookFacts(facts) {
+    if (!facts || typeof facts !== 'object') return false;
+    setFd(previous => ({ ...previous, assistantFacts: { ...previous.assistantFacts, centralSubject: String(facts.centralSubject || '').slice(0, 500) } }));
+    return true;
+  }
+
+  function insertAssistantMatterDraft(draft) {
+    const section = draft?.section;
+    const key = draft?.key;
+    if (!['frontMatter', 'backMatter'].includes(section) || !fd[section]?.[key] || typeof draft.content !== 'string') return false;
+    setFd(previous => ({
+      ...previous,
+      [section]: { ...previous[section], [key]: { ...previous[section][key], enabled: true, content: draft.content.slice(0, 8000) } },
+    }));
+    return true;
   }
 
   function toggleMatter(section, items, key) {
@@ -1408,6 +1611,7 @@ export default function UploadWizard() {
     styleTouchedRef.current = true;
     setFd(p => ({ ...p, bookStyle: style.id, pTheme: style.theme, pFont: style.font, pSize: style.size, pSpacing: style.spacing }));
     setMsPage(0); setMsSpread(false);
+    setPageTurnDir(''); setOutgoingMsPage(null);
   }
 
   // Heading-aware pagination: walks the same structured blocks analyseHtml/
@@ -1448,6 +1652,10 @@ export default function UploadWizard() {
     return pages;
   }, [msStructure?.blocks, selectedTrim.previewWords]);
 
+  // Real flip: the outgoing page renders as an absolutely-positioned overlay
+  // that rotates away (backface-visibility hidden), while the page underneath
+  // switches to the new content immediately — so the flip actually reveals
+  // the next page instead of rotating the same content back and forth.
   function turnReadingPage(direction) {
     if (!msPages.length || msLoading || pageTurnDir) return;
     const targetPage = direction === 'next'
@@ -1456,18 +1664,20 @@ export default function UploadWizard() {
     if (targetPage === msPage) return;
 
     if (pageTurnTimerRef.current) window.clearTimeout(pageTurnTimerRef.current);
+    setOutgoingMsPage(msPage);
+    setMsPage(targetPage);
     setPageTurnDir(direction);
     pageTurnTimerRef.current = window.setTimeout(() => {
-      setMsPage(targetPage);
-      pageTurnTimerRef.current = window.setTimeout(() => {
-        setPageTurnDir('');
-        pageTurnTimerRef.current = null;
-      }, 360);
-    }, 180);
+      setPageTurnDir('');
+      setOutgoingMsPage(null);
+      pageTurnTimerRef.current = null;
+    }, 900);
   }
 
   useEffect(() => {
     setMsPage(0);
+    setPageTurnDir('');
+    setOutgoingMsPage(null);
   }, [fd.trimSize]);
 
   useEffect(() => () => {
@@ -1611,7 +1821,7 @@ export default function UploadWizard() {
     setAuthorProfileLoading(true);
     supabase
       .from('authors')
-      .select('display_name, short_bio, long_bio, website_url, goodreads_url, location')
+      .select('display_name, short_bio, long_bio, website_url, goodreads_url, location, photo_url')
       .eq('user_id', user.id)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -1665,6 +1875,31 @@ export default function UploadWizard() {
 
   const primaryGenreLabel = genres.find(g => g.slug === fd.genre)?.label || '';
   const selectedTemplate = coverTemplate(fd.coverTemplate);
+
+  // Genre-driven Unsplash search for the artwork slot — falls back to the
+  // bundled static samples (via coverArtSearch.status !== 'ready' below) if
+  // the search API isn't configured, rate-limited, or returns nothing.
+  useEffect(() => {
+    if (step !== 6 || coverSide !== 'front' || fd.coverMode !== 'template' || fd.coverArtPreview) return;
+    if (!fd.genre) return;
+    const query = buildCoverArtQuery(fd.genre, primaryGenreLabel, fd.keywords);
+    if (coverArtSearch.status !== 'idle' && coverArtSearch.query === query) return;
+    let cancelled = false;
+    setCoverArtSearch({ status: 'loading', query, results: [] });
+    fetch(`/api/cover-art-search?query=${encodeURIComponent(query)}`)
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (cancelled) return;
+        if (ok && Array.isArray(data.results) && data.results.length) {
+          setCoverArtSearch({ status: 'ready', query, results: data.results });
+        } else {
+          setCoverArtSearch({ status: 'error', query, results: [] });
+        }
+      })
+      .catch(() => { if (!cancelled) setCoverArtSearch({ status: 'error', query, results: [] }); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, coverSide, fd.coverMode, fd.coverArtPreview, fd.genre, fd.keywords, primaryGenreLabel]);
   const stepGroups = WIZARD_STEPS.reduce((acc, item, index) => {
     const last = acc[acc.length - 1];
     if (last?.label === item.group) last.steps.push({ item, index });
@@ -1784,6 +2019,72 @@ export default function UploadWizard() {
     reader.onload = () => setFd(p => ({ ...p, coverDataUrl: reader.result || '' }));
     reader.readAsDataURL(file);
     setStepError('');
+  }
+
+  function chooseCoverBackMode(mode) {
+    setStepError('');
+    if (mode === 'layout') {
+      setFd(p => ({ ...p, backCoverFile: null, backCoverPreview: '', backCoverDataUrl: '' }));
+    }
+    setCoverBackMode(mode);
+  }
+
+  function moveBackBlock(from, to) {
+    if (Number.isNaN(from) || from === to) return;
+    setFd(p => {
+      if (to < 0 || to > p.backBlockOrder.length - 1) return p;
+      const order = [...p.backBlockOrder];
+      const [item] = order.splice(from, 1);
+      order.splice(to, 0, item);
+      return { ...p, backBlockOrder: order };
+    });
+  }
+
+  function handleBackCover(file) {
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setStepError('Back cover must be a JPG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setStepError(`Back cover is ${(file.size / 1024 / 1024).toFixed(1)} MB. Please upload an image under 5 MB.`);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setFd(p => ({ ...p, backCoverFile: file, backCoverPreview: previewUrl, backCoverDataUrl: '' }));
+    const reader = new FileReader();
+    reader.onload = () => setFd(p => ({ ...p, backCoverDataUrl: reader.result || '' }));
+    reader.readAsDataURL(file);
+    setStepError('');
+  }
+
+  // Sample photos feed the template's artwork slot — the real title, subtitle,
+  // and author still render on top from actual form data, so this stays a
+  // mockup of the user's own book rather than swapping in a static image.
+  async function useSampleArtwork(sample) {
+    const res = await fetch(sample.src);
+    const blob = await res.blob();
+    const file = new File([blob], sample.file, { type: blob.type || 'image/webp' });
+    handleCoverArt(file);
+    up('coverArtPlacement', 'full');
+  }
+
+  // Same idea for a genre-searched Unsplash photo, plus the download-tracking
+  // ping their API guidelines require whenever a searched photo is actually used.
+  async function usePhotoSearchResult(photo) {
+    const res = await fetch(photo.fullUrl);
+    const blob = await res.blob();
+    const file = new File([blob], `${photo.id}.jpg`, { type: blob.type || 'image/jpeg' });
+    handleCoverArt(file);
+    up('coverArtPlacement', 'full');
+    if (photo.downloadLocation) {
+      fetch('/api/cover-art-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ downloadLocation: photo.downloadLocation }),
+      }).catch(() => {});
+    }
   }
 
   function handleCoverArt(file) {
@@ -2133,6 +2434,50 @@ export default function UploadWizard() {
   const readinessScoreLabel = readinessScore >= 90 ? 'Mostly ready' : readinessScore >= 70 ? 'Almost there' : 'Needs work';
 
   const pct    = Math.round((step / (WIZARD_STEPS.length - 1)) * 100);
+  const consistencyChecks = useMemo(() => {
+    const centralName = likelyCentralName(fd.assistantFacts?.centralSubject);
+    const releaseYear = releasePlan === 'schedule' && releaseDate
+      ? releaseDate.slice(0, 4)
+      : releasePlan === 'now'
+        ? String(new Date().getFullYear())
+        : '';
+    const incompatibleChannels = selectedDistributionChannels.filter(channel => (
+      !channel.formats?.some(format => fd.formats.includes(format))
+    ));
+    const hasWideExclusiveConflict = fd.distributionStrategy === 'amazon_exclusive' && fd.distributionChannels.some(channel => channel !== 'amazon');
+    return [
+      {
+        id: 'consistency-cover-subtitle', label: 'Cover and subtitle', step: 6,
+        status: fd.coverMode === 'upload' && fd.subtitle.trim() ? 'recommended' : 'complete',
+        message: fd.coverMode === 'upload' && fd.subtitle.trim() ? 'Confirm the uploaded cover shows the same subtitle as your metadata.' : 'Template cover text is synchronized with metadata.',
+      },
+      {
+        id: 'consistency-central-subject', label: 'Description subject', step: 1, field: 'description',
+        status: centralName && fd.description.trim() && !fd.description.toLowerCase().includes(centralName.toLowerCase()) ? 'missing' : 'complete',
+        message: centralName && fd.description.trim() && !fd.description.toLowerCase().includes(centralName.toLowerCase()) ? `The confirmed central name “${centralName}” does not appear in the description.` : centralName ? `Description is consistent with the confirmed central subject (${centralName}).` : 'No separate central subject has been confirmed yet.',
+      },
+      {
+        id: 'consistency-audience', label: 'Audience and mature content', step: 1, field: 'audience',
+        status: matureSignals.length > 0 && fd.audience !== 'adult' ? 'blocker' : 'complete',
+        message: matureSignals.length > 0 && fd.audience !== 'adult' ? `The content indicators (${matureSignals.join(', ')}) conflict with a non-adult audience.` : 'No audience and mature-content conflict detected.',
+      },
+      {
+        id: 'consistency-series', label: 'Series details', step: 0, field: 'series',
+        status: String(fd.seriesVolume || '').trim() && !fd.series.trim() ? 'missing' : 'complete',
+        message: String(fd.seriesVolume || '').trim() && !fd.series.trim() ? 'A series volume is set without a series name.' : 'Series name and volume are consistent.',
+      },
+      {
+        id: 'consistency-release-year', label: 'Publication year and release', step: 2, field: 'pubYear',
+        status: fd.pubYear && releaseYear && fd.pubYear !== releaseYear ? 'blocker' : 'complete',
+        message: fd.pubYear && releaseYear && fd.pubYear !== releaseYear ? `Publication year ${fd.pubYear} conflicts with the scheduled release year ${releaseYear}.` : 'Publication year matches the release plan.',
+      },
+      {
+        id: 'consistency-distribution', label: 'Formats and distribution', step: 8,
+        status: hasWideExclusiveConflict || incompatibleChannels.length ? 'blocker' : 'complete',
+        message: hasWideExclusiveConflict ? 'Amazon ebook exclusivity conflicts with selected wide-distribution channels.' : incompatibleChannels.length ? `${incompatibleChannels.map(channel => channel.label).join(', ')} do not support the selected formats.` : 'Selected formats and distribution channels are compatible.',
+      },
+    ];
+  }, [fd, matureSignals, releaseDate, releasePlan, selectedDistributionChannels]);
   const publishingReadiness = useMemo(() => {
     const hasBlockingLayoutIssue = layoutIssues.some(issue => issue.severity === 'error');
     const items = [
@@ -2147,6 +2492,7 @@ export default function UploadWizard() {
       { id: 'price', label: 'List price', status: fd.isFree || Number.parseFloat(fd.price) > 0 ? 'complete' : 'recommended', message: fd.isFree ? 'Book is set to free.' : Number.parseFloat(fd.price) > 0 ? `List price set to ${fd.price}.` : 'Set a price or mark the book as free.', step: 7, field: 'price' },
       { id: 'frontmatter', label: 'Essential front matter', status: fd.frontMatter.copyright?.enabled ? 'complete' : 'missing', message: fd.frontMatter.copyright?.enabled ? 'Copyright page enabled.' : 'Enable the copyright page.', step: 9 },
       { id: 'release', label: 'Release plan', status: releaseDateInvalid ? 'blocker' : 'complete', message: releaseDateInvalid ? `Choose a release date at least ${RELEASE_LEAD_DAYS} days away.` : releaseSummary, step: 11 },
+      ...consistencyChecks,
     ];
     const complete = items.filter(item => item.status === 'complete').length;
     return {
@@ -2158,7 +2504,7 @@ export default function UploadWizard() {
       recommended: items.filter(item => item.status === 'recommended').length,
       items,
     };
-  }, [fd, layoutIssues, manuscriptFileName, msStructure, releaseDateInvalid, releaseSummary]);
+  }, [consistencyChecks, fd, layoutIssues, manuscriptFileName, msStructure, releaseDateInvalid, releaseSummary]);
 
   function navigateToReadinessItem(item) {
     if (!item || item.step > step) return false;
@@ -2186,6 +2532,30 @@ export default function UploadWizard() {
     stepGuidance: WIZARD_STEPS[step]?.blurb || '',
     stepTips: WIZARD_STEPS[step]?.tips || [],
     readiness: publishingReadiness,
+    metadataOptions: {
+      genres: genres.slice(0, 80).map(item => ({ value: item.slug, label: item.label })),
+      audiences: AUDIENCES.filter(item => !fd.matureContent || item.value === 'adult').map(item => ({ value: item.value, label: item.label })),
+    },
+    wizardNavigation: [
+      ['title', 0], ['subtitle', 0], ['language', 0], ['edition', 0], ['series', 0], ['seriesVolume', 0],
+      ['description', 1], ['audience', 1], ['genre', 1], ['genreSecondary', 1], ['keywords', 1],
+      ['pubYear', 2], ['publisher', 2], ['pageCount', 2], ['trimSize', 3], ['price', 7],
+    ].map(([field, targetStep]) => ({ field, step: targetStep, label: ASSISTANT_FIELD_DEFINITIONS[field].label })),
+    pricingContext: {
+      formats: fd.formats,
+      pageCount: resolvedSelectedPages || null,
+      trimSize: fd.trimSize,
+      distributionChannels: fd.distributionChannels,
+      distributionStrategy: fd.distributionStrategy,
+      distributionPriority: fd.distributionPriority,
+    },
+    matterContext: {
+      authorName,
+      publisher: fd.publisher,
+      publicationYear: fd.pubYear || String(new Date().getFullYear()),
+      isbn: fd.isbn,
+      authorBio: authorProfileBio.slice(0, 1500),
+    },
     activeField: assistantActiveField ? {
       ...assistantActiveField,
       value: assistantActiveField.id === 'keywords'
@@ -2207,7 +2577,7 @@ export default function UploadWizard() {
       isFree: fd.isFree,
       publisher: fd.publisher.slice(0, 160),
     },
-  }), [step, draftId, assistantActiveField, fd, publishingReadiness]);
+  }), [step, draftId, assistantActiveField, authorName, authorProfileBio, fd, genres, publishingReadiness, resolvedSelectedPages]);
 
   // ─────────────────── SUCCESS / DRAFT SCREEN ──────────────────
   if (step === 12) {
@@ -2339,7 +2709,13 @@ export default function UploadWizard() {
               <div className="wz-resume-actions">
                 <button className="btn btn-primary btn-sm" onClick={() => {
                   styleTouchedRef.current = true;
-                  setFd(prev => ({ ...prev, ...savedProgress.fd, trimSize: savedProgress.fd?.trimSize || prev.trimSize }));
+                  setFd(prev => ({
+                    ...prev,
+                    ...savedProgress.fd,
+                    trimSize: savedProgress.fd?.trimSize || prev.trimSize,
+                    frontMatter: { ...prev.frontMatter, ...(savedProgress.fd?.frontMatter || {}) },
+                    backMatter: { ...prev.backMatter, ...(savedProgress.fd?.backMatter || {}) },
+                  }));
                   setStep(savedProgress.step || 0);
                   setSavedProgress(null);
                 }}>Continue →</button>
@@ -3262,13 +3638,62 @@ export default function UploadWizard() {
             const currentPage = msPages[msPage] || null;
             const showMs = !!currentPage;
             const isLastPage = msPage >= msPages.length - 1;
-            const chapterHeading = currentPage?.headingBlock ? formatChapterHeading(currentPage.headingBlock.text) : null;
-            const pageParagraphs = showMs ? currentPage.paras : [];
-            const isChapterOpening = !showMs || !!chapterHeading || msPage === 0;
-            const runningHead = isChapterOpening
-              ? ''
-              : (msPage % 2 === 0 ? (fd.title || 'Your Book Title') : authorName);
             const currentStyle = BOOK_STYLES.find(s => s.id === fd.bookStyle || s.legacyId === fd.bookStyle) || BOOK_STYLES[0];
+
+            // Renders one page's header/body/footer for a given page index —
+            // called once for the static page underneath and, while a flip is
+            // in progress, once more for the outgoing page rotating away on
+            // top of it, so the two never have to share state mid-animation.
+            const renderPageFace = pageIndex => {
+              const page = msPages[pageIndex] || null;
+              const show = !!page;
+              const heading = page?.headingBlock ? formatChapterHeading(page.headingBlock.text) : null;
+              const paragraphs = show ? page.paras : [];
+              const chapterOpening = !show || !!heading || pageIndex === 0;
+              const runHead = chapterOpening ? '' : (pageIndex % 2 === 0 ? (fd.title || 'Your Book Title') : authorName);
+              return (
+                <>
+                  <div className={`wz-book-page-hdr ${runHead ? '' : 'is-empty'}`} style={{ borderColor: runHead ? `${theme.text}08` : 'transparent' }}>
+                    {runHead && (
+                      <span className="wz-book-running wz-book-running--center" style={{ fontFamily: fontCss, color: theme.text }}>
+                        {runHead}
+                      </span>
+                    )}
+                  </div>
+                  <div className={`wz-book-page-body ${chapterOpening ? 'is-chapter-opening' : ''}`} style={{ fontFamily: fontCss, fontSize: sizeObj.size, lineHeight: sizeObj.lh, color: theme.text }}>
+                    {msLoading ? (
+                      <div className="wz-reader-loading" style={{ color: theme.text }}>
+                        <div className="wz-spinner" style={{ borderColor: `${theme.text}22`, borderTopColor: theme.text }} />
+                        Loading your manuscript…
+                      </div>
+                    ) : show ? (
+                      <>
+                        {heading && (
+                          <div className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>
+                            {heading.label && <span className="wz-reader-chapter-kicker">{heading.label}</span>}
+                            {heading.title && <span className="wz-reader-chapter-title">{heading.title}</span>}
+                          </div>
+                        )}
+                        {paragraphs.map((para, i) => <p key={i} className="wz-reader-para">{para}</p>)}
+                      </>
+                    ) : (
+                      SAMPLE_TEXT.map((block, i) =>
+                        block.type === 'chapter'
+                          ? <div key={i} className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>{block.text}</div>
+                          : <p key={i} className="wz-reader-para">{block.text}</p>
+                      )
+                    )}
+                  </div>
+                  <div className="wz-book-page-ftr" style={{ borderColor: 'transparent', color: theme.text }}>
+                    {!msLoading && (
+                      <span className="wz-book-page-number" style={{ fontFamily: fontCss }}>
+                        {show ? pageIndex + 1 : 1}
+                      </span>
+                    )}
+                  </div>
+                </>
+              );
+            };
             return (
               <div className="wz-step wz-step--preview wz-reading-step">
                 <div className="wz-reading-head">
@@ -3314,6 +3739,14 @@ export default function UploadWizard() {
                   </div>
 
                   <div className="wz-reading-controls-right">
+                    <button
+                      type="button"
+                      className={`wz-stage-view-toggle${stageView === 'desk' ? ' active' : ''}`}
+                      onClick={() => setStageView(v => (v === 'desk' ? 'plain' : 'desk'))}
+                      aria-pressed={stageView === 'desk'}
+                    >
+                      {stageView === 'desk' ? 'Desk view' : 'Plain view'}
+                    </button>
                     <small className="wz-reading-controls-meta">{showMs ? `Page ${msPage + 1} of ${msPages.length}` : 'Sample text'}</small>
                     <button type="button" className="wz-reading-toolbtn" onClick={() => turnReadingPage('prev')} disabled={msPage === 0 || !!pageTurnDir} aria-label="Previous page">‹</button>
                     <button type="button" className="wz-reading-toolbtn" onClick={() => turnReadingPage('next')} disabled={isLastPage || !showMs || !!pageTurnDir} aria-label="Next page">›</button>
@@ -3362,51 +3795,25 @@ export default function UploadWizard() {
                   </div>
                 </div>
 
-                <div className="wz-reading-stage">
+                <div className={`wz-reading-stage${stageView === 'desk' ? ' wz-reading-stage--desk' : ''}`}>
                   <div className="wz-book-reader">
-                    <div className={`wz-book-page ${pageTurnDir ? `is-page-turning is-page-turning-${pageTurnDir}` : ''}`} style={{ background: theme.bg, borderColor: theme.border, '--page-aspect': selectedTrim.aspect, '--page-width': selectedTrim.previewWidth }} tabIndex={0}
-                      onKeyDown={e => {
-                        if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) { e.preventDefault(); if (!isLastPage) turnReadingPage('next'); }
-                        if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) { e.preventDefault(); if (msPage > 0) turnReadingPage('prev'); }
-                      }}>
-                      <div className={`wz-book-page-hdr ${runningHead ? '' : 'is-empty'}`} style={{ borderColor: runningHead ? `${theme.text}08` : 'transparent' }}>
-                        {runningHead && (
-                          <span className="wz-book-running wz-book-running--center" style={{ fontFamily: fontCss, color: theme.text }}>
-                            {runningHead}
-                          </span>
-                        )}
+                    <div className="wz-book-page-stack" style={{ '--page-aspect': selectedTrim.aspect, '--page-width': selectedTrim.previewWidth }}>
+                      <div className="wz-book-page" style={{ background: theme.bg, borderColor: theme.border }} tabIndex={0}
+                        onKeyDown={e => {
+                          if (['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)) { e.preventDefault(); if (!isLastPage) turnReadingPage('next'); }
+                          if (['ArrowLeft','ArrowUp','PageUp'].includes(e.key)) { e.preventDefault(); if (msPage > 0) turnReadingPage('prev'); }
+                        }}>
+                        {renderPageFace(msPage)}
                       </div>
-                      <div className={`wz-book-page-body ${isChapterOpening ? 'is-chapter-opening' : ''}`} style={{ fontFamily: fontCss, fontSize: sizeObj.size, lineHeight: sizeObj.lh, color: theme.text }}>
-                        {msLoading ? (
-                          <div className="wz-reader-loading" style={{ color: theme.text }}>
-                            <div className="wz-spinner" style={{ borderColor: `${theme.text}22`, borderTopColor: theme.text }} />
-                            Loading your manuscript…
-                          </div>
-                        ) : showMs ? (
-                          <>
-                            {chapterHeading && (
-                              <div className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>
-                                {chapterHeading.label && <span className="wz-reader-chapter-kicker">{chapterHeading.label}</span>}
-                                {chapterHeading.title && <span className="wz-reader-chapter-title">{chapterHeading.title}</span>}
-                              </div>
-                            )}
-                            {pageParagraphs.map((para, i) => <p key={i} className="wz-reader-para">{para}</p>)}
-                          </>
-                        ) : (
-                          SAMPLE_TEXT.map((block, i) =>
-                            block.type === 'chapter'
-                              ? <div key={i} className="wz-reader-chapter" style={{ fontFamily: fontCss, color: theme.text }}>{block.text}</div>
-                              : <p key={i} className="wz-reader-para">{block.text}</p>
-                          )
-                        )}
-                      </div>
-                      <div className="wz-book-page-ftr" style={{ borderColor: 'transparent', color: theme.text }}>
-                        {!msLoading && (
-                          <span className="wz-book-page-number" style={{ fontFamily: fontCss }}>
-                            {showMs ? msPage + 1 : 1}
-                          </span>
-                        )}
-                      </div>
+                      {outgoingMsPage != null && (
+                        <div
+                          className={`wz-book-page wz-book-page-flip is-page-turning-${pageTurnDir}`}
+                          style={{ background: theme.bg, borderColor: theme.border }}
+                          aria-hidden="true"
+                        >
+                          {renderPageFace(outgoingMsPage)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3420,23 +3827,46 @@ export default function UploadWizard() {
               <h2>Cover</h2>
               <p className="wz-sub">Create a clean starter cover, upload finished artwork, or hire a cover designer when you want a more polished launch.</p>
 
-              <div className="wz-cover-mode-tabs" aria-label="Cover source options">
-                <button
-                  type="button"
-                  className={fd.coverMode !== 'upload' ? 'active' : ''}
-                  aria-pressed={fd.coverMode !== 'upload'}
-                  onClick={() => chooseCoverMode('template')}
-                >
-                  Create from template
-                </button>
-                <button
-                  type="button"
-                  className={fd.coverMode === 'upload' ? 'active' : ''}
-                  aria-pressed={fd.coverMode === 'upload'}
-                  onClick={() => chooseCoverMode('upload')}
-                >
-                  Upload cover
-                </button>
+              <div className={`wz-cover-mode-tabs ${coverSide === 'back' ? 'wz-cover-mode-tabs--underline' : ''}`} aria-label="Cover source options">
+                {coverSide === 'back' ? (
+                  <>
+                    <button
+                      type="button"
+                      className={coverBackMode !== 'upload' ? 'active' : ''}
+                      aria-pressed={coverBackMode !== 'upload'}
+                      onClick={() => chooseCoverBackMode('layout')}
+                    >
+                      Layouts
+                    </button>
+                    <button
+                      type="button"
+                      className={coverBackMode === 'upload' ? 'active' : ''}
+                      aria-pressed={coverBackMode === 'upload'}
+                      onClick={() => chooseCoverBackMode('upload')}
+                    >
+                      Upload design
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={fd.coverMode !== 'upload' ? 'active' : ''}
+                      aria-pressed={fd.coverMode !== 'upload'}
+                      onClick={() => chooseCoverMode('template')}
+                    >
+                      Create from template
+                    </button>
+                    <button
+                      type="button"
+                      className={fd.coverMode === 'upload' ? 'active' : ''}
+                      aria-pressed={fd.coverMode === 'upload'}
+                      onClick={() => chooseCoverMode('upload')}
+                    >
+                      Upload cover
+                    </button>
+                  </>
+                )}
                 <Link
                   to="/hire/browse?service=cover-design&source=cover-pricing"
                   className="wz-cover-mode-link"
@@ -3448,7 +3878,124 @@ export default function UploadWizard() {
 
               <div className="wz-cover-layout">
                 <div className="wz-cover-left">
-                  {fd.coverMode === 'upload' ? (
+                  {coverSide === 'back' ? (
+                    coverBackMode === 'upload' ? (
+                      !fd.backCoverPreview ? (
+                        <div className="wz-dropzone" onClick={() => backCoverRef.current?.click()}
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleBackCover(f); }}>
+                          <input ref={backCoverRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
+                            onChange={e => { if (e.target.files[0]) handleBackCover(e.target.files[0]); }} />
+                          <div className="wz-dropzone-icon">+</div>
+                          <p className="wz-dropzone-label">Upload back cover image</p>
+                          <p className="wz-dropzone-sub">JPG, PNG or WebP - max 5 MB</p>
+                          <p className="wz-dropzone-hint">Recommended: 1,600 x 2,560 px (portrait 5:8)</p>
+                        </div>
+                      ) : (
+                        <div className="wz-cover-uploaded">
+                          <img src={fd.backCoverPreview} alt="Back cover" />
+                          <div>
+                            <span className="wz-file-name">{fd.backCoverFile?.name}</span>
+                            <button
+                              type="button"
+                              className="wz-text-link"
+                              onClick={() => { setFd(p => ({ ...p, backCoverFile: null, backCoverPreview: '', backCoverDataUrl: '' })); setCoverBackMode('layout'); }}
+                            >
+                              Remove and use layout
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <div className="wz-template-builder">
+                        <div className="wz-template-section-head">
+                          <div>
+                            <span>Content order</span>
+                            <small>Drag a section, or use the arrows — the author name and barcode always stay pinned to the bottom corner for retail scanning.</small>
+                          </div>
+                          <button type="button" className="wz-text-link" onClick={() => chooseCoverBackMode('upload')}>
+                            Upload finished back cover
+                          </button>
+                        </div>
+
+                        <div className="wz-back-block-list">
+                          {fd.backBlockOrder.map((blockId, index) => {
+                            const isBio = blockId === 'bio';
+                            const bioUnavailable = isBio && !authorProfileBio;
+                            return (
+                              <div
+                                key={blockId}
+                                className={`wz-back-block-row ${bioUnavailable ? 'is-disabled' : ''}`}
+                                draggable={!bioUnavailable}
+                                onDragStart={e => e.dataTransfer.setData('text/plain', String(index))}
+                                onDragOver={e => e.preventDefault()}
+                                onDrop={e => {
+                                  e.preventDefault();
+                                  moveBackBlock(Number(e.dataTransfer.getData('text/plain')), index);
+                                }}
+                              >
+                                <span className="wz-back-block-handle" aria-hidden="true">⠿</span>
+                                <span className="wz-back-block-name">{BACK_COVER_BLOCK_LABELS[blockId]}</span>
+                                {isBio && (
+                                  <label className="wz-back-block-toggle">
+                                    <input
+                                      type="checkbox"
+                                      checked={fd.backShowBio}
+                                      disabled={!authorProfileBio}
+                                      onChange={e => up('backShowBio', e.target.checked)}
+                                    />
+                                    Show
+                                  </label>
+                                )}
+                                <div className="wz-back-block-actions">
+                                  <button type="button" onClick={() => moveBackBlock(index, index - 1)} disabled={index === 0} aria-label={`Move ${BACK_COVER_BLOCK_LABELS[blockId]} up`}>↑</button>
+                                  <button type="button" onClick={() => moveBackBlock(index, index + 1)} disabled={index === fd.backBlockOrder.length - 1} aria-label={`Move ${BACK_COVER_BLOCK_LABELS[blockId]} down`}>↓</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div className="wz-back-block-row wz-back-block-row--pinned">
+                            <span className="wz-back-block-handle wz-back-block-handle--locked" aria-hidden="true">🔒</span>
+                            <span className="wz-back-block-name">Author name + ISBN barcode</span>
+                          </div>
+                        </div>
+
+                        {!authorProfileBio && (
+                          <p className="wz-hint">Add a bio on your author profile to include it on the back cover.</p>
+                        )}
+
+                        <label className="wz-back-lede-toggle">
+                          <input type="checkbox" checked={fd.backBoldLede} onChange={e => up('backBoldLede', e.target.checked)} />
+                          Enlarge the opening line of your description
+                        </label>
+
+                        <div className="wz-template-section-head wz-template-section-head--spaced">
+                          <div>
+                            <span>Appearance</span>
+                            <small>
+                              {fd.coverArtPreview
+                                ? 'Same photo and template as your front cover'
+                                : `Same ${coverPalette(fd.coverPalette).name} palette as your front cover`}
+                            </small>
+                          </div>
+                        </div>
+
+                        {hasPrintFormat && (
+                          <p className="wz-hint">
+                            The shaded outline in the preview marks the {formatCoverInches(COVER_SAFE_MARGIN_IN)} safe margin for {printCoverTrim.label} — keep text inside it. A {formatCoverInches(COVER_BLEED_IN)} bleed is added automatically outside the trim edge when your print file is exported.
+                          </p>
+                        )}
+
+                        <div className="wz-cover-tip">
+                          <span aria-hidden="true">💡</span>
+                          <div>
+                            <strong>Tip</strong>
+                            <p>A thoughtful back cover summary builds trust and helps readers decide to buy.</p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  ) : fd.coverMode === 'upload' ? (
                     !fd.coverPreview ? (
                       <div className="wz-dropzone" onClick={() => coverRef.current?.click()}
                         onDragOver={e => e.preventDefault()}
@@ -3487,21 +4034,33 @@ export default function UploadWizard() {
                         </button>
                       </div>
 
-                      <div className="wz-template-grid">
-                        {COVER_TEMPLATES.map(t => (
-                          <button
-                            key={t.id}
-                            type="button"
-                            className={`wz-template-card ${fd.coverTemplate === t.id ? 'selected' : ''}`}
-                            onClick={() => up('coverTemplate', t.id)}
-                          >
-                            <span className="wz-template-token">{t.short}</span>
-                            <span>
-                              <span className="wz-template-card-name">{t.name}</span>
-                              <span className="wz-template-card-note">{t.note}</span>
-                            </span>
-                          </button>
-                        ))}
+                      <div className="wz-cover-thumb-grid">
+                        {COVER_TEMPLATES.map(t => {
+                          const selected = fd.coverTemplate === t.id;
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              className={`wz-cover-thumb-card ${selected ? 'selected' : ''}`}
+                              onClick={() => up('coverTemplate', t.id)}
+                              title={t.note}
+                            >
+                              {selected && <span className="wz-cover-thumb-check" aria-hidden="true">✓</span>}
+                              <CoverTemplatePreview
+                                title={fd.title}
+                                subtitle={fd.subtitle}
+                                author={authorName}
+                                genreLabel={primaryGenreLabel}
+                                templateId={t.id}
+                                paletteId={fd.coverPalette}
+                                artPreview={fd.coverArtPreview}
+                                artPlacement={fd.coverArtPlacement}
+                                small
+                              />
+                              <span className="wz-cover-thumb-name">{t.name}</span>
+                            </button>
+                          );
+                        })}
                       </div>
 
                       <div className="wz-template-section-head wz-template-section-head--spaced">
@@ -3556,6 +4115,47 @@ export default function UploadWizard() {
                         )}
                       </div>
 
+                      {!fd.coverArtPreview && coverArtSearch.status === 'ready' && coverArtSearch.results.length > 0 && (
+                        <div className="wz-cover-samples">
+                          <span>Photos matched to {primaryGenreLabel || 'your genre'} — your real title, subtitle, and author still render on top.</span>
+                          <div className="wz-cover-samples-row">
+                            {coverArtSearch.results.map(photo => (
+                              <div key={photo.id} className="wz-cover-sample-card">
+                                <button type="button" className="wz-cover-sample-thumb" onClick={() => usePhotoSearchResult(photo)}>
+                                  <img src={photo.thumbUrl} alt={photo.alt} />
+                                </button>
+                                <span className="wz-cover-sample-credit-line">
+                                  Photo by{' '}
+                                  <a
+                                    href={`${photo.photographerUrl}?utm_source=indieconverters&utm_medium=referral`}
+                                    target="_blank" rel="noreferrer"
+                                  >
+                                    {photo.photographerName}
+                                  </a>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <span className="wz-cover-samples-credit">
+                            via <a href="https://unsplash.com/?utm_source=indieconverters&utm_medium=referral" target="_blank" rel="noreferrer">Unsplash</a>
+                          </span>
+                        </div>
+                      )}
+
+                      {!fd.coverArtPreview && coverArtSearch.status !== 'ready' && (
+                        <div className="wz-cover-samples">
+                          <span>No photo handy? Try a sample — your real title, subtitle, and author still render on top of it.</span>
+                          <div className="wz-cover-samples-row">
+                            {COVER_SAMPLES.map(sample => (
+                              <button key={sample.id} type="button" className="wz-cover-sample-thumb" onClick={() => useSampleArtwork(sample)}>
+                                <img src={sample.src} alt={sample.label} />
+                                <span>{sample.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {fd.coverArtPreview && (
                         <div className="wz-art-placement" aria-label="Artwork placement">
                           {COVER_ART_PLACEMENTS.map(option => (
@@ -3576,54 +4176,100 @@ export default function UploadWizard() {
                 <div className="wz-cover-right">
                   <div className="wz-cover-preview-head">
                     <span className="wz-preview-label">Preview</span>
-                    <div className="wz-device-tabs" aria-label="Preview device">
-                      {COVER_DEVICE_PREVIEWS.map(device => (
-                        <button
-                          key={device.id}
-                          type="button"
-                          className={coverPreviewDevice === device.id ? 'selected' : ''}
-                          onClick={() => setCoverPreviewDevice(device.id)}
-                        >
-                          {device.label}
-                        </button>
-                      ))}
+                    <div className="wz-cover-preview-head-tabs">
+                      <div className="wz-device-tabs" aria-label="Cover side">
+                        <button type="button" className={coverSide === 'front' ? 'selected' : ''} onClick={() => setCoverSide('front')}>Front</button>
+                        <button type="button" className={coverSide === 'back' ? 'selected' : ''} onClick={() => setCoverSide('back')}>Back</button>
+                      </div>
+                      {coverSide === 'front' && (
+                        <div className="wz-device-tabs" aria-label="Preview device">
+                          {COVER_DEVICE_PREVIEWS.map(device => (
+                            <button
+                              key={device.id}
+                              type="button"
+                              className={coverPreviewDevice === device.id ? 'selected' : ''}
+                              onClick={() => setCoverPreviewDevice(device.id)}
+                            >
+                              {device.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className={`wz-device-preview wz-device-preview--${coverPreviewDevice}`}>
-                    <div className="wz-device-frame">
-                      <div className="wz-device-chrome">
-                        <span />
-                        <span />
-                        <span />
+                  {coverSide === 'back' ? (
+                    // Back covers are print-only — there's no "how it looks on a phone
+                    // browser" question, so this skips the responsive device-chrome
+                    // frame used for the front cover and shows a plain preview stage.
+                    <div className="wz-backcover-stage">
+                      <div className="wz-device-cover-slot">
+                        <div
+                          className={`wz-device-book-mockup ${fd.backCoverPreview ? 'wz-device-book-mockup--uploaded' : ''}`}
+                          onPointerMove={handleBookPreviewPointerMove}
+                          onPointerLeave={resetBookPreviewTilt}
+                        >
+                          <CoverBackPreview
+                            coverPreview={fd.backCoverPreview}
+                            description={fd.description}
+                            authorBio={authorProfileBio}
+                            authorName={authorName}
+                            authorPhoto={authorProfile?.photo_url}
+                            isbn={fd.isbn}
+                            templateId={fd.coverTemplate}
+                            paletteId={fd.coverPalette}
+                            artPreview={fd.coverArtPreview}
+                            blockOrder={fd.backBlockOrder}
+                            showBio={fd.backShowBio}
+                            boldLede={fd.backBoldLede}
+                            marginPercent={backMarginPercent}
+                          />
+                        </div>
                       </div>
-                      <div className="wz-device-content">
-                        <div className="wz-device-cover-stage">
-                          <div className="wz-device-cover-slot">
-                            <div
-                              className={`wz-device-book-mockup ${fd.coverPreview ? 'wz-device-book-mockup--uploaded' : ''}`}
-                              onPointerMove={handleBookPreviewPointerMove}
-                              onPointerLeave={resetBookPreviewTilt}
-                            >
-                              <CoverPreviewArt
-                                coverPreview={fd.coverPreview}
-                                title={fd.title}
-                                subtitle={fd.subtitle}
-                                author={authorName}
-                                genreLabel={primaryGenreLabel}
-                                templateId={fd.coverTemplate}
-                                paletteId={fd.coverPalette}
-                                artPreview={fd.coverArtPreview}
-                                artPlacement={fd.coverArtPlacement}
-                              />
+                    </div>
+                  ) : (
+                    <div className={`wz-device-preview wz-device-preview--${coverPreviewDevice}`}>
+                      <div className="wz-device-frame">
+                        <div className="wz-device-chrome">
+                          <span />
+                          <span />
+                          <span />
+                        </div>
+                        <div className="wz-device-content">
+                          <div className="wz-device-cover-stage">
+                            <div className="wz-device-cover-slot">
+                              <div
+                                className={`wz-device-book-mockup ${fd.coverPreview ? 'wz-device-book-mockup--uploaded' : ''}`}
+                                onPointerMove={handleBookPreviewPointerMove}
+                                onPointerLeave={resetBookPreviewTilt}
+                              >
+                                <CoverPreviewArt
+                                  coverPreview={fd.coverPreview}
+                                  title={fd.title}
+                                  subtitle={fd.subtitle}
+                                  author={authorName}
+                                  genreLabel={primaryGenreLabel}
+                                  templateId={fd.coverTemplate}
+                                  paletteId={fd.coverPalette}
+                                  artPreview={fd.coverArtPreview}
+                                  artPlacement={fd.coverArtPlacement}
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
-                  {!fd.coverPreview && (
+                  {coverSide === 'back' ? (
+                    !fd.backCoverPreview && (
+                      <div className="wz-template-preview-meta">
+                        <strong>Custom order</strong>
+                        <span>Uses your book description from the About step and matches the {selectedTemplate.name} template.</span>
+                      </div>
+                    )
+                  ) : !fd.coverPreview && (
                     <div className="wz-template-preview-meta">
                       <strong>{selectedTemplate.name}</strong>
                       <span>{selectedTemplate.note}</span>
@@ -4313,6 +4959,7 @@ export default function UploadWizard() {
                   ]},
                   { title: 'Distribution', to: 8, rows: [
                     ['Route', distributionModeLabel],
+                    ['Remembered strategy', fd.distributionStrategy === 'amazon_exclusive' ? 'Amazon ebook exclusivity' : fd.distributionStrategy === 'wide' ? 'Wide distribution' : fd.distributionStrategy === 'direct_first' ? 'Direct-first' : 'Not chosen'],
                     ['Channels', selectedDistributionChannels.length
                       ? selectedDistributionChannels.map(channel => channel.label).join(', ')
                       : 'None selected — Indie Converters only'],
@@ -4488,6 +5135,9 @@ export default function UploadWizard() {
         workflowContext={publishingAssistantContext}
         onInsertSuggestion={insertAssistantSuggestion}
         onNavigateReadiness={navigateToReadinessItem}
+        onInsertMatterDraft={insertAssistantMatterDraft}
+        onApplyDistributionStrategy={applyAssistantDistributionStrategy}
+        onRememberBookFacts={rememberAssistantBookFacts}
         supportContact={{ name: authorName, email: user?.email || '' }}
       />
     </div>

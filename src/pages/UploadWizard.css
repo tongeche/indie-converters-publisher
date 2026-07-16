@@ -217,6 +217,11 @@
   max-width: none;
 }
 
+/* Reading Style step: gray workspace to match the cover-stage look elsewhere */
+.wz-body:has(.wz-reading-step) {
+  background: #e5e5ea;
+}
+
 /* Book Health Check builds its own two-column layout (report + sidebar),
    so it needs the full row instead of the standard 740px-capped form column. */
 .wz-body:has(.wz-step--healthcheck) {
@@ -571,6 +576,77 @@
 .wz-dropzone-sub   { font-size: 0.82rem; color: var(--ink-soft); }
 .wz-dropzone-hint  { font-size: 0.75rem; color: var(--ink-soft); opacity: 0.55; margin-top: 4px; }
 
+.wz-cover-samples {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+.wz-cover-samples > span {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.wz-cover-samples-row {
+  display: flex;
+  gap: 10px;
+}
+.wz-cover-sample-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.wz-cover-sample-thumb img {
+  width: 100%;
+  aspect-ratio: 5 / 8;
+  object-fit: cover;
+  border: 1.5px solid rgba(68,28,178,0.16);
+  box-shadow: 0 6px 16px rgba(27,19,48,0.1);
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+.wz-cover-sample-thumb:hover img {
+  border-color: var(--clay);
+  transform: translateY(-2px);
+}
+.wz-cover-sample-thumb span:last-child {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.wz-cover-sample-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.wz-cover-sample-card .wz-cover-sample-thumb {
+  width: 100%;
+}
+.wz-cover-sample-credit-line {
+  color: var(--ink-soft);
+  font-size: 0.64rem;
+  line-height: 1.3;
+  text-align: center;
+}
+.wz-cover-sample-credit-line a,
+.wz-cover-samples-credit a {
+  color: var(--clay);
+}
+.wz-cover-samples-credit {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  opacity: 0.75;
+}
+
 /* Upload state */
 .wz-uploading {
   display: flex; align-items: center; gap: 12px;
@@ -862,6 +938,65 @@
   70% { opacity: 0.18; }
 }
 
+/* ── Real page flip (Reading Style step) ──────────────────────────
+   Two-layer stack: a static page underneath always shows the current
+   content; the outgoing page renders as an absolutely-positioned
+   overlay on top and rotates away on a real Y axis. backface-visibility
+   hides its front face once it passes 90°, which is what actually
+   reveals the static page underneath — unlike the single-layer wobble
+   above, the content genuinely changes mid-flip instead of popping. */
+.wz-book-page-stack {
+  position: relative;
+  flex: 0 1 var(--page-width, 380px);
+  width: min(var(--page-width, 380px), 100%);
+  aspect-ratio: var(--page-aspect, 5 / 8);
+  perspective: 1900px;
+}
+.wz-book-page-stack .wz-book-page {
+  position: absolute;
+  inset: 0;
+  flex: none;
+  width: 100%;
+  aspect-ratio: auto;
+}
+.wz-book-page-flip {
+  z-index: 10;
+  pointer-events: none;
+}
+.wz-book-page-flip::after {
+  z-index: 1;
+  background: linear-gradient(90deg, rgba(0,0,0,0.32), rgba(0,0,0,0.04) 55%, transparent 100%);
+  animation: wz-page-flip-shade 900ms ease both;
+}
+.wz-book-page-flip.is-page-turning-next {
+  transform-origin: left center;
+  animation: wz-page-flip-next 900ms cubic-bezier(.4,.05,.35,1) both;
+}
+.wz-book-page-flip.is-page-turning-prev {
+  transform-origin: right center;
+  animation: wz-page-flip-prev 900ms cubic-bezier(.4,.05,.35,1) both;
+}
+@keyframes wz-page-flip-next {
+  0%   { transform: rotateY(0deg); box-shadow: -20px 10px 44px rgba(0,0,0,0.26); }
+  100% { transform: rotateY(-180deg); box-shadow: 0 0 0 rgba(0,0,0,0); }
+}
+@keyframes wz-page-flip-prev {
+  0%   { transform: rotateY(0deg); box-shadow: 20px 10px 44px rgba(0,0,0,0.26); }
+  100% { transform: rotateY(180deg); box-shadow: 0 0 0 rgba(0,0,0,0); }
+}
+@keyframes wz-page-flip-shade {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.6; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wz-book-page-flip.is-page-turning-next,
+  .wz-book-page-flip.is-page-turning-prev,
+  .wz-book-page-flip::after {
+    animation: none;
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wz-book-page.is-page-turning-next,
   .wz-book-page.is-page-turning-prev,
@@ -994,6 +1129,11 @@
   font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--ink-soft);
 }
+.wz-cover-preview-head-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .wz-device-tabs {
   display: inline-flex;
   gap: 3px;
@@ -1020,6 +1160,26 @@
 .wz-cover-preview-img {
   width: 100%; aspect-ratio: 5/8; object-fit: cover;
   border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+}
+/* Plain preview stage for the back cover — same neutral surface as the
+   front's device frame, minus the browser chrome, since a print back cover
+   isn't "how it looks in a browser." */
+.wz-backcover-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 600px;
+  padding: clamp(28px, 4vw, 48px);
+  border: 1px solid rgba(68,28,178,0.14);
+  border-radius: 12px;
+  box-shadow: 0 16px 42px rgba(27,19,48,0.1);
+  background:
+    radial-gradient(circle at 50% 58%, rgba(255,255,255,0.96) 0 34%, rgba(247,242,252,0.86) 64%, rgba(232,225,242,0.72) 100%),
+    linear-gradient(145deg, #fbfaf7 0%, #f3eee7 100%);
+}
+.wz-backcover-stage .wz-device-cover-slot {
+  width: min(320px, 60%);
 }
 .wz-device-preview {
   display: flex;
@@ -1293,63 +1453,6 @@
   line-height: 1.35;
 }
 .wz-template-section-head--spaced { margin-top: 20px; }
-.wz-template-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.wz-template-card {
-  appearance: none;
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  border: 1px solid rgba(68,28,178,0.16);
-  background: #fff;
-  border-radius: 9px;
-  padding: 10px;
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
-}
-.wz-template-card:hover {
-  transform: translateY(-1px);
-  border-color: rgba(68,28,178,0.28);
-  box-shadow: 0 8px 18px rgba(68,28,178,0.06);
-}
-.wz-template-card.selected {
-  border-color: var(--clay);
-  background: rgba(68,28,178,0.04);
-  box-shadow: 0 0 0 2px rgba(68,28,178,0.08);
-}
-.wz-template-token {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  background: linear-gradient(145deg, rgba(68,28,178,0.12), rgba(184,140,61,0.18));
-  color: var(--clay);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0;
-}
-.wz-template-card-name {
-  display: block;
-  color: var(--ink);
-  font-size: 0.8rem;
-  font-weight: 800;
-  line-height: 1.2;
-}
-.wz-template-card-note {
-  display: block;
-  color: var(--ink-soft);
-  font-size: 0.68rem;
-  line-height: 1.3;
-  margin-top: 3px;
-}
 .wz-palette-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1380,6 +1483,114 @@
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55);
   flex-shrink: 0;
+}
+/* Shared thumbnail-gallery cards (front cover templates) — real rendered
+   previews, not icon+text rows, so each option shows how it'll actually look. */
+.wz-cover-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.wz-cover-thumb-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1.5px solid rgba(68,28,178,0.14);
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.wz-cover-thumb-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(68,28,178,0.32);
+  box-shadow: 0 8px 18px rgba(68,28,178,0.08);
+}
+.wz-cover-thumb-card.selected {
+  border-color: var(--clay);
+  box-shadow: 0 0 0 2px rgba(68,28,178,0.1);
+}
+.wz-cover-thumb-card.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wz-cover-thumb-card.is-disabled:hover {
+  transform: none;
+  border-color: rgba(68,28,178,0.14);
+  box-shadow: none;
+}
+.wz-cover-thumb-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--clay);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 900;
+}
+.wz-cover-thumb-name {
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+.wz-cover-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 13px 14px;
+  border: 1.5px solid rgba(68,28,178,0.13);
+  background:
+    linear-gradient(135deg, rgba(68,28,178,0.055), rgba(184,140,61,0.06)),
+    #fff;
+}
+.wz-cover-tip > span:first-child { flex-shrink: 0; font-size: 0.95rem; line-height: 1.3; }
+.wz-cover-tip strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+.wz-cover-tip p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* Back cover's mode tabs read as underline tabs (not the pill buttons used
+   for front cover) — signals a distinct sub-picker within the same step. */
+.wz-cover-mode-tabs--underline {
+  gap: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid rgba(68,28,178,0.14);
+  background: none;
+}
+.wz-cover-mode-tabs--underline button {
+  padding: 10px 2px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-soft);
+}
+.wz-cover-mode-tabs--underline button.active {
+  border-bottom-color: var(--clay);
+  color: var(--clay);
+  background: none;
+  box-shadow: none;
 }
 .wz-art-drop {
   display: grid;
@@ -1626,6 +1837,247 @@
 .wz-template-cover--small .wz-template-rule { margin: 6px 0 4px; }
 .wz-template-cover--small .wz-template-author { font-size: 0.22rem; letter-spacing: 0.08em; }
 .wz-template-cover--small.wz-template-cover--bold h3 { font-size: 0.52rem; }
+.wz-template-cover--small.wz-template-cover--back { padding: 8px 7px 7px 9px; }
+.wz-template-cover--small .wz-back-blurb { font-size: 0.32rem; line-height: 1.4; -webkit-line-clamp: 6; }
+.wz-template-cover--small .wz-back-lede { font-size: 0.4rem; margin-bottom: 3px; }
+.wz-template-cover--small .wz-back-bio { padding-top: 5px; }
+.wz-template-cover--small .wz-back-bio-label { font-size: 0.24rem; margin-bottom: 2px; }
+.wz-template-cover--small .wz-back-bio-row { gap: 5px; }
+.wz-template-cover--small .wz-back-bio-avatar { width: 18px; height: 18px; box-shadow: 0 0 0 1px rgba(255,255,255,0.35); }
+.wz-template-cover--small .wz-back-bio-avatar--fallback { font-size: 0.26rem; }
+.wz-template-cover--small .wz-back-bio-name { font-size: 0.3rem; margin-bottom: 1px; }
+.wz-template-cover--small .wz-back-bio p { font-size: 0.28rem; -webkit-line-clamp: 2; }
+.wz-template-cover--small .wz-back-footer { margin-top: 6px; }
+.wz-template-cover--small .wz-back-author { font-size: 0.22rem; }
+.wz-template-cover--small .wz-back-barcode { padding: 2px 3px; }
+.wz-template-cover--small .wz-back-barcode svg { width: 26px; }
+.wz-template-cover--small .wz-back-barcode span { display: none; }
+
+/* Back cover — same template/palette shell, laid out for real back-of-book
+   copy: blurb near the top, optional author bio, ISBN barcode pinned to the
+   bottom corner. The barcode itself never changes between books, so it's a
+   single reusable graphic (FontAwesome) rather than something to regenerate. */
+.wz-template-cover--back {
+  justify-content: flex-start;
+  padding: 24px 20px 18px 26px;
+  position: relative;
+}
+/* The blocks live in whatever order the author dragged them into — this
+   wrapper just fills the remaining vertical space so the footer (author name
+   + barcode) always stays pinned to the bottom regardless of block order. */
+.wz-back-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+}
+.wz-back-blurb {
+  margin: 0;
+  color: var(--cover-ink);
+  font-size: 0.66rem;
+  line-height: 1.6;
+  opacity: 0.92;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 9;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wz-back-bio {
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.25);
+}
+.wz-back-lede {
+  margin: 0 0 8px;
+  color: var(--cover-ink);
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 800;
+  font-size: 0.94rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.wz-back-bio-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--cover-accent);
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.wz-back-bio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.wz-back-bio-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+}
+.wz-back-bio-avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.18);
+  color: var(--cover-ink);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+.wz-back-bio-text {
+  min-width: 0;
+}
+.wz-back-bio-name {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--cover-ink);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.wz-back-bio p {
+  margin: 0;
+  color: var(--cover-muted);
+  font-size: 0.56rem;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wz-back-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+.wz-back-author {
+  color: var(--cover-ink);
+  font-size: 0.52rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+.wz-back-barcode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 7px;
+  background: #fff;
+  color: #14100c;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.wz-back-barcode svg {
+  display: block;
+  width: 72px;
+  height: auto;
+}
+.wz-back-barcode span {
+  font-size: 0.34rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #14100c;
+}
+.wz-back-barcode-label {
+  margin-bottom: 3px;
+  font-size: 0.4rem !important;
+  letter-spacing: 0.02em !important;
+  white-space: nowrap;
+}
+
+/* Safe-margin guide — dashed outline inset from the trim edge by the real
+   print-safe margin (computed from the actual trim size), purely visual. */
+.wz-back-safe-guide {
+  position: absolute;
+  z-index: 2;
+  border: 1px dashed rgba(255,255,255,0.45);
+  pointer-events: none;
+}
+
+/* Drag-to-reorder content blocks — barcode/author footer is rendered
+   separately in CoverBackPreview and never appears in this list. */
+.wz-back-block-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.wz-back-block-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1.5px solid rgba(68,28,178,0.14);
+  background: #fff;
+  cursor: grab;
+}
+.wz-back-block-row:active { cursor: grabbing; }
+.wz-back-block-row.is-disabled { cursor: default; opacity: 0.55; }
+.wz-back-block-row--pinned {
+  cursor: default;
+  background: var(--parchment-dim);
+  border-style: dashed;
+}
+.wz-back-block-handle {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+.wz-back-block-handle--locked { font-size: 0.78rem; }
+.wz-back-block-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.wz-back-block-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.wz-back-block-actions {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.wz-back-block-actions button {
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(68,28,178,0.16);
+  background: #fff;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+.wz-back-block-actions button:hover:not(:disabled) { border-color: var(--clay); color: var(--clay); }
+.wz-back-block-actions button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.wz-back-lede-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 16px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .wz-template-preview-meta {
   display: flex;
   flex-direction: column;
@@ -2759,7 +3211,6 @@
   .wz-device-content { min-height: 444px; }
   .wz-device-cover-stage { min-height: 380px; }
   .wz-device-cover-slot { width: min(240px, 54%); }
-  .wz-template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .wz-audience-grid { grid-template-columns: repeat(2, 1fr); }
   .wz-done { grid-template-columns: 1fr; }
   .wz-done-cover { display: flex; justify-content: center; }
@@ -2808,7 +3259,7 @@
   .wz-device-preview--phone .wz-device-cover-slot { width: min(206px, 100%); }
   .wz-device-preview--tablet .wz-device-frame { width: 205px; }
   .wz-template-builder { padding: 12px; }
-  .wz-template-grid,
+  .wz-cover-thumb-grid,
   .wz-palette-row { grid-template-columns: 1fr; }
   .wz-template-section-head { flex-direction: column; gap: 8px; }
   .wz-palette-chip { justify-content: flex-start; }
@@ -3564,6 +4015,26 @@
   white-space: nowrap;
 }
 
+.wz-stage-view-toggle {
+  align-self: center;
+  padding: 7px 13px;
+  border: 1.5px solid rgba(68,28,178,0.14);
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+.wz-stage-view-toggle:hover { border-color: var(--clay); }
+.wz-stage-view-toggle.active {
+  background: var(--clay);
+  border-color: var(--clay);
+  color: #fff;
+}
+
 .wz-reading-toolbtn {
   display: flex;
   align-items: center;
@@ -3591,7 +4062,6 @@
   gap: 10px;
   padding: 9px 14px 9px 9px;
   border: 1.5px solid rgba(68,28,178,0.14);
-  border-radius: 12px;
   background: #fff;
   font-size: 0.88rem;
   font-family: 'Inter', sans-serif;
@@ -3611,7 +4081,6 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 9px;
   font-size: 0.72rem;
   font-weight: 900;
   letter-spacing: 0.03em;
@@ -3630,7 +4099,6 @@
   padding: 8px;
   background: #fff;
   border: 1px solid var(--sand);
-  border-radius: 14px;
   box-shadow: 0 16px 40px rgba(27,19,48,0.14);
 }
 .wz-style-dropdown-option {
@@ -3658,12 +4126,19 @@
 .wz-style-dropdown-option-text small { font-size: 0.74rem; color: var(--ink-soft); line-height: 1.35; }
 
 .wz-reading-stage {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--parchment-dim);
-  border-radius: 20px;
+  background: #e5e5ea;
   padding: 48px;
+  min-height: 640px;
+}
+/* Desk view — alternate, opt-in backdrop; plain view (default) stays the
+   flat gray stage above with no photo, no rotation, no cast shadow. */
+.wz-reading-stage--desk {
+  background: #e5e5ea url('../assets/desk-photos.webp') center/cover no-repeat;
+  padding: 32px 48px;
   min-height: 640px;
 }
 
@@ -3940,12 +4415,62 @@
   width: 100%;
   max-width: 900px;
 }
-.wz-reading-stage .wz-book-page {
-  flex-basis: min(var(--page-width, 380px), 72%);
+.wz-reading-stage--desk .wz-book-reader {
+  max-width: 1160px;
+}
+.wz-reading-stage--desk .wz-book-page-stack {
+  position: relative;
+  z-index: 0;
+  flex: none;
+  width: auto;
+  /* Height-driven (not width-driven) so tall trims like 5x8 never outgrow
+     the stage — width follows automatically via the inherited aspect-ratio. */
+  height: clamp(360px, 52vh, 540px);
+  transform: rotate(-1.6deg);
+}
+/* Stacked-sheet edges peeking out behind the front page — several hard-edged,
+   diagonally-offset layers read as individual sheets of a paper pile rather
+   than a single flat card. */
+.wz-reading-stage--desk .wz-book-page-stack::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #f5f4f8;
+  border: 1px solid rgba(27,19,48,0.1);
   box-shadow:
-    0 42px 72px rgba(27,19,48,0.2),
-    0 18px 32px rgba(27,19,48,0.12),
-    8px 0 0 rgba(27,19,48,0.035);
+    2px 3px 0 0 #efedf3,
+    4px 6px 0 0 #e9e6ee,
+    6px 9px 0 0 #e3dfe9,
+    8px 12px 0 0 #ddd8e4,
+    10px 15px 0 0 #d7d1df;
+}
+/* Tight contact shadow right at the page's footprint on the desk — this is
+   what actually sells "resting on the table" rather than the broad ambient
+   blur below, which reads as glow, not contact. */
+.wz-reading-stage--desk .wz-book-page-stack::after {
+  content: '';
+  position: absolute;
+  left: 2%;
+  right: -8%;
+  bottom: -10px;
+  height: 26px;
+  z-index: -2;
+  background: radial-gradient(closest-side, rgba(12,8,6,0.55), transparent 70%);
+  filter: blur(4px);
+}
+.wz-reading-stage--desk .wz-book-page-stack > .wz-book-page {
+  z-index: 1;
+}
+/* Directional cast shadow (offset down-right, matching the photo's
+   upper-left light) layered from tight/dark near the page out to soft/faint
+   further away — a single centered blur reads as a floating glow instead. */
+.wz-reading-stage--desk .wz-book-page {
+  box-shadow:
+    10px 14px 0 rgba(27,19,48,0.04),
+    16px 22px 30px rgba(12,8,6,0.38),
+    32px 42px 60px rgba(12,8,6,0.24),
+    60px 70px 100px rgba(12,8,6,0.14);
 }
 
 /* ── Review step refinements ── */
@@ -4274,9 +4799,10 @@
     justify-content: center;
     overflow: hidden;
   }
-  .wz-reading-stage .wz-book-page {
+  .wz-reading-stage .wz-book-page-stack {
     flex-basis: auto;
     width: min(100%, 300px);
+    height: auto;
   }
   .wz-book-page-hdr,
   .wz-book-page-ftr { padding-left: 18px; padding-right: 18px; }

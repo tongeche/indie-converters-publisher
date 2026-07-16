@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import { buildAssistantReply, sanitizeAssistantHistory } from '../../src/lib/assistant.js';
 import { formatDisplayMoney } from '../../src/lib/currency.js';
+import { buildPricingCoachScenarios } from '../../src/lib/royaltyCalculator.js';
 
 const BOOK_SELECT = `
   id, slug, title, description, cover_url, formats, keywords, pub_year, price, language,
@@ -17,6 +18,15 @@ const PUBLISHING_ASSISTANT_FIELDS = new Set([
   'audience', 'genre', 'genreSecondary', 'keywords', 'pubYear', 'publisher', 'pageCount',
   'trimSize', 'price',
 ]);
+const MATTER_TYPES = {
+  copyright: { section: 'frontMatter', key: 'copyright', label: 'Copyright Page', legalTemplate: true },
+  dedication: { section: 'frontMatter', key: 'dedication', label: 'Dedication', legalTemplate: false },
+  author_bio: { section: 'backMatter', key: 'aboutAuthor', label: 'About the Author', legalTemplate: false },
+  acknowledgements: { section: 'backMatter', key: 'acknowledgements', label: 'Acknowledgements', legalTemplate: false },
+  also_by: { section: 'backMatter', key: 'alsoBy', label: 'Also by the Author', legalTemplate: false },
+  reader_cta: { section: 'backMatter', key: 'readerCta', label: 'Reader Call to Action', legalTemplate: false },
+  reading_group: { section: 'backMatter', key: 'readingGroup', label: 'Reading Group Questions', legalTemplate: false },
+};
 
 function cleanWorkflowText(value, maxLength = 500) {
   return typeof value === 'string'
@@ -56,6 +66,36 @@ function sanitizePublishingWorkflow(value) {
   const rawDescriptionBrief = value.descriptionBrief && typeof value.descriptionBrief === 'object'
     ? value.descriptionBrief
     : null;
+  const metadataGenres = Array.isArray(value.metadataOptions?.genres)
+    ? value.metadataOptions.genres.slice(0, 100).map(item => ({
+        value: cleanWorkflowText(item?.value, 80),
+        label: cleanWorkflowText(item?.label, 100),
+      })).filter(item => item.value && item.label)
+    : [];
+  const metadataAudiences = Array.isArray(value.metadataOptions?.audiences)
+    ? value.metadataOptions.audiences.slice(0, 10).map(item => ({
+        value: cleanWorkflowText(item?.value, 50),
+        label: cleanWorkflowText(item?.label, 80),
+      })).filter(item => item.value && item.label)
+    : [];
+  const wizardNavigation = Array.isArray(value.wizardNavigation)
+    ? value.wizardNavigation.slice(0, 30).map(item => ({
+        field: PUBLISHING_ASSISTANT_FIELDS.has(item?.field) ? item.field : null,
+        step: Math.min(Math.max(Number(item?.step) || 0, 0), 19),
+        label: cleanWorkflowText(item?.label, 80),
+      })).filter(item => item.field && item.label)
+    : [];
+  const pricingContext = {
+    formats: Array.isArray(value.pricingContext?.formats) ? value.pricingContext.formats.filter(format => ['eBook', 'Paperback', 'Hardcover', 'Audiobook'].includes(format)).slice(0, 4) : [],
+    pageCount: Math.min(Math.max(Number(value.pricingContext?.pageCount) || 0, 0), 5000) || null,
+    trimSize: cleanWorkflowText(value.pricingContext?.trimSize, 40),
+    distributionChannels: Array.isArray(value.pricingContext?.distributionChannels) ? value.pricingContext.distributionChannels.map(item => cleanWorkflowText(item, 50)).filter(Boolean).slice(0, 20) : [],
+    distributionStrategy: ['wide', 'amazon_exclusive', 'direct_first'].includes(value.pricingContext?.distributionStrategy) ? value.pricingContext.distributionStrategy : '',
+    distributionPriority: cleanWorkflowText(value.pricingContext?.distributionPriority, 80),
+  };
+  const pricingObjectives = new Set(['readership', 'earnings', 'launch', 'series', 'premium']);
+  const pricingObjective = pricingObjectives.has(value.pricingCoach?.objective) ? value.pricingCoach.objective : null;
+  const matterType = MATTER_TYPES[value.matterRequest?.type] ? value.matterRequest.type : null;
 
   return {
     mode: 'publishing_upload',
@@ -81,6 +121,22 @@ function sanitizePublishingWorkflow(value) {
       appeal: cleanWorkflowText(rawDescriptionBrief.appeal, 400),
       tone: cleanWorkflowText(rawDescriptionBrief.tone, 80),
     } : null,
+    metadataOptions: { genres: metadataGenres, audiences: metadataAudiences },
+    wizardNavigation,
+    pricingContext,
+    pricingCoach: pricingObjective ? {
+      objective: pricingObjective,
+      objectiveLabel: cleanWorkflowText(value.pricingCoach?.objectiveLabel, 80),
+      scenarios: buildPricingCoachScenarios({ objective: pricingObjective, ...pricingContext }),
+    } : null,
+    matterContext: {
+      authorName: cleanWorkflowText(value.matterContext?.authorName, 160),
+      publisher: cleanWorkflowText(value.matterContext?.publisher, 160),
+      publicationYear: cleanWorkflowText(value.matterContext?.publicationYear, 10),
+      isbn: cleanWorkflowText(value.matterContext?.isbn, 30),
+      authorBio: cleanWorkflowText(value.matterContext?.authorBio, 1500),
+    },
+    matterRequest: matterType ? { type: matterType, authorAnswer: cleanWorkflowText(value.matterRequest?.authorAnswer, 2000) } : null,
     activeField,
     bookDetails: {
       title: cleanWorkflowText(details.title, 160),
@@ -300,6 +356,8 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
         'Never draft a description, blurb, subtitle, keywords, or marketing copy from only a title or genre. First collect enough real material from the author—such as premise, protagonist or subject, central goal or conflict, stakes, tone, and intended reader. Ask for the most important missing detail one question at a time.',
         'The activeField is the field the author is currently using. Resolve words like “this”, “it”, “here”, and “the field” against activeField without asking them to identify it again.',
         'Treat publishing_workflow.readiness as the authoritative readiness checklist. Never invent or upgrade a readiness status. When asked whether the book is ready, mention blockers first, then missing essentials, then at most one recommendation.',
+        'When pricingContext.distributionStrategy is present, remember it as the author’s chosen distribution strategy and use it consistently in pricing, distribution, and final-review answers. Do not silently replace it with another strategy.',
+        'wizardNavigation is the authoritative map of fields to wizard steps. When the user asks how to find, set, edit, or change a mapped field on the current or an earlier step, include one wizard action with that exact field value, such as {"label":"Go to Title","type":"wizard","value":"title"}. Never create a wizard action for an unmapped field or a future locked step.',
         'When you can provide ready-to-insert wording for activeField, include it in fieldSuggestions. Suggest only activeField.id and never another field. Do not suggest values for numeric, legal, identifier, file, price, or distribution fields.',
         ...(requestType === 'proactive_guidance' ? [
           'This is a proactive review, not a user question. Identify at most one concrete, actionable issue supported by the current step, active field, validation, or book details.',
@@ -311,6 +369,28 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
           'The author has completed the guided description brief. Write one polished reader-facing book description using only facts in descriptionBrief and bookDetails.',
           'Use 2 or 3 short paragraphs and 100 to 170 words. Lead with a hook, establish the subject or central character and conflict, convey stakes or reader value, and end with a concise invitation suited to the supplied tone.',
           'Do not add names, events, claims, credentials, reviews, comparisons, or outcomes the author did not provide. Return exactly one fieldSuggestion for the description field, labelled “Use this description”.',
+        ] : []),
+        ...(requestType === 'metadata_intelligence' ? [
+          'Perform a metadata review using only author-confirmed bookDetails. The description must contain enough substance; otherwise ask for the missing facts and return metadataAnalysis as null.',
+          'Clearly separate confirmedFacts from inferred recommendations. An inference is not a fact. Give a short evidence-based rationale and confidence of high, medium, or low for each inferred recommendation.',
+          'Genre and audience values must use exact values from metadataOptions. Suggest 2 subtitle alternatives, one primary genre, up to 2 secondary genres, exactly 7 specific multi-word search phrases, one audience, 2 or 3 BISAC-style category labels, and 2 comparable positioning statements.',
+          'Comparable positioning must describe likely readership or market adjacency without claiming sales, awards, equivalence, or knowledge of the manuscript. Do not invent plot details, author credentials, or named comparable titles.',
+          'Also return metadataAnalysis with this shape: {"confirmedFacts":[{"label":"...","value":"..."}],"subtitleAlternatives":[{"value":"...","rationale":"...","confidence":"high|medium|low"}],"primaryGenre":{"value":"allowed-slug","label":"...","rationale":"...","confidence":"..."},"secondaryGenres":[same genre shape],"searchPhrases":["..."],"audience":{"value":"allowed-value","label":"...","rationale":"...","confidence":"..."},"bisacCategories":[{"value":"...","rationale":"...","confidence":"..."}],"comparablePositioning":[{"value":"...","rationale":"...","confidence":"..."}]}.',
+          'For this request, keep text to one short sentence and return no fieldSuggestions.',
+        ] : []),
+        ...(requestType === 'pricing_coach' ? [
+          'Act as a careful pricing coach. pricingCoach.scenarios are deterministic estimates calculated by the application; do not redo or alter the arithmetic.',
+          'Explain the most important trade-off for the author’s stated objective in no more than 65 words. Compare accessible, balanced, and higher-value scenarios across the supplied formats and channels.',
+          'Mention when low eBook pricing may use a lower royalty tier and when print cost affects earnings. State that fees, print costs, taxes, marketplace rules, and final royalties can vary.',
+          'Never claim or imply that any price guarantees readership, sales, ranking, revenue, or profit. Return no fieldSuggestions and at most one short follow-up action.',
+          'If pricingContext.distributionStrategy is present, treat it as the author’s remembered decision and make the pricing explanation consistent with it.',
+        ] : []),
+        ...(requestType === 'matter_generator' ? [
+          'Create one editable front- or back-matter draft for matterRequest.type, grounded only in bookDetails, matterContext, and matterRequest.authorAnswer.',
+          'Do not invent names, relationships, credentials, book titles, URLs, quotations, awards, legal registrations, or facts. Preserve placeholders in square brackets when required information is missing.',
+          'For copyright, provide a conventional plain-language template only. Do not give legal advice or claim legal sufficiency. Include “[Author review required: verify rights, jurisdiction, permissions, edition details, and ISBN before publication.]” at the end.',
+          'For reading-group questions, create 6 to 10 open-ended questions grounded in supplied themes or description, without pretending to know manuscript events that were not supplied.',
+          'For all types, return matterDraft with shape {"type":"exact requested type","content":"editable draft"}. Keep text to one short sentence and return no fieldSuggestions.',
         ] : []),
         'Treat supplied book details as private working context. Do not request manuscript text, passwords, payment data, contact details, or other sensitive information.',
       ]
@@ -333,7 +413,7 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
         'If a user asks for private account details and no account data is supplied, explain that account-aware support is coming and give the next best general step.',
         'If a user asks for a person, briefly say that you can connect them with the Indie Converters team.',
         'Do not ask for or repeat contact details in AI replies; the guided human-support steps in the chat collect those details outside OpenAI.',
-        'Return valid JSON only with this shape: {"text":"...", "actions":[{"label":"...","type":"ask|navigate","value":"..."}], "fieldSuggestions":[{"field":"...","label":"...","value":"..."}], "sources":["..."]}.',
+        'Return valid JSON only with this shape: {"text":"...", "actions":[{"label":"...","type":"ask|navigate|wizard","value":"..."}], "fieldSuggestions":[{"field":"...","label":"...","value":"..."}], "metadataAnalysis":null, "matterDraft":null, "sources":["..."]}. For metadata_intelligence or matter_generator, replace the corresponding null with the required structured result.',
         'Return at most 2 actions. Use ask for a useful suggested reply and navigate only for a supplied site path. Keep action labels under 28 characters.',
       ].join('\n'),
     },
@@ -365,6 +445,50 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
   ];
 }
 
+function sanitizeMetadataAnalysis(value, workflowContext) {
+  if (!value || typeof value !== 'object') return null;
+  const allowedGenres = new Map((workflowContext?.metadataOptions?.genres || []).map(item => [item.value, item.label]));
+  const allowedAudiences = new Map((workflowContext?.metadataOptions?.audiences || []).map(item => [item.value, item.label]));
+  const confidence = input => ['high', 'medium', 'low'].includes(input) ? input : 'low';
+  const recommendation = (item, maxValue = 300) => item && typeof item === 'object' && cleanWorkflowText(item.value, maxValue)
+    ? { value: cleanWorkflowText(item.value, maxValue), rationale: cleanWorkflowText(item.rationale, 240), confidence: confidence(item.confidence) }
+    : null;
+  const genre = item => {
+    const safe = recommendation(item, 80);
+    if (!safe || !allowedGenres.has(safe.value)) return null;
+    return { ...safe, label: allowedGenres.get(safe.value) };
+  };
+  const audience = recommendation(value.audience, 50);
+  const safeAudience = audience && allowedAudiences.has(audience.value)
+    ? { ...audience, label: allowedAudiences.get(audience.value) }
+    : null;
+  const list = (items, limit, maxValue) => (Array.isArray(items) ? items : [])
+    .map(item => recommendation(item, maxValue)).filter(Boolean).slice(0, limit);
+  const searchPhrases = [...new Set((Array.isArray(value.searchPhrases) ? value.searchPhrases : [])
+    .map(item => cleanWorkflowText(item, 100).toLowerCase()).filter(item => item.split(/\s+/).length >= 2))].slice(0, 7);
+  const details = workflowContext?.bookDetails || {};
+  const confirmedFacts = [
+    details.title && { label: 'Title', value: details.title },
+    details.subtitle && { label: 'Subtitle', value: details.subtitle },
+    details.description && { label: 'Description', value: `Provided by author (${details.description.length} characters)` },
+    details.genre && { label: 'Primary genre', value: allowedGenres.get(details.genre) || details.genre },
+    details.secondaryGenre && { label: 'Secondary genre', value: allowedGenres.get(details.secondaryGenre) || details.secondaryGenre },
+    details.audience && { label: 'Audience', value: allowedAudiences.get(details.audience) || details.audience },
+    details.keywords?.length && { label: 'Existing keywords', value: details.keywords.join(', ') },
+  ].filter(Boolean);
+
+  return {
+    confirmedFacts,
+    subtitleAlternatives: list(value.subtitleAlternatives, 2, 200),
+    primaryGenre: genre(value.primaryGenre),
+    secondaryGenres: (Array.isArray(value.secondaryGenres) ? value.secondaryGenres : []).map(genre).filter(Boolean).slice(0, 2),
+    searchPhrases,
+    audience: safeAudience,
+    bisacCategories: list(value.bisacCategories, 3, 160),
+    comparablePositioning: list(value.comparablePositioning, 2, 300),
+  };
+}
+
 async function generateAssistantReply({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType }) {
   const openaiBaseUrl = getEnv('OPENAI_BASE_URL');
   const openaiApiKey = getEnv('OPENAI_API_KEY');
@@ -380,7 +504,7 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
       messages: buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType }),
       response_format: { type: 'json_object' },
       temperature: 0.35,
-      max_tokens: requestType === 'description_builder' ? 500 : 220,
+      max_tokens: requestType === 'metadata_intelligence' ? 1100 : requestType === 'matter_generator' ? 1000 : requestType === 'description_builder' ? 500 : 220,
     });
 
     const content = completion.choices?.[0]?.message?.content;
@@ -397,11 +521,17 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
         .filter(action => action?.type === 'navigate')
         .map(action => action.value),
     );
+    const allowedWizardFields = new Set(
+      (workflowContext?.wizardNavigation || [])
+        .filter(item => item.step <= workflowContext.stepNumber - 1)
+        .map(item => item.field),
+    );
     const safeActions = (Array.isArray(parsed.actions) ? parsed.actions : baseReply.actions || [])
       .filter(action => (
         action && typeof action.label === 'string' && typeof action.value === 'string'
-        && ['ask', 'navigate'].includes(action.type)
+        && ['ask', 'navigate', 'wizard'].includes(action.type)
         && (action.type !== 'navigate' || allowedNavigatePaths.has(action.value))
+        && (action.type !== 'wizard' || allowedWizardFields.has(action.value))
       ))
       .slice(0, 2)
       .map(action => ({
@@ -424,6 +554,19 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
             value: suggestion.value.trim().slice(0, maxFieldLength),
           }))
       : [];
+    const safeMetadataAnalysis = requestType === 'metadata_intelligence'
+      ? sanitizeMetadataAnalysis(parsed.metadataAnalysis, workflowContext)
+      : null;
+    const requestedMatter = MATTER_TYPES[workflowContext?.matterRequest?.type];
+    let safeMatterDraft = null;
+    if (requestType === 'matter_generator' && requestedMatter && parsed.matterDraft?.type === workflowContext.matterRequest.type
+      && typeof parsed.matterDraft?.content === 'string' && parsed.matterDraft.content.trim()) {
+      let matterContent = cleanWorkflowText(parsed.matterDraft.content, 7800);
+      if (requestedMatter.legalTemplate && !matterContent.toLowerCase().includes('author review required')) {
+        matterContent += '\n\n[Author review required: verify rights, jurisdiction, permissions, edition details, and ISBN before publication.]';
+      }
+      safeMatterDraft = { ...requestedMatter, type: workflowContext.matterRequest.type, content: matterContent };
+    }
 
     return {
       ...baseReply,
@@ -432,6 +575,8 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
         : String(parsed.text).trim().slice(0, 600),
       actions: safeActions,
       fieldSuggestions: safeFieldSuggestions,
+      metadataAnalysis: safeMetadataAnalysis,
+      matterDraft: safeMatterDraft,
       sources: Array.from(new Set([
         ...(baseReply.sources || []),
         ...(Array.isArray(parsed.sources) ? parsed.sources : []),
@@ -467,7 +612,7 @@ export default async (req) => {
   ]);
   const pageContext = payload?.pageContext || null;
   const workflowContext = sanitizePublishingWorkflow(payload?.workflowContext);
-  const requestType = workflowContext && ['proactive_guidance', 'description_builder'].includes(payload?.requestType)
+  const requestType = workflowContext && ['proactive_guidance', 'description_builder', 'metadata_intelligence', 'pricing_coach', 'matter_generator'].includes(payload?.requestType)
     ? payload.requestType
     : 'chat';
   const history = sanitizeAssistantHistory(payload?.history, message, workflowContext ? 16 : undefined);

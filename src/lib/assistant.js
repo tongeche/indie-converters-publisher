@@ -494,6 +494,8 @@ export async function requestAssistantReply({ message, books = [], sessionId, pa
       books: data.books || [],
       actions: data.actions || [],
       fieldSuggestions: data.fieldSuggestions || [],
+      metadataAnalysis: data.metadataAnalysis || null,
+      matterDraft: data.matterDraft || null,
       context: data.context || context.section,
       sources: data.sources || ['assistant_endpoint'],
     };

@@ -288,3 +288,44 @@ export function calculateRoyaltyEstimates({
     assumedPages: Number.parseInt(pageCount, 10) || 250,
   };
 }
+
+const PRICING_OBJECTIVES = {
+  readership: { low: [0.99, 9.99, 15.99], balanced: [2.99, 12.99, 19.99], high: [4.99, 14.99, 24.99] },
+  earnings: { low: [2.99, 12.99, 19.99], balanced: [5.99, 16.99, 24.99], high: [9.99, 19.99, 29.99] },
+  launch: { low: [0.99, 9.99, 15.99], balanced: [1.99, 11.99, 17.99], high: [2.99, 13.99, 19.99] },
+  series: { low: [0.99, 9.99, 15.99], balanced: [2.99, 11.99, 17.99], high: [4.99, 13.99, 20.99] },
+  premium: { low: [6.99, 17.99, 27.99], balanced: [9.99, 24.99, 34.99], high: [14.99, 32.99, 44.99] },
+};
+
+export function buildPricingCoachScenarios({ objective, formats = [], pageCount, trimSize, distributionChannels = [] }) {
+  const strategy = PRICING_OBJECTIVES[objective] || PRICING_OBJECTIVES.readership;
+  const selectedFormats = formats.length ? formats : ['eBook'];
+  const formatIndex = format => format === 'Hardcover' ? 2 : format === 'Paperback' ? 1 : 0;
+  return Object.entries(strategy).map(([id, prices]) => {
+    const comparisons = selectedFormats.flatMap(format => {
+      let price = prices[formatIndex(format)];
+      if (format === 'Audiobook') {
+        return [{ channel: 'Retailer-specific', format, listPrice: price, platformFees: null, printCost: 0, estimatedRoyalty: null, note: 'Narration and retailer contract costs are not available in this estimate.' }];
+      }
+      if (format === 'Paperback' || format === 'Hardcover') {
+        const cost = estimatePrintCost({ format, pageCount, trimSize }).amount;
+        price = Math.max(price, Math.ceil((cost / 0.45 + 1) * 100) / 100);
+      }
+      const estimate = calculateRoyaltyEstimates({ price, formats: [format], pageCount, trimSize, distributionChannels });
+      return estimate.estimates.map(item => ({
+        channel: item.channel,
+        format,
+        listPrice: price,
+        platformFees: item.platformCosts || 0,
+        printCost: item.productionCost || 0,
+        estimatedRoyalty: item.authorEarnings,
+        note: item.note,
+      }));
+    });
+    return {
+      id,
+      label: id === 'low' ? 'Accessible' : id === 'balanced' ? 'Balanced' : 'Higher-value',
+      comparisons,
+    };
+  });
+}
