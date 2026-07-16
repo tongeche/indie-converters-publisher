@@ -1728,7 +1728,7 @@
   height: min(520px, calc(100dvh - 170px));
   min-height: 0;
   max-height: 100%;
-  padding: 22px;
+  padding: 18px;
   border: 1px solid rgba(27, 19, 48, 0.1);
   border-radius: 12px;
   background:
@@ -1739,16 +1739,52 @@
   overflow: hidden;
 }
 
-.landing-assistant-panel--welcome {
-  overflow-y: auto;
-}
-
 .landing-assistant-brand-row {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.landing-assistant-window-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.landing-assistant-window-actions button {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(27, 19, 48, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.landing-assistant-window-actions button:hover {
+  border-color: rgba(68, 28, 178, 0.3);
+  background: #f7f4ff;
+  color: var(--clay);
+}
+
+.landing-assistant-window-actions button:focus-visible {
+  outline: 3px solid rgba(68, 28, 178, 0.18);
+  outline-offset: 2px;
+}
+
+.landing-assistant-window-actions svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
 }
 
 .landing-assistant-brand {
@@ -1815,128 +1851,12 @@
   stroke-linecap: round;
 }
 
-.landing-assistant-intro {
-  margin-top: 22px;
-}
-
-.landing-assistant-intro p {
-  margin: 0;
-  color: var(--ink);
-  font-size: clamp(1.65rem, 4vw, 2rem);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-}
-
-.landing-assistant-intro h2 {
-  margin: 4px 0 0;
-  color: rgba(27, 19, 48, 0.62);
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: clamp(1.65rem, 4vw, 2rem);
-  font-weight: 500;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
-}
-
-.landing-assistant-card {
-  margin-top: 22px;
-  padding: 22px 18px 16px;
-  border: 1px solid rgba(27, 19, 48, 0.12);
-  border-radius: 10px;
-  background: #fff;
-  text-align: center;
-  box-shadow: 0 18px 45px rgba(27, 19, 48, 0.12);
-}
-
-.landing-assistant-avatars {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 14px;
-}
-
-.landing-assistant-avatars span {
-  display: inline-flex;
-  width: 40px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  border: 3px solid #fff;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--clay), #9276ef);
-  color: #fff;
-  font-size: 0.78rem;
-  font-weight: 800;
-  box-shadow: 0 8px 22px rgba(75, 31, 194, 0.22);
-}
-
-.landing-assistant-avatars span + span {
-  margin-left: -12px;
-  background: linear-gradient(135deg, var(--ink), var(--clay-dark));
-}
-
-.landing-assistant-card h3 {
-  margin: 0;
-  color: var(--ink);
-  font-family: 'Inter', sans-serif;
-  font-size: 1.05rem;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-}
-
-.landing-assistant-card p {
-  max-width: 280px;
-  margin: 7px auto 16px;
-  color: var(--ink-soft);
-  font-size: 0.84rem;
-  line-height: 1.5;
-}
-
-.landing-assistant-start {
-  display: inline-flex;
-  width: 100%;
-  min-height: 46px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 8px;
-  background: var(--ink);
-  color: #fff;
-  font: inherit;
-  font-size: 0.86rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease;
-}
-
-.landing-assistant-start:hover {
-  background: var(--clay-dark);
-  transform: translateY(-1px);
-}
-
-.landing-assistant-consent-note {
-  max-width: none;
-  margin: 10px 0 0;
-  color: rgba(74, 63, 99, 0.72);
-  font-size: 0.68rem;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.landing-assistant-consent-note a {
-  color: var(--clay);
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.landing-assistant-consent-note a:hover {
-  text-decoration: underline;
-}
-
 .landing-assistant-chat {
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  margin-top: 14px;
+  margin-top: 18px;
   gap: 10px;
 }
 
@@ -1950,25 +1870,77 @@
 }
 
 .landing-assistant-chat-head span {
+  display: grid;
+  gap: 2px;
   color: var(--ink);
-  font-size: 0.86rem;
+}
+
+.landing-assistant-chat-head span strong {
+  font-size: 0.9rem;
   font-weight: 850;
 }
 
+.landing-assistant-chat-head span small {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.landing-assistant-chat-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.landing-assistant [data-assistant-view-focus]:focus {
+  outline: none;
+}
+
 .landing-assistant-chat-head button {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
   border: 1px solid rgba(75, 31, 194, 0.14);
-  border-radius: 999px;
+  border-radius: 9px;
   background: #fff;
   color: var(--clay);
   font: inherit;
-  font-size: 0.76rem;
-  font-weight: 800;
-  padding: 7px 11px;
+  padding: 0;
   cursor: pointer;
+}
+
+.landing-assistant-chat-head button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 .landing-assistant-chat-head button:hover {
   background: #F7F4FF;
+}
+
+.landing-assistant-chat-head button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.landing-assistant-chat-head .landing-assistant-human-link {
+  border-color: transparent;
+  background: transparent;
+  padding-right: 5px;
+  padding-left: 5px;
+}
+
+.landing-assistant-chat-head .landing-assistant-human-link:hover {
+  background: transparent;
+  color: var(--clay-dark);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .landing-assistant-messages {
@@ -2004,14 +1976,18 @@
 }
 
 .landing-assistant-message--assistant {
+  max-width: 100%;
+  padding: 6px 2px;
+  border: 0;
   align-self: flex-start;
-  border: 1px solid rgba(27, 19, 48, 0.08);
-  border-bottom-left-radius: 5px;
-  background: #F7F4FF;
+  background: transparent;
   color: var(--ink);
 }
 
 .landing-assistant-message--user {
+  max-width: 82%;
+  padding: 10px 13px;
+  border-radius: 14px;
   align-self: flex-end;
   border-bottom-right-radius: 5px;
   background: var(--clay);
@@ -2021,6 +1997,184 @@
 .landing-assistant-message--user time {
   color: rgba(255, 255, 255, 0.72);
   text-align: right;
+}
+
+.landing-assistant-message--with-actions {
+  width: fit-content;
+  max-width: 96%;
+}
+
+.landing-assistant-message--success {
+  border-color: rgba(35, 143, 91, 0.24);
+  background: #f1faf5;
+}
+
+.landing-assistant-message--error {
+  width: 100%;
+  max-width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+}
+
+.landing-assistant-inline-warning {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(174, 55, 55, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 247, 247, 0.86);
+  color: var(--ink);
+}
+
+.landing-assistant-inline-warning-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  background: #b94747;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.landing-assistant-inline-warning-copy {
+  min-width: 0;
+}
+
+.landing-assistant-inline-warning-copy p {
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.landing-assistant-inline-warning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 7px;
+}
+
+.landing-assistant-inline-warning-actions button,
+.landing-assistant-inline-warning-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--clay);
+  font: inherit;
+  font-size: 0.71rem;
+  font-weight: 800;
+  line-height: 1.3;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.landing-assistant-inline-warning-actions button:hover,
+.landing-assistant-inline-warning-actions a:hover {
+  color: var(--clay-dark);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.landing-assistant-inline-warning-actions button:focus-visible,
+.landing-assistant-inline-warning-actions a:focus-visible {
+  outline: 2px solid rgba(68, 28, 178, 0.24);
+  outline-offset: 3px;
+}
+
+.landing-assistant-inline-warning-actions svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.landing-assistant-message-support {
+  display: block;
+  margin-top: 6px;
+  color: rgba(74, 63, 99, 0.72);
+  font-size: 0.69rem;
+  line-height: 1.4;
+}
+
+.landing-assistant-message-support a {
+  color: var(--clay);
+  font-weight: 800;
+}
+
+.landing-assistant-message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.landing-assistant-message-actions button {
+  min-height: 36px;
+  padding: 8px 11px;
+  border: 1px solid rgba(75, 31, 194, 0.24);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--clay);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.landing-assistant-message-actions .landing-assistant-action-link {
+  min-height: 36px;
+  padding: 8px 11px;
+  border: 1px solid var(--clay);
+  border-radius: 7px;
+  background: var(--clay);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.landing-assistant-message-actions .landing-assistant-action-link:hover {
+  background: var(--clay-dark);
+}
+
+.landing-assistant-message-actions button:hover:not(:disabled) {
+  border-color: rgba(75, 31, 194, 0.48);
+  background: #f1ecff;
+}
+
+.landing-assistant-message-actions .landing-assistant-action--primary {
+  border-color: var(--clay);
+  background: var(--clay);
+  color: #fff;
+}
+
+.landing-assistant-message-actions .landing-assistant-action--primary:hover:not(:disabled) {
+  border-color: var(--clay-dark);
+  background: var(--clay-dark);
+}
+
+.landing-assistant-message-actions button:focus-visible,
+.landing-assistant-message-actions .landing-assistant-action-link:focus-visible,
+.landing-assistant-handoff-controls button:focus-visible {
+  outline: 3px solid rgba(68, 28, 178, 0.18);
+  outline-offset: 2px;
+}
+
+.landing-assistant-message-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .landing-assistant-message--typing {
@@ -2143,6 +2297,37 @@
   cursor: pointer;
 }
 
+.landing-assistant-handoff-controls {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 3px;
+}
+
+.landing-assistant-handoff-controls button {
+  min-height: 30px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.landing-assistant-handoff-controls button:last-child {
+  margin-left: auto;
+}
+
+.landing-assistant-handoff-controls button:hover {
+  color: var(--clay);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .landing-assistant-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 38px;
@@ -2195,6 +2380,29 @@
   stroke-width: 2.3;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.landing-assistant-chat-consent {
+  margin: -2px 8px 0;
+  color: rgba(74, 63, 99, 0.68);
+  font-size: 0.64rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.landing-assistant-chat-consent a {
+  color: var(--clay);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.landing-assistant-chat-consent a:hover {
+  text-decoration: underline;
+}
+
+.landing-assistant-chat-consent a:focus-visible {
+  outline: 2px solid rgba(68, 28, 178, 0.22);
+  outline-offset: 2px;
 }
 
 .landing-assistant-toggle {
@@ -2267,21 +2475,66 @@
 
 @media (max-width: 560px) {
   .landing-assistant {
-    top: 76px;
-    right: 12px;
-    bottom: 12px;
-    gap: 10px;
+    inset: 0;
+    align-content: end;
+    gap: 0;
+  }
+
+  .landing-assistant:not(.landing-assistant--open) {
+    box-sizing: border-box;
+    padding: 12px;
   }
 
   .landing-assistant-panel {
-    width: min(360px, calc(100vw - 24px));
-    height: min(480px, calc(100dvh - 150px));
-    padding: 18px;
+    width: 100vw;
+    height: 100dvh;
+    padding: max(12px, env(safe-area-inset-top)) 14px max(12px, env(safe-area-inset-bottom));
+    border-width: 0;
+    border-radius: 0;
+    box-shadow: none;
+    animation: assistantSheetIn 220ms cubic-bezier(.2,.75,.25,1) both;
+    transition: height 220ms ease, width 220ms ease, border-radius 220ms ease;
   }
 
-  .landing-assistant-card {
-    margin-top: 18px;
-    padding: 18px 14px 14px;
+  .landing-assistant-brand-row {
+    position: relative;
+    min-height: 52px;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .landing-assistant-brand-row::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    width: 34px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(74, 63, 99, .2);
+    transform: translateX(-50%);
+  }
+
+  .landing-assistant--collapsed {
+    padding: 0 8px;
+  }
+
+  .landing-assistant--collapsed .landing-assistant-panel {
+    width: calc(100vw - 16px);
+    height: calc(76px + env(safe-area-inset-bottom));
+    padding: 10px 14px max(10px, env(safe-area-inset-bottom));
+    border: 1px solid rgba(27, 19, 48, .1);
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -12px 40px rgba(27, 19, 48, .16);
+  }
+
+  .landing-assistant--collapsed .landing-assistant-chat {
+    display: none;
+  }
+
+  .landing-assistant--open .landing-assistant-toggle {
+    display: none;
   }
 
   .landing-assistant-toggle {
@@ -2296,6 +2549,63 @@
   }
 
   .landing-assistant-message {
-    max-width: 92%;
+    max-width: 94%;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+  }
+
+  .landing-assistant-message--with-actions {
+    max-width: 100%;
+  }
+
+  .landing-assistant-chat-head {
+    gap: 8px;
+  }
+
+  .landing-assistant-chat {
+    margin-top: 10px;
+  }
+
+  .landing-assistant-chat-head span {
+    font-size: 0.8rem;
+  }
+
+  .landing-assistant-chat-head button {
+    padding: 6px 8px;
+    font-size: 0.68rem;
+  }
+
+  .landing-assistant-message-actions {
+    gap: 6px;
+  }
+
+  .landing-assistant-message-actions button {
+    flex: 1 1 120px;
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+
+  .landing-assistant-handoff-controls button {
+    min-height: 36px;
+  }
+
+  .landing-assistant-form input {
+    font-size: 1rem;
+  }
+
+  .landing-assistant-chat-consent {
+    margin-inline: 4px;
+    font-size: 0.61rem;
+  }
+}
+
+@keyframes assistantSheetIn {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@media (max-width: 360px) {
+  .landing-assistant-message-actions button {
+    flex-basis: 100%;
   }
 }

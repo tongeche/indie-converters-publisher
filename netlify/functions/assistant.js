@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
-import { buildAssistantReply } from '../../src/lib/assistant.js';
+import { buildAssistantReply, sanitizeAssistantHistory } from '../../src/lib/assistant.js';
 import { formatDisplayMoney } from '../../src/lib/currency.js';
 
 const BOOK_SELECT = `
@@ -12,6 +12,62 @@ const BOOK_SELECT = `
 `;
 
 const BLOG_SELECT = 'slug, title, pillar, excerpt, primary_keyword, secondary_keywords, published_at';
+const PUBLISHING_ASSISTANT_FIELDS = new Set([
+  'title', 'subtitle', 'language', 'edition', 'series', 'seriesVolume', 'description',
+  'audience', 'genre', 'genreSecondary', 'keywords', 'pubYear', 'publisher', 'pageCount',
+  'trimSize', 'price',
+]);
+
+function cleanWorkflowText(value, maxLength = 500) {
+  return typeof value === 'string'
+    ? value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ').trim().slice(0, maxLength)
+    : '';
+}
+
+function sanitizePublishingWorkflow(value) {
+  if (!value || value.mode !== 'publishing_upload') return null;
+  const details = value.bookDetails && typeof value.bookDetails === 'object' ? value.bookDetails : {};
+  const rawActive = value.activeField;
+  const activeField = rawActive && PUBLISHING_ASSISTANT_FIELDS.has(rawActive.id)
+    ? {
+        id: rawActive.id,
+        label: cleanWorkflowText(rawActive.label, 80),
+        purpose: cleanWorkflowText(rawActive.purpose, 240),
+        value: Array.isArray(rawActive.value)
+          ? rawActive.value.slice(0, 12).map(item => cleanWorkflowText(item, 80))
+          : cleanWorkflowText(rawActive.value, 4000),
+        required: Boolean(rawActive.required),
+        maxLength: Math.min(Math.max(Number(rawActive.maxLength) || 0, 0), 4000) || null,
+        validation: cleanWorkflowText(rawActive.validation, 240),
+      }
+    : null;
+
+  return {
+    mode: 'publishing_upload',
+    stepNumber: Math.min(Math.max(Number(value.stepNumber) || 1, 1), 20),
+    totalSteps: Math.min(Math.max(Number(value.totalSteps) || 12, 1), 20),
+    stepLabel: cleanWorkflowText(value.stepLabel, 80),
+    stepGroup: cleanWorkflowText(value.stepGroup, 80),
+    stepGuidance: cleanWorkflowText(value.stepGuidance, 500),
+    stepTips: Array.isArray(value.stepTips) ? value.stepTips.slice(0, 5).map(tip => cleanWorkflowText(tip, 200)) : [],
+    activeField,
+    bookDetails: {
+      title: cleanWorkflowText(details.title, 160),
+      subtitle: cleanWorkflowText(details.subtitle, 200),
+      description: cleanWorkflowText(details.description, 4000),
+      language: cleanWorkflowText(details.language, 80),
+      audience: cleanWorkflowText(details.audience, 80),
+      genre: cleanWorkflowText(details.genre, 100),
+      secondaryGenre: cleanWorkflowText(details.secondaryGenre, 100),
+      keywords: Array.isArray(details.keywords) ? details.keywords.slice(0, 12).map(item => cleanWorkflowText(item, 80)) : [],
+      formats: Array.isArray(details.formats) ? details.formats.slice(0, 8).map(item => cleanWorkflowText(item, 50)) : [],
+      trimSize: cleanWorkflowText(details.trimSize, 40),
+      price: cleanWorkflowText(details.price, 40),
+      isFree: Boolean(details.isFree),
+      publisher: cleanWorkflowText(details.publisher, 160),
+    },
+  };
+}
 
 const CATALOGUE_QUERY_STOPWORDS = new Set([
   'find', 'show', 'give', 'get', 'book', 'books', 'read', 'reading', 'recommend',
@@ -198,23 +254,47 @@ function summariseBook(book) {
   };
 }
 
-function buildModelMessages({ message, baseReply, books, pageContext, articles }) {
+function buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext }) {
   const context = pageContext || {};
   const bookContext = books.slice(0, 5).map(summariseBook);
+  const isUploadWorkflow = workflowContext?.mode === 'publishing_upload';
+  const recentHistory = sanitizeAssistantHistory(history, message, isUploadWorkflow ? 16 : undefined);
+  const roleInstructions = isUploadWorkflow
+    ? [
+        'You are Indie, a focused publishing workflow assistant inside the Indie Converters book-upload wizard.',
+        'Only help the author complete the publishing wizard: book metadata, description, genre, keywords, publication details, manuscript preparation, reading style, cover, pricing, distribution, front and back matter, structure, and final review.',
+        'Prioritise the current wizard step supplied below. If the question belongs to another publishing step, answer briefly and name that step. Politely redirect unrelated requests back to publishing.',
+        'Help the author think and write; never claim you changed, saved, uploaded, validated, or published anything. The author must enter and confirm all values in the wizard.',
+        'Do not invent facts about the book. When information is missing, ask one focused question. When brainstorming copy, provide 2 or 3 concise options that preserve the author’s voice.',
+        'Never draft a description, blurb, subtitle, keywords, or marketing copy from only a title or genre. First collect enough real material from the author—such as premise, protagonist or subject, central goal or conflict, stakes, tone, and intended reader. Ask for the most important missing detail one question at a time.',
+        'The activeField is the field the author is currently using. Resolve words like “this”, “it”, “here”, and “the field” against activeField without asking them to identify it again.',
+        'When you can provide ready-to-insert wording for activeField, include it in fieldSuggestions. Suggest only activeField.id and never another field. Do not suggest values for numeric, legal, identifier, file, price, or distribution fields.',
+        'Treat supplied book details as private working context. Do not request manuscript text, passwords, payment data, contact details, or other sensitive information.',
+      ]
+    : [
+        'You are the Indie Converters assistant.',
+        'Help authors and readers with publishing, manuscript uploads, pricing, retailer links, account setup, and public book discovery.',
+      ];
 
   return [
     {
       role: 'system',
       content: [
-        'You are the Indie Converters assistant.',
-        'Help authors and readers with publishing, manuscript uploads, pricing, retailer links, account setup, and public book discovery.',
-        'Be warm, practical, concise, and honest. Prefer 2 to 5 short sentences.',
+        ...roleInstructions,
+        'Sound like a capable publishing guide: direct, warm, specific, and calm.',
+        'Lead with the answer. Keep the text under 70 words and usually to 1 to 3 short sentences.',
+        'Give only the most useful next step. Do not add background, summaries, related topics, or generic offers to help.',
+        'If one detail is required to help well, ask one focused question instead of guessing.',
         'Use the supplied catalogue context for book facts. Do not invent books, prices, availability, retailer links, or account data.',
         'Prices are EUR estimates when shown. Always explain that final price, taxes, delivery, and availability are confirmed by the retailer or checkout flow.',
         'If a user asks for private account details and no account data is supplied, explain that account-aware support is coming and give the next best general step.',
-        'Return valid JSON only with this shape: {"text":"...", "sources":["..."]}.',
+        'If a user asks for a person, briefly say that you can connect them with the Indie Converters team.',
+        'Do not ask for or repeat contact details in AI replies; the guided human-support steps in the chat collect those details outside OpenAI.',
+        'Return valid JSON only with this shape: {"text":"...", "actions":[{"label":"...","type":"ask|navigate","value":"..."}], "fieldSuggestions":[{"field":"...","label":"...","value":"..."}], "sources":["..."]}.',
+        'Return at most 2 actions. Use ask for a useful suggested reply and navigate only for a supplied site path. Keep action labels under 28 characters.',
       ].join('\n'),
     },
+    ...recentHistory,
     {
       role: 'user',
       content: JSON.stringify({
@@ -235,12 +315,13 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles }
           excerpt: article.body,
           path: article.cta?.path,
         })),
+        publishing_workflow: isUploadWorkflow ? workflowContext : null,
       }),
     },
   ];
 }
 
-async function generateAssistantReply({ message, baseReply, books, pageContext, articles }) {
+async function generateAssistantReply({ message, baseReply, books, pageContext, articles, history, workflowContext }) {
   const openaiBaseUrl = getEnv('OPENAI_BASE_URL');
   const openaiApiKey = getEnv('OPENAI_API_KEY');
   if (!openaiBaseUrl && !openaiApiKey) return baseReply;
@@ -252,10 +333,10 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
     });
     const completion = await openai.chat.completions.create({
       model: getAssistantModel(),
-      messages: buildModelMessages({ message, baseReply, books, pageContext, articles }),
+      messages: buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext }),
       response_format: { type: 'json_object' },
       temperature: 0.35,
-      max_tokens: 420,
+      max_tokens: 220,
     });
 
     const content = completion.choices?.[0]?.message?.content;
@@ -264,9 +345,44 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
     const parsed = JSON.parse(content);
     if (!parsed?.text) return baseReply;
 
+    const allowedNavigatePaths = new Set(
+      (baseReply.actions || [])
+        .filter(action => action?.type === 'navigate')
+        .map(action => action.value),
+    );
+    const safeActions = (Array.isArray(parsed.actions) ? parsed.actions : baseReply.actions || [])
+      .filter(action => (
+        action && typeof action.label === 'string' && typeof action.value === 'string'
+        && ['ask', 'navigate'].includes(action.type)
+        && (action.type !== 'navigate' || allowedNavigatePaths.has(action.value))
+      ))
+      .slice(0, 2)
+      .map(action => ({
+        label: action.label.trim().slice(0, 28),
+        type: action.type,
+        value: action.value.trim().slice(0, 240),
+      }));
+    const activeFieldId = workflowContext?.activeField?.id;
+    const maxFieldLength = workflowContext?.activeField?.maxLength || 4000;
+    const safeFieldSuggestions = activeFieldId
+      ? (Array.isArray(parsed.fieldSuggestions) ? parsed.fieldSuggestions : [])
+          .filter(suggestion => (
+            suggestion && suggestion.field === activeFieldId
+            && typeof suggestion.label === 'string' && typeof suggestion.value === 'string'
+          ))
+          .slice(0, 3)
+          .map(suggestion => ({
+            field: activeFieldId,
+            label: suggestion.label.trim().slice(0, 36),
+            value: suggestion.value.trim().slice(0, maxFieldLength),
+          }))
+      : [];
+
     return {
       ...baseReply,
-      text: String(parsed.text).trim(),
+      text: String(parsed.text).trim().slice(0, 600),
+      actions: safeActions,
+      fieldSuggestions: safeFieldSuggestions,
       sources: Array.from(new Set([
         ...(baseReply.sources || []),
         ...(Array.isArray(parsed.sources) ? parsed.sources : []),
@@ -301,6 +417,8 @@ export default async (req) => {
     fetchArticleContext(message),
   ]);
   const pageContext = payload?.pageContext || null;
+  const workflowContext = sanitizePublishingWorkflow(payload?.workflowContext);
+  const history = sanitizeAssistantHistory(payload?.history, message, workflowContext ? 16 : undefined);
   const baseReply = buildAssistantReply(message, books, pageContext, articles);
   const reply = await generateAssistantReply({
     message,
@@ -308,6 +426,8 @@ export default async (req) => {
     books: baseReply.books || books,
     pageContext,
     articles,
+    history,
+    workflowContext,
   });
 
   return json({

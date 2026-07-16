@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BookCover from '../components/BookCover';
-import { AssistantHandoffForm, AssistantHandoffSuccess } from '../components/AssistantHandoffForm';
 import SEO from '../components/SEO';
 import OurStorySection from '../components/OurStorySection';
 import MissionCardSection from '../components/MissionCardSection';
@@ -22,6 +21,7 @@ import {
   createWelcomeMessage,
   formatAssistantTime,
   getAssistantPageContext,
+  isHumanSupportIntent,
   requestAssistantReply,
 } from '../lib/assistant';
 import { useAuth } from '../context/AuthContext';
@@ -376,22 +376,80 @@ const MOODS = [
 ];
 
 const ASSISTANT_CONSENT_STORAGE_KEY = 'ic_assistant_consent';
-const HUMAN_SUPPORT_INTENT = /(?:talk|speak|connect|chat).{0,24}(?:human|person|someone|agent|team)|\b(?:human support|real person|support agent|team member)\b/i;
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 
 function assistantContactName(user) {
   return user?.user_metadata?.full_name || user?.user_metadata?.name || '';
 }
 
-function createAssistantHandoffForm(user) {
+function createAssistantHandoffDraft() {
   return {
-    contactName: assistantContactName(user),
-    contactEmail: user?.email || '',
-    topic: '',
-    message: '',
-    company: '',
+    contactName: '',
+    contactEmail: '',
+    contextMessage: '',
+    note: '',
+    verification: '',
     formStartedAt: Date.now(),
   };
+}
+
+function createInlineAssistantMessage(role, text, options = {}) {
+  return {
+    id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    text,
+    time: formatAssistantTime(),
+    ...options,
+  };
+}
+
+function latestHandoffContext(messages = []) {
+  return [...messages]
+    .reverse()
+    .find(message => (
+      message.role === 'user'
+      && !message.handoffFlow
+      && !message.handoffSensitive
+      && message.text?.trim().length >= 10
+      && !isHumanSupportIntent(message.text)
+    ))?.text?.trim() || '';
+}
+
+function humanRequestContext(message) {
+  const value = message.trim();
+  if (value.length < 24) return '';
+  return /\b(book|manuscript|upload|publish|format|cover|isbn|price|retailer|order|account|login|profile|editor|designer|error|issue|problem|failed|help with)\b/i.test(value)
+    ? value
+    : '';
+}
+
+function inferHandoffTopic(message, pathname = '/') {
+  const value = message.toLowerCase();
+  const path = pathname.toLowerCase();
+  if (/\b(error|bug|broken|technical|failed|failure|not working)\b/.test(value)) return 'technical';
+  if (/\b(account|sign in|login|password|profile|dashboard|access)\b/.test(value)) return 'account';
+  if (/\b(hire|hiring|editor|designer|illustrator|freelancer|creative expert)\b/.test(value)) return 'hiring';
+  if (/\b(upload|publish|publishing|manuscript|isbn|cover|format|epub|distribution)\b/.test(value)) return 'publishing';
+  if (/\b(find|discover|shop|buy|book|author|genre|retailer)\b/.test(value)) return 'book_discovery';
+  if (/^\/(?:upload|publish)/.test(path)) return 'publishing';
+  if (/^\/(?:shop|book|browse|collections)/.test(path)) return 'book_discovery';
+  if (/^\/dashboard/.test(path)) return 'account';
+  return 'other';
+}
+
+function buildHandoffMessage(draft) {
+  const context = draft.contextMessage.trim();
+  const note = draft.note.trim();
+  if (context && note) return `Earlier question: ${context}\n\nAdditional details: ${note}`.slice(0, 1000);
+  return (context || note).slice(0, 1000);
+}
+
+function handoffComposerPlaceholder(step) {
+  if (step === 'name') return 'Type your name, or choose Skip';
+  if (step === 'email') return 'Enter your email address';
+  if (step === 'details') return 'Tell the team how they can help';
+  if (step === 'submitting') return 'Sending your request…';
+  return 'Ask about publishing or books...';
 }
 
 function readAssistantConsent() {
@@ -420,22 +478,53 @@ export default function Landing() {
   const [moodScrollState, setMoodScrollState] = useState({ atStart: true, atEnd: false });
   const [featuredScrollState, setFeaturedScrollState] = useState({ atStart: true, atEnd: false });
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantView, setAssistantView] = useState('welcome');
+  const [assistantCollapsed, setAssistantCollapsed] = useState(false);
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantPending, setAssistantPending] = useState(false);
   const [assistantConsent, setAssistantConsent] = useState(() => readAssistantConsent());
   const [assistantMessages, setAssistantMessages] = useState(() => [createWelcomeMessage(user)]);
-  const [handoffForm, setHandoffForm] = useState(() => createAssistantHandoffForm(user));
-  const [handoffErrors, setHandoffErrors] = useState({});
+  const [handoffStep, setHandoffStep] = useState('idle');
+  const [handoffDraft, setHandoffDraft] = useState(() => createAssistantHandoffDraft());
   const [handoffPending, setHandoffPending] = useState(false);
-  const [handoffSubmissionError, setHandoffSubmissionError] = useState('');
-  const [handoffReturnView, setHandoffReturnView] = useState('welcome');
-  const [handoffReceiptEmail, setHandoffReceiptEmail] = useState('');
+  const [activeHumanOfferId, setActiveHumanOfferId] = useState(null);
+  const [humanOfferShown, setHumanOfferShown] = useState(false);
   const moodTrackRef = useRef(null);
   const featuredTrackRef = useRef(null);
   const assistantMessagesRef = useRef(null);
   const assistantSessionIdRef = useRef(null);
   const assistantSessionPromiseRef = useRef(null);
+  const assistantSessionGenerationRef = useRef(0);
+  const assistantReplyRequestIdRef = useRef(0);
+  const handoffRequestIdRef = useRef(0);
+  const handoffSubmittingRef = useRef(false);
+  const assistantPanelRef = useRef(null);
+  const assistantInputRef = useRef(null);
+  const assistantToggleRef = useRef(null);
+  const assistantDragStartRef = useRef(null);
+
+  const clearHandoffState = useCallback(() => {
+    setHandoffStep('idle');
+    setHandoffDraft(createAssistantHandoffDraft());
+    setHandoffPending(false);
+    handoffSubmittingRef.current = false;
+    setActiveHumanOfferId(null);
+  }, []);
+
+  const closeAssistant = useCallback(() => {
+    assistantReplyRequestIdRef.current += 1;
+    handoffRequestIdRef.current += 1;
+    setAssistantOpen(false);
+    setAssistantCollapsed(false);
+    setAssistantPending(false);
+    setAssistantInput('');
+    setAssistantMessages(messages => messages.filter(message => (
+      !message.handoffFlow
+      && !message.handoffSensitive
+      && message.kind !== 'human-offer'
+    )));
+    clearHandoffState();
+    window.requestAnimationFrame(() => assistantToggleRef.current?.focus());
+  }, [clearHandoffState]);
 
   useEffect(() => {
     fetchBooks({ limit: 48, indieOnly: true }).then(({ books }) => setAllBooks(books));
@@ -472,28 +561,92 @@ export default function Landing() {
   useEffect(() => {
     if (!assistantOpen || !assistantMessagesRef.current) return;
     assistantMessagesRef.current.scrollTop = assistantMessagesRef.current.scrollHeight;
-  }, [assistantMessages, assistantOpen, assistantPending]);
+  }, [assistantMessages, assistantOpen, assistantPending, handoffPending]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth > 560 || !assistantOpen || assistantCollapsed) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [assistantOpen, assistantCollapsed]);
 
   useEffect(() => {
     if (!assistantOpen) return undefined;
-    const closeOnEscape = event => {
-      if (event.key === 'Escape') setAssistantOpen(false);
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const panel = assistantPanelRef.current;
+      const viewHeading = panel?.querySelector('[data-assistant-view-focus]');
+      const closeButton = panel?.querySelector('.landing-assistant-close');
+      (viewHeading || closeButton)?.focus();
+    });
+
+    const handleDialogKeydown = event => {
+      if (event.key === 'Escape') {
+        closeAssistant();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const panel = assistantPanelRef.current;
+      if (!panel) return;
+      const focusable = Array.from(panel.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter(element => element.getClientRects().length > 0);
+      if (!focusable.length) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (!panel.contains(active)) {
+        event.preventDefault();
+        first.focus();
+      } else if (!focusable.includes(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [assistantOpen]);
+
+    window.addEventListener('keydown', handleDialogKeydown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener('keydown', handleDialogKeydown);
+    };
+  }, [assistantOpen, closeAssistant]);
 
   useEffect(() => {
-    setAssistantMessages(messages => {
-      if (messages.length !== 1 || messages[0]?.id !== 'welcome') return messages;
-      return [createWelcomeMessage(user)];
+    if (!assistantOpen) return undefined;
+    if (!['name', 'email', 'details', 'review', 'error'].includes(handoffStep)) return undefined;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (['name', 'email', 'details'].includes(handoffStep)) {
+        assistantInputRef.current?.focus();
+        return;
+      }
+      const actionButtons = assistantPanelRef.current?.querySelectorAll('.landing-assistant-message-actions button');
+      actionButtons?.[actionButtons.length - 2]?.focus();
     });
-    setHandoffForm(form => ({
-      ...form,
-      contactName: form.contactName || assistantContactName(user),
-      contactEmail: form.contactEmail || user?.email || '',
-    }));
-  }, [user]);
+
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [assistantOpen, handoffStep]);
+
+  useEffect(() => {
+    setAssistantMessages([createWelcomeMessage(user)]);
+    assistantReplyRequestIdRef.current += 1;
+    handoffRequestIdRef.current += 1;
+    setAssistantPending(false);
+    setAssistantInput('');
+    setHumanOfferShown(false);
+    clearHandoffState();
+    assistantSessionGenerationRef.current += 1;
+    assistantSessionIdRef.current = null;
+    assistantSessionPromiseRef.current = null;
+  }, [user, clearHandoffState]);
 
   const withCovers = allBooks.filter(b => b.coverUrl);
   const featured = withCovers.slice(0, 12);
@@ -540,7 +693,8 @@ export default function Landing() {
     if (assistantSessionPromiseRef.current) return assistantSessionPromiseRef.current;
 
     const acceptedAt = consent.acceptedAt || new Date().toISOString();
-    assistantSessionPromiseRef.current = (async () => {
+    const generation = assistantSessionGenerationRef.current;
+    const sessionPromise = (async () => {
       const sessionId = await createAssistantSession({
         userId: user?.id || null,
         visitorId: user ? null : getAssistantVisitorId(),
@@ -548,6 +702,7 @@ export default function Landing() {
         pageUrl: typeof window !== 'undefined' ? window.location.href : '/',
       });
 
+      if (assistantSessionGenerationRef.current !== generation) return null;
       assistantSessionIdRef.current = sessionId;
 
       const welcome = assistantMessages.find(message => message.id === 'welcome');
@@ -562,17 +717,22 @@ export default function Landing() {
         });
       }
 
+      if (assistantSessionGenerationRef.current !== generation) return null;
       return sessionId;
     })();
+    assistantSessionPromiseRef.current = sessionPromise;
 
     try {
-      return await assistantSessionPromiseRef.current;
+      return await sessionPromise;
     } finally {
-      assistantSessionPromiseRef.current = null;
+      if (assistantSessionPromiseRef.current === sessionPromise) {
+        assistantSessionPromiseRef.current = null;
+      }
     }
   }
 
   async function persistAssistantMessage(message, sessionIdOverride) {
+    if (message.handoffFlow || message.handoffSensitive) return;
     try {
       const sessionId = sessionIdOverride || await ensureAssistantSession();
       await saveAssistantMessage({
@@ -603,118 +763,328 @@ export default function Landing() {
     return nextConsent;
   }
 
-  function startAssistant(prompt) {
-    const activeConsent = acceptAssistantConsent();
-    setAssistantView('chat');
-    ensureAssistantSession(activeConsent).catch(error => {
-      console.error('[assistant] failed to create session:', error?.message || error);
+  function toggleAssistant() {
+    if (assistantOpen) {
+      closeAssistant();
+      return;
+    }
+    setAssistantCollapsed(false);
+    setAssistantOpen(true);
+  }
+
+  function startAssistantDrag(event) {
+    if (typeof window === 'undefined' || window.innerWidth > 560) return;
+    assistantDragStartRef.current = event.touches?.[0]?.clientY ?? null;
+  }
+
+  function endAssistantDrag(event) {
+    if (assistantDragStartRef.current == null) return;
+    const endY = event.changedTouches?.[0]?.clientY ?? assistantDragStartRef.current;
+    const distance = endY - assistantDragStartRef.current;
+    assistantDragStartRef.current = null;
+    if (distance > 64) setAssistantCollapsed(true);
+    if (distance < -48) setAssistantCollapsed(false);
+  }
+
+  function expandCollapsedAssistant(event) {
+    if (!assistantCollapsed || event.target.closest('button')) return;
+    setAssistantCollapsed(false);
+  }
+
+  function appendHumanOffer({ force = false, source = 'assistant', contextMessage = '' } = {}) {
+    if (handoffStep !== 'idle' || activeHumanOfferId || (humanOfferShown && !force)) return;
+
+    assistantReplyRequestIdRef.current += 1;
+    setAssistantPending(false);
+    const offer = createInlineAssistantMessage(
+      'assistant',
+      'Would you like to talk with one of our human assistants?',
+      {
+        kind: 'human-offer',
+        handoffContext: contextMessage,
+        handoffSensitive: Boolean(contextMessage),
+      },
+    );
+    setAssistantMessages(messages => [...messages, offer]);
+    setActiveHumanOfferId(offer.id);
+    setHumanOfferShown(true);
+    trackEvent('Human Support Offered', { source });
+  }
+
+  function beginHumanHandoff() {
+    const triggeringContext = assistantMessages.find(message => message.id === activeHumanOfferId)?.handoffContext || '';
+    const contextMessage = triggeringContext || latestHandoffContext(assistantMessages);
+    const draft = {
+      ...createAssistantHandoffDraft(),
+      contextMessage,
+    };
+    setActiveHumanOfferId(null);
+    setHandoffDraft(draft);
+    setHandoffStep('name');
+    setAssistantInput(assistantContactName(user));
+    setAssistantMessages(messages => [
+      ...messages,
+      createInlineAssistantMessage('user', 'Yes, please.', { handoffFlow: true }),
+      createInlineAssistantMessage(
+        'assistant',
+        'Of course. I’ll collect a few details here and pass them to the team. What should we call you?',
+        { handoffFlow: true },
+      ),
+    ]);
+    acceptAssistantConsent();
+    trackEvent('Human Support Started', { hasConversationContext: Boolean(contextMessage) });
+  }
+
+  function dismissHumanOffer() {
+    setActiveHumanOfferId(null);
+    setAssistantMessages(messages => [
+      ...messages,
+      createInlineAssistantMessage('user', 'No, keep chatting.', { handoffFlow: true }),
+      createInlineAssistantMessage('assistant', 'No problem — we can keep chatting here. What else can I help with?', { handoffFlow: true }),
+    ]);
+    window.requestAnimationFrame(() => assistantInputRef.current?.focus());
+  }
+
+  function cancelHumanHandoff() {
+    handoffRequestIdRef.current += 1;
+    setAssistantInput('');
+    clearHandoffState();
+    setAssistantMessages(messages => [
+      ...messages.filter(message => (
+        !message.handoffFlow
+        && !message.handoffSensitive
+        && message.kind !== 'human-offer'
+      )),
+      createInlineAssistantMessage('assistant', 'No problem — I haven’t sent anything. We can keep chatting here.', { handoffFlow: true }),
+    ]);
+    window.requestAnimationFrame(() => assistantInputRef.current?.focus());
+    trackEvent('Human Support Cancelled', { step: handoffStep });
+  }
+
+  function appendHandoffPrompt(text, options = {}) {
+    setAssistantMessages(messages => {
+      const lastMessage = messages.at(-1);
+      if (lastMessage?.role === 'assistant' && lastMessage.text === text) return messages;
+      return [
+        ...messages,
+        createInlineAssistantMessage('assistant', text, { handoffFlow: true, ...options }),
+      ];
     });
-    if (prompt) sendAssistantMessage(prompt);
   }
 
-  function openHumanHandoff(returnView = assistantView) {
-    setHandoffReturnView(returnView === 'chat' ? 'chat' : 'welcome');
-    setHandoffErrors({});
-    setHandoffSubmissionError('');
-    setHandoffForm(form => ({ ...form, formStartedAt: Date.now() }));
-    setAssistantView('handoff');
-    trackEvent('Human Support Opened', { location: returnView === 'chat' ? 'assistant-chat' : 'assistant-welcome' });
-  }
+  async function submitHumanHandoff(draftOverride = handoffDraft) {
+    if (handoffSubmittingRef.current) return;
+    const contactName = draftOverride.contactName.trim();
+    const contactEmail = draftOverride.contactEmail.trim().toLowerCase();
+    const message = buildHandoffMessage(draftOverride);
 
-  function updateHandoffField(field, value) {
-    setHandoffForm(form => ({ ...form, [field]: value }));
-    setHandoffErrors(errors => ({ ...errors, [field]: '' }));
-    setHandoffSubmissionError('');
-  }
-
-  async function handleHandoffSubmit(event) {
-    event.preventDefault();
-    const contactName = handoffForm.contactName.trim();
-    const contactEmail = handoffForm.contactEmail.trim().toLowerCase();
-    const message = handoffForm.message.trim();
-    const nextErrors = {};
-    if (contactName.length > 100) nextErrors.contactName = 'Use 100 characters or fewer.';
-    if (!EMAIL_PATTERN.test(contactEmail)) nextErrors.contactEmail = 'Enter a valid email.';
-    if (!handoffForm.topic) nextErrors.topic = 'Choose a topic.';
-    if (message.length < 10) nextErrors.message = 'Add a little more detail.';
-    if (Object.keys(nextErrors).length) {
-      setHandoffErrors(nextErrors);
+    if (!EMAIL_PATTERN.test(contactEmail) || message.length < 10) {
+      appendHandoffPrompt('I’m missing a valid email or enough detail to send this request. Please add those details and try again.', { kind: 'handoff-error' });
+      setHandoffStep(!EMAIL_PATTERN.test(contactEmail) ? 'email' : 'details');
       return;
     }
 
-    setHandoffPending(true);
-    setHandoffSubmissionError('');
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+    const topic = inferHandoffTopic(message, pathname);
     const activeConsent = acceptAssistantConsent();
+    const requestId = handoffRequestIdRef.current + 1;
+    handoffRequestIdRef.current = requestId;
+    handoffSubmittingRef.current = true;
+    setHandoffStep('submitting');
+    setHandoffPending(true);
+    setAssistantInput('');
+
     try {
-      const sessionId = await ensureAssistantSession(activeConsent);
+      let sessionId = assistantSessionIdRef.current;
+      try {
+        sessionId = sessionId || await ensureAssistantSession(activeConsent);
+      } catch (error) {
+        console.error('[assistant] failed to create session before handoff:', error?.message || error);
+      }
+
+      if (handoffRequestIdRef.current !== requestId) return;
+
       await submitAssistantHandoff({
         sessionId,
         visitorId: user ? null : getAssistantVisitorId(),
         contactName: contactName || null,
         contactEmail,
-        topic: handoffForm.topic,
+        topic,
         message,
         pageUrl: typeof window !== 'undefined' ? window.location.href : '/',
-        consentAcceptedAt: activeConsent.acceptedAt,
-        company: handoffForm.company,
-        formStartedAt: handoffForm.formStartedAt,
+        consentAccepted: Boolean(activeConsent.acceptedAt),
+        verification: draftOverride.verification,
+        formStartedAt: draftOverride.formStartedAt,
       });
-      setHandoffReceiptEmail(contactEmail);
-      setAssistantView('handoff-success');
-      trackEvent('Human Support Request Submitted', { topic: handoffForm.topic });
+      if (handoffRequestIdRef.current !== requestId) return;
+
+      const name = contactName ? `, ${contactName}` : '';
+      setAssistantMessages(messages => [
+        ...messages,
+        createInlineAssistantMessage(
+          'assistant',
+          `Thanks${name} — I’ve queued your request for our human support team. Please wait for us to get back to you at ${contactEmail}. You can keep chatting with me in the meantime.`,
+          { handoffFlow: true, handoffSensitive: true, kind: 'handoff-success' },
+        ),
+      ]);
+      setHandoffDraft(createAssistantHandoffDraft());
+      setHandoffStep('idle');
+      setActiveHumanOfferId(null);
+      window.requestAnimationFrame(() => assistantInputRef.current?.focus());
+      trackEvent('Human Support Request Submitted', { topic });
     } catch (error) {
-      setHandoffSubmissionError(error?.message || 'We could not send your request. Please try again.');
+      if (handoffRequestIdRef.current !== requestId) return;
+      setHandoffStep('error');
+      appendHandoffPrompt(
+        error?.message || 'We could not send your request. Please try again.',
+        { kind: 'handoff-error' },
+      );
     } finally {
-      setHandoffPending(false);
+      if (handoffRequestIdRef.current === requestId) {
+        handoffSubmittingRef.current = false;
+        setHandoffPending(false);
+      }
     }
   }
 
-  function sendAssistantMessage(text) {
+  function handleHandoffAnswer(text) {
     const trimmed = text.trim();
-    if (!trimmed || assistantPending) return;
-    if (HUMAN_SUPPORT_INTENT.test(trimmed)) {
-      setAssistantInput('');
-      openHumanHandoff('chat');
+    if (!trimmed) return;
+    if (/^(cancel|never mind|nevermind|stop)$/i.test(trimmed)) {
+      cancelHumanHandoff();
       return;
     }
 
-    const userMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      text: trimmed,
-      time: formatAssistantTime(),
-    };
+    if (handoffStep === 'name') {
+      const skipName = /^(skip|prefer not to say|no name)$/i.test(trimmed);
+      if (!skipName && trimmed.length > 100) {
+        appendHandoffPrompt('Please use 100 characters or fewer for your name.');
+        return;
+      }
+      const contactName = skipName ? '' : trimmed;
+      setHandoffDraft(draft => ({ ...draft, contactName }));
+      setAssistantMessages(messages => [
+        ...messages,
+        createInlineAssistantMessage('user', skipName ? 'Skip my name.' : contactName, { handoffFlow: true, handoffSensitive: true }),
+        createInlineAssistantMessage('assistant', 'What email address should our team use to reply?', { handoffFlow: true }),
+      ]);
+      setHandoffStep('email');
+      setAssistantInput(user?.email || '');
+      return;
+    }
+
+    if (handoffStep === 'email') {
+      const contactEmail = trimmed.toLowerCase();
+      if (!EMAIL_PATTERN.test(contactEmail) || contactEmail.length > 254) {
+        appendHandoffPrompt('That email doesn’t look quite right. Please enter a valid email address.');
+        return;
+      }
+      const nextDraft = { ...handoffDraft, contactEmail };
+      setHandoffDraft(nextDraft);
+      setAssistantInput('');
+      setAssistantMessages(messages => [
+        ...messages,
+        createInlineAssistantMessage('user', contactEmail, { handoffFlow: true, handoffSensitive: true }),
+      ]);
+
+      if (nextDraft.contextMessage) {
+        const contextPreview = nextDraft.contextMessage.length > 180
+          ? `${nextDraft.contextMessage.slice(0, 177)}…`
+          : nextDraft.contextMessage;
+        appendHandoffPrompt(
+          `I’ll include your earlier question: “${contextPreview}” Is there anything else you’d like the team to know?`,
+          { kind: 'handoff-review' },
+        );
+        setHandoffStep('review');
+      } else {
+        appendHandoffPrompt('In one or two sentences, what would you like help with? Please don’t include passwords or payment details.');
+        setHandoffStep('details');
+      }
+      return;
+    }
+
+    if (handoffStep === 'details') {
+      if (trimmed.length < 10) {
+        appendHandoffPrompt('Please add a little more detail so the team knows how to help.');
+        return;
+      }
+      if (trimmed.length > 1000) {
+        appendHandoffPrompt('Please keep the request to 1,000 characters or fewer.');
+        return;
+      }
+      const nextDraft = { ...handoffDraft, note: trimmed };
+      setHandoffDraft(nextDraft);
+      setAssistantMessages(messages => [
+        ...messages,
+        createInlineAssistantMessage('user', trimmed, { handoffFlow: true, handoffSensitive: true }),
+      ]);
+      submitHumanHandoff(nextDraft);
+    }
+  }
+
+  async function sendAssistantMessage(text) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    if (handoffStep !== 'idle') {
+      if (!handoffPending && handoffStep !== 'review' && handoffStep !== 'error') {
+        setAssistantInput('');
+        handleHandoffAnswer(trimmed);
+      }
+      return;
+    }
+    if (assistantPending) return;
+
+    if (isHumanSupportIntent(trimmed)) {
+      setAssistantInput('');
+      setAssistantMessages(messages => [
+        ...messages,
+        createInlineAssistantMessage('user', trimmed, { handoffFlow: true }),
+      ]);
+      appendHumanOffer({
+        force: true,
+        source: 'user-message',
+        contextMessage: humanRequestContext(trimmed),
+      });
+      return;
+    }
+
+    const activeConsent = acceptAssistantConsent();
+    ensureAssistantSession(activeConsent).catch(error => {
+      console.error('[assistant] failed to create session:', error?.message || error);
+    });
+    const userMessage = createInlineAssistantMessage('user', trimmed);
+    const publicHistory = [...assistantMessages, userMessage]
+      .filter(message => (
+        !message.handoffFlow
+        && !message.handoffSensitive
+        && ['user', 'assistant'].includes(message.role)
+      ));
+    const requestId = assistantReplyRequestIdRef.current + 1;
+    assistantReplyRequestIdRef.current = requestId;
 
     setAssistantInput('');
-    setAssistantView('chat');
     setAssistantPending(true);
     setAssistantMessages(messages => [...messages, userMessage]);
     persistAssistantMessage(userMessage);
 
-    window.setTimeout(async () => {
-      const searchableBooks = assistantBooks.length ? assistantBooks : allBooks;
-      const pageUrl = typeof window !== 'undefined' ? window.location.href : '/';
-      const pageContext = getAssistantPageContext(typeof window !== 'undefined' ? window.location.pathname : '/');
-      const reply = await requestAssistantReply({
-        message: trimmed,
-        books: searchableBooks,
-        sessionId: assistantSessionIdRef.current,
-        pageUrl,
-        pageContext,
-      });
-      const assistantReply = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        time: formatAssistantTime(),
-        ...reply,
-      };
-      setAssistantMessages(messages => [
-        ...messages,
-        assistantReply,
-      ]);
-      setAssistantPending(false);
-      persistAssistantMessage(assistantReply);
-    }, 420);
+    const searchableBooks = assistantBooks.length ? assistantBooks : allBooks;
+    const pageUrl = typeof window !== 'undefined' ? window.location.href : '/';
+    const pageContext = getAssistantPageContext(typeof window !== 'undefined' ? window.location.pathname : '/');
+    const reply = await requestAssistantReply({
+      message: trimmed,
+      history: publicHistory,
+      books: searchableBooks,
+      sessionId: assistantSessionIdRef.current,
+      pageUrl,
+      pageContext,
+    });
+    if (assistantReplyRequestIdRef.current !== requestId) return;
+
+    const assistantReply = createInlineAssistantMessage('assistant', reply.text, reply);
+    setAssistantMessages(messages => [...messages, assistantReply]);
+    setAssistantPending(false);
+    persistAssistantMessage(assistantReply);
   }
 
   function handleAssistantSubmit(event) {
@@ -722,20 +1092,30 @@ export default function Landing() {
     sendAssistantMessage(assistantInput);
   }
 
+  function addHandoffNote() {
+    setHandoffStep('details');
+    setAssistantInput('');
+    appendHandoffPrompt('What else would you like the team to know? Please don’t include passwords or payment details.');
+  }
+
   function resetAssistantChat() {
+    assistantReplyRequestIdRef.current += 1;
+    handoffRequestIdRef.current += 1;
     setAssistantPending(false);
     setAssistantInput('');
     setAssistantMessages([createWelcomeMessage(user)]);
-    setAssistantView('chat');
+    setHumanOfferShown(false);
+    clearHandoffState();
+    assistantSessionGenerationRef.current += 1;
     assistantSessionIdRef.current = null;
     assistantSessionPromiseRef.current = null;
   }
 
-  const assistantPanelMode = assistantView === 'chat'
-    ? 'chat'
-    : assistantView === 'welcome'
-      ? 'welcome'
-      : 'handoff';
+  const handoffCollecting = handoffStep !== 'idle';
+  const composerDisabled = assistantPending
+    || handoffPending
+    || ['review', 'submitting', 'error'].includes(handoffStep);
+  const lastAssistantMessageId = assistantMessages.at(-1)?.id;
 
   return (
     <div className="landing">
@@ -993,93 +1373,116 @@ export default function Landing() {
         onAction={() => trackEvent('Create Account Click', { location: 'landing-bottom-cta' })}
       />
 
-      <div className={`landing-assistant${assistantOpen ? ' landing-assistant--open' : ''}`}>
+      <div className={`landing-assistant${assistantOpen ? ' landing-assistant--open' : ''}${assistantCollapsed ? ' landing-assistant--collapsed' : ''}`}>
         {assistantOpen && (
           <aside
-            className={`landing-assistant-panel landing-assistant-panel--${assistantPanelMode}`}
-            aria-label="Indie Converters assistant"
+            ref={assistantPanelRef}
+            className="landing-assistant-panel landing-assistant-panel--chat"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="landing-assistant-dialog-title"
           >
-            <div className="landing-assistant-brand-row">
+            <div
+              className="landing-assistant-brand-row"
+              onTouchStart={startAssistantDrag}
+              onTouchEnd={endAssistantDrag}
+              onClick={expandCollapsedAssistant}
+            >
               <div className="landing-assistant-brand">
                 <span className="landing-assistant-logo" aria-hidden="true">.in</span>
-                <span>indie<strong>converters</strong></span>
+                <span id="landing-assistant-dialog-title">indie<strong>converters</strong></span>
               </div>
-              <button
-                type="button"
-                className="landing-assistant-close"
-                onClick={() => setAssistantOpen(false)}
-                aria-label="Close assistant"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m7 7 10 10" />
-                  <path d="M17 7 7 17" />
-                </svg>
-              </button>
+              <div className="landing-assistant-window-actions">
+                <button type="button" onClick={resetAssistantChat} aria-label="Start a new chat" title="New chat">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="landing-assistant-close"
+                  onClick={closeAssistant}
+                  aria-label="Close assistant"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m7 7 10 10" />
+                    <path d="M17 7 7 17" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
-            {assistantView === 'welcome' ? (
-              <>
-                <div className="landing-assistant-intro">
-                  <p>Hi, I’m Indie.</p>
-                  <h2>How can I help?</h2>
-                </div>
+            <div className={`landing-assistant-chat${handoffCollecting ? ' landing-assistant-chat--handoff' : ''}`}>
+              <div className="landing-assistant-messages" ref={assistantMessagesRef} aria-live="polite">
+                {assistantMessages.map(message => {
+                  const hasActiveOffer = message.kind === 'human-offer' && message.id === activeHumanOfferId;
+                  const hasActiveReview = message.kind === 'handoff-review'
+                    && message.id === lastAssistantMessageId
+                    && handoffStep === 'review';
+                  const hasActiveError = message.kind === 'handoff-error'
+                    && message.id === lastAssistantMessageId
+                    && handoffStep === 'error';
+                  const hasActions = hasActiveOffer || hasActiveReview || hasActiveError;
+                  const messageClassName = [
+                    'landing-assistant-message',
+                    `landing-assistant-message--${message.role}`,
+                    hasActions ? 'landing-assistant-message--with-actions' : '',
+                    message.kind === 'handoff-success' ? 'landing-assistant-message--success' : '',
+                    message.kind === 'handoff-error' ? 'landing-assistant-message--error' : '',
+                  ].filter(Boolean).join(' ');
 
-                <div className="landing-assistant-card">
-                  <div className="landing-assistant-avatars" aria-hidden="true">
-                    <span>AI</span>
-                    <span>IC</span>
-                  </div>
-                  <h3>Choose how to continue</h3>
-                  <p>I can help now, or you can leave a request for the Indie Converters team.</p>
-                  <button
-                    type="button"
-                    className="landing-assistant-start"
-                    onClick={() => startAssistant()}
-                  >
-                    Chat with Indie
-                  </button>
-                  <button
-                    type="button"
-                    className="landing-assistant-human"
-                    onClick={() => openHumanHandoff('welcome')}
-                  >
-                    Talk to a human
-                  </button>
-                  <p className="landing-assistant-consent-note">
-                    By continuing, you agree to Indie Converters <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.
-                  </p>
-                </div>
-              </>
-            ) : assistantView === 'handoff' ? (
-              <AssistantHandoffForm
-                form={handoffForm}
-                errors={handoffErrors}
-                pending={handoffPending}
-                submissionError={handoffSubmissionError}
-                onChange={updateHandoffField}
-                onSubmit={handleHandoffSubmit}
-                onBack={() => setAssistantView(handoffReturnView)}
-              />
-            ) : assistantView === 'handoff-success' ? (
-              <AssistantHandoffSuccess
-                email={handoffReceiptEmail}
-                onContinue={() => startAssistant()}
-                onClose={() => setAssistantOpen(false)}
-              />
-            ) : (
-              <div className="landing-assistant-chat">
-                <div className="landing-assistant-chat-head">
-                  <span>Chat with Indie</span>
-                  <div className="landing-assistant-chat-actions">
-                    <button type="button" className="landing-assistant-human-link" onClick={() => openHumanHandoff('chat')}>Human help</button>
-                    <button type="button" onClick={resetAssistantChat}>New chat</button>
-                  </div>
-                </div>
-                <div className="landing-assistant-messages" ref={assistantMessagesRef}>
-                  {assistantMessages.map(message => (
-                    <div key={message.id} className={`landing-assistant-message landing-assistant-message--${message.role}`}>
-                      <p>{message.text}</p>
-                      <time>{message.time}</time>
+                  return (
+                    <div key={message.id} className={messageClassName}>
+                      {message.kind === 'handoff-error' ? (
+                        <div className="landing-assistant-inline-warning" role="alert">
+                          <span className="landing-assistant-inline-warning-icon" aria-hidden="true">!</span>
+                          <div className="landing-assistant-inline-warning-copy">
+                            <p>{message.text}</p>
+                            {hasActiveError && (
+                              <div className="landing-assistant-inline-warning-actions" aria-label="Support request error options">
+                                <button type="button" onClick={() => submitHumanHandoff()}>
+                                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" /></svg>
+                                  Retry
+                                </button>
+                                <button type="button" onClick={cancelHumanHandoff}>Return to chat</button>
+                                <a href="mailto:info@indieconverters.uk">Email support</a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p>{message.text}</p>
+                      )}
+                      {message.actions?.length > 0 && (
+                        <div className="landing-assistant-message-actions" aria-label="Suggested next steps">
+                          {message.actions.map(action => (
+                            action.type === 'navigate' ? (
+                              <Link key={`${action.type}-${action.value}`} to={action.value} className="landing-assistant-action-link">
+                                {action.label} <span aria-hidden="true">→</span>
+                              </Link>
+                            ) : (
+                              <button key={`${action.type}-${action.value}`} type="button" onClick={() => sendAssistantMessage(action.value)}>
+                                {action.label}
+                              </button>
+                            )
+                          ))}
+                        </div>
+                      )}
+                      {message.kind === 'human-offer' && (
+                        <small className="landing-assistant-message-support">Our team will follow up by email.</small>
+                      )}
+                      {hasActiveOffer && (
+                        <div className="landing-assistant-message-actions" aria-label="Human support options">
+                          <button type="button" className="landing-assistant-action--primary" onClick={beginHumanHandoff}>Yes, please</button>
+                          <button type="button" onClick={dismissHumanOffer}>No, keep chatting</button>
+                        </div>
+                      )}
+                      {hasActiveReview && (
+                        <div className="landing-assistant-message-actions" aria-label="Review support request">
+                          <button type="button" className="landing-assistant-action--primary" onClick={() => submitHumanHandoff()}>Send this request</button>
+                          <button type="button" onClick={addHandoffNote}>Add a note</button>
+                        </div>
+                      )}
                       {message.books?.length > 0 && (
                         <div className="landing-assistant-books">
                           {message.books.map(book => (
@@ -1103,14 +1506,16 @@ export default function Landing() {
                         </div>
                       )}
                     </div>
-                  ))}
-                  {assistantPending && (
-                    <div className="landing-assistant-message landing-assistant-message--assistant landing-assistant-message--typing">
-                      <span></span><span></span><span></span>
-                    </div>
-                  )}
-                </div>
+                  );
+                })}
+                {(assistantPending || handoffPending) && (
+                  <div className="landing-assistant-message landing-assistant-message--assistant landing-assistant-message--typing" aria-label="Indie is typing">
+                    <span></span><span></span><span></span>
+                  </div>
+                )}
+              </div>
 
+              {handoffStep === 'idle' && assistantMessages.length === 1 && !assistantPending && !activeHumanOfferId && (
                 <div className="landing-assistant-prompts" aria-label="Suggested questions">
                   {ASSISTANT_PROMPTS.map(prompt => (
                     <button key={prompt} type="button" onClick={() => sendAssistantMessage(prompt)}>
@@ -1118,32 +1523,50 @@ export default function Landing() {
                     </button>
                   ))}
                 </div>
+              )}
 
+              {['name', 'email', 'details'].includes(handoffStep) && (
+                <div className="landing-assistant-handoff-controls">
+                  {handoffStep === 'name' && <button type="button" onClick={() => handleHandoffAnswer('skip')}>Skip name</button>}
+                  <button type="button" onClick={cancelHumanHandoff}>Cancel request</button>
+                </div>
+              )}
+
+              {!['review', 'error'].includes(handoffStep) && (
                 <form className="landing-assistant-form" onSubmit={handleAssistantSubmit}>
                   <input
+                    ref={assistantInputRef}
+                    type={handoffStep === 'email' ? 'email' : 'text'}
+                    autoComplete={handoffStep === 'name' ? 'name' : handoffStep === 'email' ? 'email' : 'off'}
+                    maxLength={handoffStep === 'name' ? 100 : handoffStep === 'email' ? 254 : handoffStep === 'details' ? 1000 : 600}
                     value={assistantInput}
                     onChange={event => setAssistantInput(event.target.value)}
-                    placeholder="Ask about publishing or books..."
-                    aria-label="Ask Indie Converters assistant"
+                    placeholder={handoffComposerPlaceholder(handoffStep)}
+                    aria-label={handoffStep === 'idle' ? 'Ask Indie Converters assistant' : handoffComposerPlaceholder(handoffStep)}
+                    disabled={composerDisabled}
                   />
-                  <button type="submit" disabled={!assistantInput.trim() || assistantPending}>
+                  <button type="submit" disabled={!assistantInput.trim() || composerDisabled} aria-label="Send message">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M5 12h13" />
                       <path d="m13 6 6 6-6 6" />
                     </svg>
                   </button>
                 </form>
-              </div>
-            )}
+              )}
+              <p className="landing-assistant-chat-consent">
+                By sending a message, you agree to our <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.
+              </p>
+            </div>
           </aside>
         )}
 
         <button
+          ref={assistantToggleRef}
           type="button"
           className="landing-assistant-toggle"
           aria-label={assistantOpen ? 'Close assistant' : 'Open assistant'}
           aria-expanded={assistantOpen}
-          onClick={() => setAssistantOpen(open => !open)}
+          onClick={toggleAssistant}
         >
           {assistantOpen ? (
             <svg viewBox="0 0 24 24" aria-hidden="true">

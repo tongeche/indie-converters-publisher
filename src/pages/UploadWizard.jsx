@@ -2,29 +2,73 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import mammoth from 'mammoth/mammoth.browser';
 import DOMPurify from 'dompurify';
-import { validateManuscript, analyseHtml, analyseTxt } from '../lib/manuscriptValidator';
+import { validateManuscript, analyseHtml, analyseTxt, analyseImages, countManualPageBreaks } from '../lib/manuscriptValidator';
 import { calculateRoyaltyEstimates, formatRoyaltyMoney } from '../lib/royaltyCalculator';
 import { calculatePrintCover, formatInches as formatCoverInches, TRIM_SIZE_OPTIONS } from '../lib/printCoverCalculator';
 import { useAuth } from '../context/AuthContext';
 import SEO from '../components/SEO';
 import RetailerLinksEditor, { RETAILER_OPTIONS } from '../components/RetailerLinksEditor';
+import PublishingAssistant from '../components/PublishingAssistant';
 import { supabase } from '../lib/supabase';
 import './UploadWizard.css';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const WIZARD_STEPS = [
-  { label: 'Your Book',       group: 'Details'   },
-  { label: 'About',           group: 'Details'   },
-  { label: 'Publication',     group: 'Details'   },
-  { label: 'Manuscript',      group: 'Files'     },
-  { label: 'Reading Style',   group: 'Files'     },
-  { label: 'Cover',           group: 'Publish'   },
-  { label: 'Pricing',         group: 'Publish'   },
-  { label: 'Distribution',    group: 'Publish'   },
-  { label: 'Front & Back Matter', group: 'Structure' },
-  { label: 'Book Structure',      group: 'Structure' },
-  { label: 'Review',              group: 'Review'    },
+  { label: 'Your Book',       group: 'Publishing Steps',
+    blurb: 'This information is used to present your book in the Indie Converters catalogue and on partner channels.',
+    tips: ['Use a clear, compelling title.', 'Subtitles help readers discover your book.', 'You can add or change details anytime.'] },
+  { label: 'About',           group: 'Publishing Steps',
+    blurb: 'Your description and genre help readers find your book while browsing or searching.',
+    tips: ['Lead with what makes the premise distinct.', 'Pick the genre readers would search for first.', 'Keywords widen how your book gets discovered.'] },
+  { label: 'Publication',     group: 'Publishing Steps',
+    blurb: "Publication details appear in your book's metadata and are used by retailers and libraries.",
+    tips: ['An ISBN is optional but required by some retailers.', 'Page count is estimated from your manuscript.', 'You can skip ISBN now and add one later.'] },
+  { label: 'Manuscript',      group: 'Files',
+    blurb: 'Upload your manuscript file and choose which editions you plan to publish.',
+    tips: ['.docx files give the most accurate conversion.', 'Trim size only matters for print editions.', 'You can replace this file anytime.'] },
+  { label: 'Conversion Readiness', group: 'Files',
+    blurb: 'A full health check of your manuscript before we convert it into eBook and print editions.',
+    tips: ['Fix critical issues first — they block conversion.', 'Warnings are worth reviewing but won’t stop you.', 'You can come back to this check anytime before publishing.'] },
+  { label: 'Reading Style',   group: 'Files',
+    blurb: "Choose how your book's interior pages look across formats.",
+    tips: ['The preview updates live as you change styles.', 'Fonts affect the final print page count.', 'You can fine-tune this later per format.'] },
+  { label: 'Cover',           group: 'Publish',
+    blurb: 'Your cover is the first thing readers see in the catalogue and on retailer pages.',
+    tips: ['Templates are ready instantly — uploads take a moment to process.', 'Use a high-resolution image for print editions.', 'Preview the cover on multiple devices.'] },
+  { label: 'Pricing',         group: 'Publish',
+    blurb: 'Set how readers pay for your book, directly or through retailers.',
+    tips: ['Direct sales keep a larger share of each sale.', 'You can list on multiple retailers at once.', 'Prices can be updated anytime after publishing.'] },
+  { label: 'Distribution',    group: 'Publish',
+    blurb: 'Choose which retailers and platforms will carry your book.',
+    tips: ['Wide distribution reaches more readers.', 'Some retailers require exclusivity — check before selecting.', 'You can add more channels later.'] },
+  { label: 'Front & Back Matter', group: 'Structure',
+    blurb: 'These sections appear before and after your main text, like a printed book.',
+    tips: ['A copyright page is included by default.', 'An About the Author section helps readers connect with you.', 'Only enabled sections are added to your manuscript.'] },
+  { label: 'Book Structure',      group: 'Structure',
+    blurb: 'Review how your manuscript will be laid out, page by page.',
+    tips: ['Use this to check pacing and chapter breaks.', 'Formatting issues are flagged here before publishing.', 'Changes to your manuscript update this preview.'] },
+  { label: 'Preview & Submit',    group: 'Review',
+    blurb: 'Review everything before your book goes live or is scheduled for release.',
+    tips: ['Scheduled books stay private until their release date.', 'You can still edit details after publishing.', 'Publishing today makes your listing visible immediately.'] },
 ];
+
+const ASSISTANT_FIELD_DEFINITIONS = {
+  title: { label: 'Title', purpose: 'The primary book title shown to readers and retailers.', required: true, maxLength: 160 },
+  subtitle: { label: 'Subtitle', purpose: 'A supporting title or reader-facing promise.', maxLength: 200 },
+  language: { label: 'Language', purpose: 'The primary language of the published book.' },
+  edition: { label: 'Edition', purpose: 'The edition label for this version of the book.', maxLength: 80 },
+  series: { label: 'Series name', purpose: 'The name shared by books in the same series.', maxLength: 160 },
+  seriesVolume: { label: 'Volume / Part', purpose: 'The book’s numeric position in its series.' },
+  description: { label: 'Description', purpose: 'Back-cover and retailer copy that explains the premise and gives readers a reason to read.', required: true, maxLength: 4000 },
+  genre: { label: 'Primary genre', purpose: 'The main reader-facing market category.', required: true },
+  genreSecondary: { label: 'Secondary genre', purpose: 'An optional second market category.' },
+  keywords: { label: 'Keywords', purpose: 'Up to seven specific search phrases readers may use to discover the book.' },
+  pubYear: { label: 'Publication year', purpose: 'The year attached to this published edition.' },
+  publisher: { label: 'Publisher name', purpose: 'The publishing imprint or self-publishing name.', maxLength: 160 },
+  pageCount: { label: 'Page count', purpose: 'The final or estimated print page count.' },
+  trimSize: { label: 'Trim size', purpose: 'The physical page dimensions for print editions.' },
+  price: { label: 'List price', purpose: 'The public list price before retailer-specific tax or delivery adjustments.' },
+};
 
 const FM_ITEMS = [
   { key: 'copyright',
@@ -167,13 +211,26 @@ const AUDIENCES = [
   { value: 'middle-grade',label: 'Middle Grade', sub: '8–12'  },
   { value: 'children',    label: 'Children',     sub: 'Under 8' },
 ];
-const STORY_TONES = [
-  { id: 'clear',    label: 'Clear',    note: 'Simple catalogue copy' },
-  { id: 'warm',     label: 'Warm',     note: 'Personal and inviting' },
-  { id: 'literary', label: 'Literary', note: 'More atmospheric' },
-  { id: 'bold',     label: 'Bold',     note: 'Sharper launch copy' },
-];
 const FORMATS = ['eBook','Paperback','Hardcover','Audiobook'];
+const FORMAT_ICONS = {
+  eBook:      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21 12 16l-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16Z"/></svg>,
+  Paperback:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
+  Hardcover:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="1.5"/><path d="M8 2v20"/></svg>,
+  Audiobook:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 14v-3a9 9 0 0 1 18 0v3"/><path d="M21 14v3a2 2 0 0 1-2 2h-1v-7h1a2 2 0 0 1 2 2Z"/><path d="M3 14v3a2 2 0 0 0 2 2h1v-7H5a2 2 0 0 0-2 2Z"/></svg>,
+};
+const FILE_HEALTH_ISSUE_TYPES = ['file-too-large', 'critically-short', 'very-short', 'short-content', 'very-long', 'unsupported', 'print-trim-fit'];
+const HEADING_ISSUE_TYPES = ['no-headings', 'single-heading', 'wrong-heading-start', 'all-caps-headings', 'empty-chapters', 'short-chapters'];
+const READINESS_ICONS = {
+  formatting:  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg>,
+  headings:    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21 12 16l-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16Z"/></svg>,
+  images:      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5-9 9"/></svg>,
+  pagebreaks:  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>,
+  filehealth:  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="m9.5 13 1.8 1.8L15 11"/></svg>,
+  frontmatter: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>,
+  metadata:    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.6 12 12 3.4H4v8l8.6 8.6a2 2 0 0 0 2.8 0l5.2-5.2a2 2 0 0 0 0-2.8Z"/><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/></svg>,
+  readability: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="7"/><line x1="19" y1="20" x2="19" y2="15"/></svg>,
+  spelling:    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20 9 4h1l5 16M5.5 15h8"/><path d="m15 20 4-11 4 11M16.5 16.5h5"/></svg>,
+};
 const RELEASE_LEAD_DAYS = 7;
 const DEFAULT_RELEASE_LEAD_DAYS = 14;
 
@@ -223,65 +280,6 @@ function formatChapterHeading(value = '') {
     label: `${titleCaseWords(kind)} ${titleCaseWords(marker)}`,
     title: title?.trim() || '',
   };
-}
-
-function cleanStoryInput(value = '') {
-  return value.trim().replace(/\s+/g, ' ');
-}
-
-function ensureSentence(value = '') {
-  const text = cleanStoryInput(value);
-  if (!text) return '';
-  return /[.!?]$/.test(text) ? text : `${text}.`;
-}
-
-function buildStoryDraft(fd, { authorName, genreLabel, audienceLabel } = {}) {
-  const title = cleanStoryInput(fd.title) || 'This book';
-  const subtitle = cleanStoryInput(fd.subtitle);
-  const genre = cleanStoryInput(genreLabel).toLowerCase();
-  const workLabel = genre ? `work of ${genre}` : 'indie book';
-  const premise = ensureSentence(fd.storyPremise);
-  const reader = cleanStoryInput(fd.storyReader);
-  const promise = ensureSentence(fd.storyPromise);
-  const themes = cleanStoryInput(fd.storyThemes);
-  const audience = reader || (audienceLabel ? `${audienceLabel.toLowerCase()} readers` : 'curious readers');
-  const author = cleanStoryInput(authorName) || 'the author';
-
-  const fallbackPremise = subtitle
-    ? `${title} is a ${workLabel} about ${subtitle.charAt(0).toLowerCase()}${subtitle.slice(1)}.`
-    : `${title} is a ${workLabel} for readers looking for a fresh independent voice.`;
-  const themeLine = themes ? `It moves through ${themes}.` : '';
-  const promiseLine = promise || `It gives readers a clear way into ${genre || 'the story'} and the questions behind it.`;
-
-  if (fd.storyTone === 'warm') {
-    return [
-      premise || fallbackPremise,
-      `Written for ${audience}, ${title} invites readers into a thoughtful reading experience from ${author}. ${themeLine}`.trim(),
-      `${promiseLine} Read it if you want a book that feels direct, personal, and made with care.`,
-    ].filter(Boolean).join('\n\n');
-  }
-
-  if (fd.storyTone === 'literary') {
-    return [
-      premise || `${title} opens with a question and follows it into a ${workLabel}.`,
-      `${themeLine || `It is shaped by voice, atmosphere, and the quiet pressure of change.`} For ${audience}, the book offers room to sit with what lingers after the final page.`,
-      promiseLine,
-    ].filter(Boolean).join('\n\n');
-  }
-
-  if (fd.storyTone === 'bold') {
-    return [
-      premise || fallbackPremise,
-      `${title} is for ${audience} who want ${themes || 'a confident idea, a memorable story, and a reason to keep turning pages'}.`,
-      `${promiseLine} Start here if you want an indie book with a clear point of view.`,
-    ].filter(Boolean).join('\n\n');
-  }
-
-  return [
-    premise || fallbackPremise,
-    `${title} is written for ${audience}. ${themeLine}`.trim(),
-    promiseLine,
-  ].filter(Boolean).join('\n\n');
 }
 
 const ISBN_REGISTRY_OPTIONS = [
@@ -540,6 +538,38 @@ function isValidISBN13(isbn) {
   return sum % 10 === 0;
 }
 
+const MANUSCRIPT_FILE_TYPES = {
+  docx: { label: 'Microsoft Word Document', letter: 'W' },
+  odt:  { label: 'OpenDocument Text',       letter: 'O' },
+  rtf:  { label: 'Rich Text Format',        letter: 'R' },
+  txt:  { label: 'Plain Text',              letter: 'T' },
+};
+function manuscriptFileType(filename = '') {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  return MANUSCRIPT_FILE_TYPES[ext] || { label: 'Document', letter: '·' };
+}
+function manuscriptFileTypeLabel(filename = '') {
+  return manuscriptFileType(filename).label;
+}
+
+// Groups the real issues from validateManuscript()/analyseHtml() into the five
+// readiness rows shown to the author, taking the worst severity in each group.
+function readinessRowFor(types, issues) {
+  const matched = issues.filter(i => types.includes(i.type));
+  const bySeverity = severity => matched.find(i => i.severity === severity);
+  const issue = bySeverity('error') || bySeverity('warning') || matched[0] || null;
+  return { severity: issue?.severity || 'good', issue };
+}
+
+function readImageDimensions(dataUri) {
+  return new Promise(resolve => {
+    const img = new window.Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = dataUri;
+  });
+}
+
 function formatTimeAgo(ts) {
   const mins = Math.round((Date.now() - ts) / 60000);
   if (mins < 2)  return 'just now';
@@ -751,6 +781,88 @@ function buildTemplateCoverSvg({ title, subtitle, author, genreLabel, templateId
   </svg>`;
 }
 
+function HealthScoreRing({ percent }) {
+  const r = 54;
+  const c = 2 * Math.PI * r;
+  const offset = c - (percent / 100) * c;
+  return (
+    <div className="wz-healthcheck-ring-wrap">
+      <svg width="132" height="132" viewBox="0 0 132 132">
+        <circle cx="66" cy="66" r={r} fill="none" stroke="rgba(68,28,178,0.1)" strokeWidth="10" />
+        <circle
+          cx="66" cy="66" r={r} fill="none" stroke="var(--clay)" strokeWidth="10"
+          strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
+          transform="rotate(-90 66 66)"
+        />
+      </svg>
+      <div className="wz-healthcheck-ring-label"><strong>{percent}%</strong></div>
+    </div>
+  );
+}
+
+function HealthDonut({ good, attention, critical }) {
+  const total = Math.max(1, good + attention + critical);
+  const r = 30, c = 2 * Math.PI * r;
+  const segments = [
+    ['#1a7a35', good],
+    ['#b8763d', attention],
+    ['#b83232', critical],
+  ];
+  let offset = 0;
+  return (
+    <svg width="72" height="72" viewBox="0 0 72 72" className="wz-healthcheck-donut">
+      <g transform="rotate(-90 36 36)">
+        <circle cx="36" cy="36" r={r} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="10" />
+        {segments.map(([color, value]) => {
+          const len = (value / total) * c;
+          const el = value > 0 && (
+            <circle key={color} cx="36" cy="36" r={r} fill="none" stroke={color} strokeWidth="10"
+              strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} />
+          );
+          offset += len;
+          return el;
+        })}
+      </g>
+    </svg>
+  );
+}
+
+// Surfaces the Print Cover Calculator (a separate, standalone tool) wherever a
+// print format is selected — real spine/full-wrap numbers computed from the
+// same trim size and page estimate as the rest of the wizard, not a static ad.
+function PrintCoverToolCard({ estimate, calculatorPath, trimLabel, pages }) {
+  return (
+    <div className="wz-print-cover-tool">
+      <div>
+        <strong>Need a full-wrap print cover?</strong>
+        <span>Calculate spine width, bleed, safe area, and 300 DPI export size before you design or hire a cover designer.</span>
+        {estimate && (
+          <>
+            <div className="wz-print-cover-mini" aria-label="Estimated print cover size">
+              <div>
+                <span>Full wrap</span>
+                <strong>{formatCoverInches(estimate.fullCoverWidth)} x {formatCoverInches(estimate.fullCoverHeight)}</strong>
+              </div>
+              <div>
+                <span>Spine</span>
+                <strong>{formatCoverInches(estimate.spineWidth)}</strong>
+              </div>
+              <div>
+                <span>300 DPI</span>
+                <strong>{estimate.pixelWidth} x {estimate.pixelHeight}px</strong>
+              </div>
+            </div>
+            <small className="wz-print-cover-assumption">
+              Based on {trimLabel}{pages ? `, ${pages} pages` : ', page count pending'}, black and white interior, white paper.
+            </small>
+          </>
+        )}
+      </div>
+      <Link to={calculatorPath}>Open calculator</Link>
+    </div>
+  );
+}
+
 function CoverTemplatePreview({ title, subtitle, author, genreLabel, templateId, paletteId, artPreview, artPlacement, small = false }) {
   const palette = coverPalette(paletteId);
   const template = coverTemplate(templateId);
@@ -929,9 +1041,13 @@ function KeywordInput({ keywords, onChange }) {
 export default function UploadWizard() {
   const { user } = useAuth();
   const [step,         setStep]         = useState(0);
+  const [assistantActiveField, setAssistantActiveField] = useState(null);
   const [genres,       setGenres]       = useState([]);
   const [stepError,    setStepError]    = useState('');
   const [uploading,    setUploading]    = useState(false);
+  const [manuscriptViewOpen, setManuscriptViewOpen] = useState(false);
+  const [healthCheckInfoOpen, setHealthCheckInfoOpen] = useState(false);
+  const [healthDetailModal, setHealthDetailModal] = useState(null); // null | 'images' | 'pagebreaks' | 'spelling'
   const [publishing,   setPublishing]   = useState(false);
   const [savingDraft,  setSavingDraft]  = useState(false);
   const [draftSaved,   setDraftSaved]   = useState(false);
@@ -944,6 +1060,9 @@ export default function UploadWizard() {
   const [msText,       setMsText]       = useState(null);
   const [msHtml,       setMsHtml]       = useState(null);
   const [msStructure,  setMsStructure]  = useState(null);
+  const [msImages,     setMsImages]     = useState([]);
+  const [msPageBreaks, setMsPageBreaks] = useState(0);
+  const [msSpelling,   setMsSpelling]   = useState(null);
   const [msPage,       setMsPage]       = useState(0);
   const [msSpread,     setMsSpread]     = useState(false);
   const [pageTurnDir,  setPageTurnDir]  = useState('');
@@ -985,11 +1104,11 @@ export default function UploadWizard() {
     title: '', subtitle: '', language: 'English', edition: '', series: '', seriesVolume: '',
     contributors: [],
     description: '', audience: 'adult', matureContent: false,
-    storyPremise: '', storyReader: '', storyPromise: '', storyThemes: '', storyTone: 'clear',
     genre: '', genreSecondary: '', keywords: [], tags: [],
     pubYear: String(new Date().getFullYear()), publisher: 'Self-published', pageCount: '',
     isbnOption: 'skip', isbn: '',
     manuscriptFile: null, manuscriptPath: '', formats: ['eBook'], trimSize: '5x8',
+    spellingIgnored: [],
     pTheme: 'light', pFont: 'fraunces', pSize: 'md', pSpacing: 'normal',
     coverFile: null, coverPreview: '', coverDataUrl: '', coverColor: 'cover-clay',
     coverMode: 'template', coverTemplate: 'editorial', coverPalette: 'violet',
@@ -1123,6 +1242,9 @@ export default function UploadWizard() {
   const manuscriptFileName = fd.manuscriptFile?.name
     || fd.manuscriptPath?.split('/').pop()?.replace(/^\d+-/, '')
     || '';
+  // The storage path is `${uploadedAtMs}-${filename}` — a real timestamp already
+  // captured at upload time, so "Uploaded X ago" works after a page reload too.
+  const manuscriptUploadedAtMs = Number(fd.manuscriptPath?.split('/').pop()?.match(/^(\d+)-/)?.[1]) || null;
   const manuscriptIssues = useMemo(() => {
     if (!msStructure) return [];
     if (msStructure.issues?.some(i => i.type === 'unsupported')) return msStructure.issues;
@@ -1187,34 +1309,46 @@ export default function UploadWizard() {
 
   function up(key, val) { setFd(p => ({ ...p, [key]: val })); setStepError(''); }
 
+  function captureAssistantField(event) {
+    const target = event.target;
+    if (!target?.matches?.('input:not([type="file"]):not([type="password"]), textarea, select')) return;
+    const fieldContainer = target.closest('.wz-field');
+    const label = fieldContainer?.querySelector(':scope > label');
+    const labelText = label?.childNodes?.[0]?.textContent?.trim() || label?.textContent?.trim() || '';
+    const fieldId = Object.entries(ASSISTANT_FIELD_DEFINITIONS)
+      .find(([, definition]) => labelText.toLowerCase().startsWith(definition.label.toLowerCase()))?.[0];
+    if (!fieldId || fieldId === 'isbn') return;
+    const definition = ASSISTANT_FIELD_DEFINITIONS[fieldId];
+    const currentValue = fieldId === 'keywords' ? fd.keywords : target.value;
+    setAssistantActiveField({
+      id: fieldId,
+      ...definition,
+      value: currentValue,
+      maxLength: definition.maxLength || (target.maxLength > 0 ? target.maxLength : null),
+      validation: target.getAttribute('aria-invalid') === 'true' ? stepError : '',
+    });
+  }
+
+  function insertAssistantSuggestion(suggestion) {
+    const definition = ASSISTANT_FIELD_DEFINITIONS[suggestion?.field];
+    if (!definition || typeof suggestion.value !== 'string') return false;
+    if (suggestion.field === 'keywords') {
+      const keywords = suggestion.value.split(/[,\n]/).map(value => value.trim()).filter(Boolean).slice(0, 7);
+      up('keywords', keywords);
+      setAssistantActiveField({ id: 'keywords', ...definition, value: keywords });
+      return true;
+    }
+    const value = suggestion.value.slice(0, definition.maxLength || 4000);
+    up(suggestion.field, value);
+    setAssistantActiveField({ id: suggestion.field, ...definition, value });
+    return true;
+  }
+
   // Toggling mature content on always pins the target audience to Adult (18+) —
   // the two are linked by definition. Turning it off hands audience back to
   // the author rather than guessing, since a book can be Adult without being mature.
   function setMatureContent(value) {
     setFd(p => ({ ...p, matureContent: value, audience: value ? 'adult' : p.audience }));
-    setStepError('');
-  }
-
-  function useStoryDraft({ append = false } = {}) {
-    if (!storyDraft.trim()) return;
-    setFd(p => {
-      const next = append && p.description.trim()
-        ? `${p.description.trim()}\n\n${storyDraft.trim()}`
-        : storyDraft.trim();
-      return { ...p, description: next.slice(0, 4000) };
-    });
-    setStepError('');
-  }
-
-  function clearStoryBuilder() {
-    setFd(p => ({
-      ...p,
-      storyPremise: '',
-      storyReader: '',
-      storyPromise: '',
-      storyThemes: '',
-      storyTone: 'clear',
-    }));
     setStepError('');
   }
 
@@ -1238,6 +1372,14 @@ export default function UploadWizard() {
     setMsHtml(null);
     setMsText(null);
     setMsPage(0);
+    setMsImages([]);
+    setMsPageBreaks(0);
+    setMsSpelling(null);
+  }
+
+  // Every readiness row has its own dedicated detail view.
+  function openRowDetail(rowKey) {
+    setHealthDetailModal(rowKey);
   }
 
   function upMatter(section, key, field, val) {
@@ -1485,14 +1627,14 @@ export default function UploadWizard() {
 
   // Auto-fill matter + fetch manuscript text for Reading Style preview
   useEffect(() => {
-    if (step === 8 && !fd.frontMatter.copyright.content) {
+    if (step === 9 && !fd.frontMatter.copyright.content) {
       upMatter('frontMatter', 'copyright', 'content',
         FM_ITEMS[0].template(fd, authorName, fd.pubYear || String(new Date().getFullYear())));
     }
-    if (step === 8 && !fd.backMatter.aboutAuthor.content && !authorProfileLoading) {
+    if (step === 9 && !fd.backMatter.aboutAuthor.content && !authorProfileLoading) {
       upMatter('backMatter', 'aboutAuthor', 'content', authorProfileBio || BM_ITEMS[0].template(fd, authorName));
     }
-    if ((step === 4 || step === 9) && fd.manuscriptPath && !msText && !msLoading) {
+    if ((step === 5 || step === 10) && fd.manuscriptPath && !msText && !msLoading) {
       const ext = fd.manuscriptPath.split('.').pop().toLowerCase();
       if (['txt', 'rtf'].includes(ext)) {
         setMsLoading(true);
@@ -1509,7 +1651,7 @@ export default function UploadWizard() {
 
   // Auto-save progress to localStorage on step change
   useEffect(() => {
-    if (step === 11) return;
+    if (step === 12) return;
     if (!fd.title && !fd.manuscriptPath) return;
     try {
       localStorage.setItem('ic_wizard_progress', JSON.stringify({
@@ -1522,22 +1664,6 @@ export default function UploadWizard() {
   }, [step]);
 
   const primaryGenreLabel = genres.find(g => g.slug === fd.genre)?.label || '';
-  const storyDraft = useMemo(() => buildStoryDraft(fd, {
-    authorName,
-    genreLabel: primaryGenreLabel,
-    audienceLabel,
-  }), [
-    fd.title,
-    fd.subtitle,
-    fd.storyPremise,
-    fd.storyReader,
-    fd.storyPromise,
-    fd.storyThemes,
-    fd.storyTone,
-    authorName,
-    primaryGenreLabel,
-    audienceLabel,
-  ]);
   const selectedTemplate = coverTemplate(fd.coverTemplate);
   const stepGroups = WIZARD_STEPS.reduce((acc, item, index) => {
     const last = acc[acc.length - 1];
@@ -1581,16 +1707,35 @@ export default function UploadWizard() {
     }
     up('manuscriptFile', file);
     setUploading(true);
+    setMsImages([]);
+    setMsPageBreaks(0);
+    setMsSpelling(null);
     const ext = file.name.split('.').pop().toLowerCase();
     try {
       if (ext === 'docx') {
-        const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+        const collectedImages = [];
+        const { value: rawHtml } = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() }, {
+          // Real image-resolution check: intercept each embedded image mammoth
+          // finds, decode it to read its actual pixel dimensions, and keep that
+          // alongside the normal HTML conversion (image still renders as usual).
+          convertImage: mammoth.images.imgElement(async image => {
+            const base64 = await image.readAsBase64String();
+            const src = `data:${image.contentType};base64,${base64}`;
+            const dims = await readImageDimensions(src);
+            collectedImages.push({ contentType: image.contentType, width: dims?.width || 0, height: dims?.height || 0 });
+            return { src };
+          }),
+        });
         const { value: rawText } = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
         // mammoth carries hyperlink hrefs through verbatim from the docx's OOXML
         // relationships, which can contain javascript: URIs — sanitize before
         // this ever reaches dangerouslySetInnerHTML.
         const html = DOMPurify.sanitize(rawHtml);
         setMsHtml(html); setMsStructure(analyseHtml(html, file.size, { wordsPerPage: selectedTrim.wordsPerPage })); setMsText(rawText);
+        setMsImages(collectedImages);
+        setMsPageBreaks(await countManualPageBreaks(await file.arrayBuffer()));
+        const { checkSpelling } = await import('../lib/spellChecker');
+        setMsSpelling(checkSpelling(rawText));
       } else if (ext === 'txt' || ext === 'rtf') {
         const text = await file.text();
         setMsText(text); setMsStructure(analyseTxt(text, file.size, { wordsPerPage: selectedTrim.wordsPerPage }));
@@ -1598,6 +1743,8 @@ export default function UploadWizard() {
           `<p>${p.trim().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>`
         ).join('\n');
         setMsHtml(safeHtml);
+        const { checkSpelling } = await import('../lib/spellChecker');
+        setMsSpelling(checkSpelling(text));
       } else {
         setMsStructure({ headings: [], wordCount: 0, paragraphCount: 0, estimatedPages: 0,
           maxBlankRun: 0, fileSize: file.size,
@@ -1900,10 +2047,126 @@ export default function UploadWizard() {
   const layoutIssues = [...formatIssues, ...manuscriptIssues]
     .sort((a, b) => _severityOrder[a.severity] - _severityOrder[b.severity]);
 
+  // Book Health Check (step 4) — five rows are backed by real analysis;
+  // Images/Page breaks have no dedicated check, so they show a factual
+  // statement about the conversion pipeline's behaviour instead of a
+  // pass/fail result for a test that was never run.
+  const hasSubtitle = !!fd.subtitle.trim();
+  const hasFrontMatter = Object.values(fd.frontMatter).some(m => m.enabled && m.content?.trim());
+  const readingMinutes = msStructure?.wordCount ? Math.round(msStructure.wordCount / 200) : 0;
+  const readingTimeLabel = readingMinutes >= 60
+    ? `${Math.floor(readingMinutes / 60)}h ${readingMinutes % 60}m`
+    : `${readingMinutes}m`;
+  const trimWidthInches = parseFloat(selectedTrim.aspect?.split('/')[0]) || 5;
+  const imageCheck = analyseImages(msImages, { trimWidthInches, hasPrintFormat });
+  const readability = msStructure?.readability;
+
+  // "Ignore" removes a flagged word from view (and from the counted totals)
+  // without re-running the checker — the real action the Spelling row was
+  // missing, since character names and invented words will always trip a
+  // plain dictionary lookup.
+  const spellingIgnoredSet = new Set(fd.spellingIgnored);
+  const visibleMisspelled = msSpelling ? msSpelling.topMisspelled.filter(m => !spellingIgnoredSet.has(m.word)) : [];
+  const ignoredAmongTop = msSpelling ? msSpelling.topMisspelled.filter(m => spellingIgnoredSet.has(m.word)) : [];
+  const visibleMisspelledCount = msSpelling ? Math.max(0, msSpelling.misspelledCount - ignoredAmongTop.length) : 0;
+  const visibleMisspelledOccurrences = msSpelling
+    ? Math.max(0, msSpelling.misspelledOccurrences - ignoredAmongTop.reduce((sum, m) => sum + m.count, 0))
+    : 0;
+
+  function ignoreSpellingWord(word) {
+    setFd(p => (p.spellingIgnored.includes(word) ? p : { ...p, spellingIgnored: [...p.spellingIgnored, word] }));
+  }
+  function resetIgnoredSpelling() {
+    setFd(p => ({ ...p, spellingIgnored: [] }));
+  }
+
+  const readinessRows = msStructure ? [
+    { key: 'formatting', icon: 'formatting', label: 'Formatting', sub: 'Styles, spacing & clean up',
+      goodNote: 'Consistent styles detected across the document.',
+      ...readinessRowFor(['excessive-blanks'], layoutIssues) },
+    { key: 'headings', icon: 'headings', label: 'Headings', sub: 'Structure & hierarchy',
+      goodNote: 'Chapter headings and structure look good.',
+      ...readinessRowFor(HEADING_ISSUE_TYPES, layoutIssues) },
+    { key: 'images', icon: 'images', label: 'Images', sub: 'Figures & illustrations',
+      goodNote: imageCheck.count === 0
+        ? 'No embedded images found.'
+        : `${imageCheck.count} image${imageCheck.count === 1 ? '' : 's'} will be preserved.`,
+      severity: imageCheck.checked && imageCheck.lowResCount > 0 ? 'warning' : 'good',
+      issue: imageCheck.checked && imageCheck.lowResCount > 0
+        ? { message: `${imageCheck.lowResCount} image${imageCheck.lowResCount === 1 ? '' : 's'} below 150dpi at ${selectedTrim.label} — may look blurry in print. Re-export at a higher resolution before publishing.` }
+        : null },
+    { key: 'pagebreaks', icon: 'pagebreaks', label: 'Page Breaks', sub: 'Automatic & manual breaks',
+      goodNote: msPageBreaks > 0
+        ? `${msPageBreaks} manual page break${msPageBreaks === 1 ? '' : 's'} found — kept for print, ignored in reflowable eBook formats.`
+        : 'No manual page breaks — pagination is calculated automatically for both formats.',
+      severity: 'good', issue: null },
+    { key: 'filehealth', icon: 'filehealth', label: 'File Health', sub: 'Technical issues',
+      goodNote: 'File is readable and valid.',
+      ...readinessRowFor(FILE_HEALTH_ISSUE_TYPES, layoutIssues) },
+    { key: 'frontmatter', icon: 'frontmatter', label: 'Front Matter', sub: 'Title pages & prelims',
+      goodNote: 'All essential front matter elements are present.',
+      severity: hasFrontMatter ? 'good' : 'info',
+      issue: hasFrontMatter ? null : { message: 'No front matter written yet — a copyright page and title details help readers and retailers.' } },
+    { key: 'metadata', icon: 'metadata', label: 'Metadata', sub: 'Book details & identifiers',
+      goodNote: hasSubtitle ? 'Title, author, and keywords look good.' : 'Title, author, and keywords look good. Consider adding a subtitle for discoverability.',
+      severity: 'good', issue: null },
+    { key: 'readability', icon: 'readability', label: 'Readability', sub: 'Reader experience & flow',
+      goodNote: readability
+        ? `${readability.label} — Flesch score ${readability.fleschScore}, grade level ~${readability.fleschGrade}. Est. reading time: ${readingTimeLabel}.`
+        : 'Add more text to get a readability estimate.',
+      severity: readability && readability.fleschScore < 30 ? 'info' : 'good',
+      issue: readability && readability.fleschScore < 30
+        ? { message: `${readability.label} (Flesch score ${readability.fleschScore}) — this reads as quite dense. Consider shorter sentences if that isn't intentional for your genre.` }
+        : null },
+    { key: 'spelling', icon: 'spelling', label: 'Spelling', sub: 'Typos & unrecognised words',
+      goodNote: msSpelling ? 'No potential spelling issues found.' : 'Checking spelling…',
+      severity: msSpelling && visibleMisspelledCount > 0 ? 'info' : 'good',
+      issue: msSpelling && visibleMisspelledCount > 0
+        ? { message: `${visibleMisspelledCount} word${visibleMisspelledCount === 1 ? '' : 's'} not in our dictionary (${visibleMisspelledOccurrences} occurrences) — includes character names and invented words, so review rather than fix on sight. Examples: ${visibleMisspelled.slice(0, 5).map(m => m.word).join(', ')}.` }
+        : null },
+  ] : [];
+  const readinessAllGood = readinessRows.every(r => r.severity === 'good');
+  const readinessGoodCount = readinessRows.filter(r => r.severity === 'good').length;
+  const readinessAttentionCount = readinessRows.filter(r => r.severity === 'warning' || r.severity === 'info').length;
+  const readinessCriticalCount = readinessRows.filter(r => r.severity === 'error').length;
+  const readinessScore = readinessRows.length ? Math.round((readinessGoodCount / readinessRows.length) * 100) : 100;
+  const readinessScoreLabel = readinessScore >= 90 ? 'Mostly ready' : readinessScore >= 70 ? 'Almost there' : 'Needs work';
+
   const pct    = Math.round((step / (WIZARD_STEPS.length - 1)) * 100);
+  const publishingAssistantContext = useMemo(() => ({
+    mode: 'publishing_upload',
+    draftKey: draftId || 'new',
+    stepNumber: step + 1,
+    totalSteps: WIZARD_STEPS.length,
+    stepLabel: WIZARD_STEPS[step]?.label || 'Publishing',
+    stepGroup: WIZARD_STEPS[step]?.group || 'Publishing',
+    stepGuidance: WIZARD_STEPS[step]?.blurb || '',
+    stepTips: WIZARD_STEPS[step]?.tips || [],
+    activeField: assistantActiveField ? {
+      ...assistantActiveField,
+      value: assistantActiveField.id === 'keywords'
+        ? fd.keywords
+        : fd[assistantActiveField.id] ?? assistantActiveField.value,
+    } : null,
+    bookDetails: {
+      title: fd.title.slice(0, 160),
+      subtitle: fd.subtitle.slice(0, 200),
+      description: fd.description.slice(0, 1200),
+      language: fd.language,
+      audience: fd.audience,
+      genre: fd.genre,
+      secondaryGenre: fd.genreSecondary,
+      keywords: fd.keywords.slice(0, 12),
+      formats: fd.formats,
+      trimSize: fd.trimSize,
+      price: fd.price,
+      isFree: fd.isFree,
+      publisher: fd.publisher.slice(0, 160),
+    },
+  }), [step, draftId, assistantActiveField, fd]);
 
   // ─────────────────── SUCCESS / DRAFT SCREEN ──────────────────
-  if (step === 11) {
+  if (step === 12) {
     return (
       <div className="wizard wizard--done">
         <SEO title="Upload Manuscript | IndieConverters" description="Upload and publish your manuscript." path="/upload" />
@@ -1972,9 +2235,19 @@ export default function UploadWizard() {
       {/* ── Sidebar ── */}
       <aside className="wz-sidebar">
         <div className="wz-sidebar-head">
-          <Link to="/" className="wz-sidebar-logo">
-            <span className="wz-dot">··</span> indieconverters
-          </Link>
+          {fd.title ? (
+            <Link to="/dashboard" className="wz-sidebar-back">
+              <span className="wz-sidebar-back-arrow">‹</span>
+              <span className="wz-sidebar-back-text">
+                <strong>{fd.title}</strong>
+                <span>Book Project</span>
+              </span>
+            </Link>
+          ) : (
+            <Link to="/" className="wz-sidebar-logo">
+              <span className="wz-dot">··</span> indieconverters
+            </Link>
+          )}
           <div className="wz-prog-bar"><div className="wz-prog-fill" style={{ width: `${pct}%` }} /></div>
           <span className="wz-prog-label">{step + 1} of {WIZARD_STEPS.length}</span>
         </div>
@@ -1997,22 +2270,18 @@ export default function UploadWizard() {
       </aside>
 
       {/* ── Main ── */}
-      <div className="wz-main">
+      <div className="wz-main" onFocusCapture={captureAssistantField} onInputCapture={captureAssistantField}>
         <div className="wz-topbar">
           <span className="wz-topbar-label">
             <span className="wz-topbar-num">Step {String(step + 1).padStart(2, '0')}</span>
             {WIZARD_STEPS[step].label}
           </span>
           <div className="wz-topbar-right">
-            {step > 0 && fd.title && (
-              <button type="button" className={`wz-save-btn ${draftSaved ? 'saved' : ''}`} onClick={handleSaveDraft} disabled={savingDraft}>
-                {draftSaved ? '✓ Saved' : savingDraft ? 'Saving…' : 'Save draft'}
-              </button>
-            )}
             <span className="wz-topbar-group">{WIZARD_STEPS[step].group}</span>
           </div>
         </div>
 
+        <div className="wz-content-row">
         <div className="wz-body">
           {stepError && <div className="wz-error">{stepError}</div>}
 
@@ -2116,99 +2385,6 @@ export default function UploadWizard() {
               <h2>About Your Book</h2>
               <p className="wz-sub">Your back-cover copy and discoverability settings.</p>
               <div className="wz-fields">
-                <div className="wz-story-builder">
-                  <div className="wz-story-builder-head">
-                    <div>
-                      <span>Fast story builder</span>
-                      <h3>Draft the reader-facing copy</h3>
-                      <p>Answer what you know. We turn it into editable back-cover copy.</p>
-                    </div>
-                    <button type="button" className="btn btn-outline btn-sm" onClick={() => useStoryDraft()}>
-                      Use draft
-                    </button>
-                  </div>
-
-                  <div className="wz-story-grid">
-                    <div className="wz-field">
-                      <label>Core premise <span className="opt">optional</span></label>
-                      <input
-                        type="text"
-                        value={fd.storyPremise}
-                        onChange={e => up('storyPremise', e.target.value)}
-                        placeholder="A family secret forces a daughter to redraw the map of home"
-                      />
-                    </div>
-                    <div className="wz-field">
-                      <label>Ideal reader <span className="opt">optional</span></label>
-                      <input
-                        type="text"
-                        value={fd.storyReader}
-                        onChange={e => up('storyReader', e.target.value)}
-                        placeholder="readers who like intimate literary fiction"
-                      />
-                    </div>
-                    <div className="wz-field">
-                      <label>Reader promise <span className="opt">optional</span></label>
-                      <input
-                        type="text"
-                        value={fd.storyPromise}
-                        onChange={e => up('storyPromise', e.target.value)}
-                        placeholder="A moving story about memory, identity, and belonging"
-                      />
-                    </div>
-                    <div className="wz-field">
-                      <label>Themes / mood <span className="opt">optional</span></label>
-                      <input
-                        type="text"
-                        value={fd.storyThemes}
-                        onChange={e => up('storyThemes', e.target.value)}
-                        placeholder="family, grief, courage, second chances"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="wz-story-tone-row" aria-label="Description tone">
-                    <span>Tone</span>
-                    <div>
-                      {STORY_TONES.map(tone => (
-                        <button
-                          key={tone.id}
-                          type="button"
-                          className={fd.storyTone === tone.id ? 'selected' : ''}
-                          onClick={() => up('storyTone', tone.id)}
-                        >
-                          <strong>{tone.label}</strong>
-                          <small>{tone.note}</small>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="wz-story-draft">
-                    <div className="wz-story-draft-head">
-                      <span>Draft preview</span>
-                      <div>
-                        <button
-                          type="button"
-                          className="wz-text-link"
-                          onClick={() => useStoryDraft({ append: true })}
-                          disabled={!fd.description.trim()}
-                        >
-                          Append
-                        </button>
-                        <button type="button" className="wz-text-link" onClick={clearStoryBuilder}>
-                          Clear
-                        </button>
-                      </div>
-                    </div>
-                    <div className="wz-story-draft-copy">
-                      {storyDraft.split('\n').filter(Boolean).map((paragraph, index) => (
-                        <p key={index}>{paragraph}</p>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
                 <div className="wz-field wz-field--lg">
                   <label>
                     Description <span className="req">*</span>
@@ -2380,18 +2556,19 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ════════ STEP 3: Manuscript + inline Layout Check ════════ */}
+          {/* ════════ STEP 3: Manuscript ════════ */}
           {step === 3 && (
             <div className="wz-step wz-step--manuscript">
               <h2>Manuscript</h2>
-              <p className="wz-sub">Upload your manuscript. We accept .docx, .odt, .rtf, and .txt — max 50 MB.</p>
+              <p className="wz-sub">Upload your manuscript and prepare it for print and eBook conversion.</p>
               <div className="wz-fields">
-                {!fd.manuscriptFile && !uploading && (
+                <input ref={fileRef} type="file" accept=".docx,.odt,.rtf,.txt" style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files[0]) handleManuscript(e.target.files[0]); }} />
+
+                {!fd.manuscriptPath && !uploading && (
                   <div className="wz-dropzone" onClick={() => fileRef.current?.click()}
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleManuscript(f); }}>
-                    <input ref={fileRef} type="file" accept=".docx,.odt,.rtf,.txt" style={{ display: 'none' }}
-                      onChange={e => { if (e.target.files[0]) handleManuscript(e.target.files[0]); }} />
                     <div className="wz-dropzone-icon">··</div>
                     <p className="wz-dropzone-label">Drag your manuscript here</p>
                     <p className="wz-dropzone-sub">.docx · .odt · .rtf · .txt · max 50 MB</p>
@@ -2401,22 +2578,34 @@ export default function UploadWizard() {
                   <div className="wz-uploading"><div className="wz-spinner" /><span>Uploading and analysing…</span></div>
                 )}
                 {fd.manuscriptPath && !uploading && (
-                  <div className="wz-file-chip">
-                    <span className="wz-file-ok">✓</span>
-                    <span className="wz-file-name">{manuscriptFileName || 'Uploaded manuscript'}</span>
-                    <span className="wz-file-size">{fd.manuscriptFile ? `${(fd.manuscriptFile.size / 1024).toFixed(0)} KB` : ''}</span>
-                    <button type="button" className="wz-rm-btn" onClick={clearManuscriptUpload}>Replace</button>
+                  <div className="wz-file-card">
+                    <span className="wz-file-card-status">✓</span>
+                    <span className="wz-file-card-icon">{manuscriptFileType(manuscriptFileName).letter}</span>
+                    <div className="wz-file-card-info">
+                      <span className="wz-file-card-name">{manuscriptFileName || 'Uploaded manuscript'}</span>
+                      <span className="wz-file-card-meta">
+                        {manuscriptFileTypeLabel(manuscriptFileName)}
+                        {fd.manuscriptFile && <> · {(fd.manuscriptFile.size / 1024).toFixed(0)} KB</>}
+                        {manuscriptUploadedAtMs && <> · Uploaded {formatTimeAgo(manuscriptUploadedAtMs)}</>}
+                      </span>
+                    </div>
+                    <div className="wz-file-card-actions">
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => setManuscriptViewOpen(true)}>View</button>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => fileRef.current?.click()}>Replace</button>
+                      <button type="button" className="wz-rm-btn" onClick={clearManuscriptUpload} aria-label="Remove manuscript">✕</button>
+                    </div>
                   </div>
                 )}
                 <div className="wz-field" style={{ marginTop: 28 }}>
-                  <label>Available in these formats</label>
+                  <label>Choose your output formats</label>
                   <div className="wz-formats">
                     {FORMATS.map(f => (
-                      <label key={f} className={`wz-format-tag ${fd.formats.includes(f) ? 'on' : ''}`}>
-                        <input type="checkbox" checked={fd.formats.includes(f)}
-                          onChange={e => toggleFormat(f, e.target.checked)} />
+                      <button key={f} type="button"
+                        className={`wz-format-tag ${fd.formats.includes(f) ? 'on' : ''}`}
+                        onClick={() => toggleFormat(f, !fd.formats.includes(f))}>
+                        <span className="wz-format-tag-icon">{FORMAT_ICONS[f]}</span>
                         {f}
-                      </label>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -2473,113 +2662,559 @@ export default function UploadWizard() {
                     </div>
                   </div>
                 )}
-                {!audiobookOnly && (fd.formats.includes('Paperback') || fd.formats.includes('Hardcover')) && (
-                  <div className="wz-format-card wz-format-card--print">
-                    <div className="wz-format-card-icon">PR</div>
-                    <div>
-                      <strong>Print edition selected</strong>
-                      <p>Using <b>{selectedTrim.label}</b> for print estimates, about {selectedTrim.wordsPerPage} words per page. Change the trim size above before refining your preview.</p>
-                    </div>
-                  </div>
-                )}
-                {!audiobookOnly && msStructure && (
-                  <div className="wz-page-estimate-card">
-                    <div className="wz-page-estimate-main">
-                      <span className="wz-page-estimate-label">Estimated length</span>
-                      <strong>{estimatedTrimPages ? `~${estimatedTrimPages} pages` : 'Page estimate unavailable'}</strong>
-                      <p>
-                        {estimatedTrimPages
-                          ? `Based on ${msStructure.wordCount.toLocaleString()} words at ${selectedTrim.label}.`
-                          : 'We could not estimate pages from this file type. Add a final page count if you know it.'}
-                      </p>
-                    </div>
-                    <div className="wz-field wz-page-override">
-                      <label>Manual page count override <span className="opt">optional</span></label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={fd.pageCount}
-                        onChange={e => up('pageCount', e.target.value)}
-                        placeholder={estimatedTrimPages ? String(estimatedTrimPages) : 'e.g. 280'}
-                      />
-                    </div>
-                  </div>
+                {hasPrintFormat && (
+                  <PrintCoverToolCard
+                    estimate={printCoverEstimate}
+                    calculatorPath={printCoverCalculatorPath}
+                    trimLabel={selectedTrim.label}
+                    pages={resolvedSelectedPages}
+                  />
                 )}
               </div>
 
-              {/* ── Inline Layout Check ── */}
-              {!audiobookOnly && msStructure && (
-                <div className="wz-layout-inline">
-                  <div className="wz-section-divider"><span>Layout Analysis</span></div>
-
-                  {layoutIssues.length > 0 && (
-                    <div className="wz-layout-issues">
-                      {layoutIssues.map(iss => (
-                        <div key={iss.type} className={`wz-issue wz-issue--${iss.severity}`}>
-                          <span className="wz-issue-icon">{iss.severity === 'error' ? '⚠' : iss.severity === 'warning' ? '⚡' : 'ℹ'}</span>
-                          <p>{iss.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {layoutIssues.length === 0 && (
-                    <div className="wz-layout-ok">
-                      <span className="wz-issue-icon">✓</span>
-                      <p>Structure looks good — no issues found.</p>
-                    </div>
-                  )}
-
-                  <div className="wz-layout-panels">
-                    <div className="wz-layout-toc">
-                      <div className="wz-layout-panel-head">
-                        <h3>Chapter Structure</h3>
-                        <div className="wz-layout-stats">
-                          {msStructure.wordCount > 0 && <span>{msStructure.wordCount.toLocaleString()} words</span>}
-                          {estimatedTrimPages > 0 && <span>~{estimatedTrimPages} pages</span>}
-                          <span>{selectedTrim.label}</span>
-                          {msStructure.paragraphCount > 0 && <span>{msStructure.paragraphCount} paragraphs</span>}
-                          <span>{msStructure.headings.length} heading{msStructure.headings.length !== 1 ? 's' : ''}</span>
-                        </div>
-                      </div>
-                      {msStructure.headings.length === 0 ? (
-                        <div className="wz-layout-no-toc">
-                          <p>No headings found.</p>
-                          <p className="wz-layout-hint">
-                            In <strong>Microsoft Word</strong>: select each chapter title → Home → Styles → <em>Heading 1</em>.<br />
-                            In <strong>Google Docs</strong>: Format → Paragraph styles → <em>Heading 1</em>.
-                          </p>
-                        </div>
-                      ) : (
-                        <ol className="wz-toc-list">
-                          {msStructure.headings.map((h, i) => (
-                            <li key={i} className={`wz-toc-item wz-toc-h${h.level}`}>
-                              <span className="wz-toc-num">{i + 1}</span>
-                              <span className="wz-toc-text">{h.text}</span>
-                              {h.words === 0
-                                ? <span className="wz-toc-words wz-toc-words--empty">empty</span>
-                                : h.words !== undefined && <span className="wz-toc-words">{h.words.toLocaleString()}w</span>
-                              }
-                            </li>
-                          ))}
-                        </ol>
-                      )}
-                    </div>
-                    <div className="wz-layout-preview">
-                      <div className="wz-layout-panel-head">
-                        <h3>Content Preview</h3>
-                        <span className="wz-layout-preview-note">First ~5,000 characters</span>
-                      </div>
-                      <div className="wz-layout-content"
-                        dangerouslySetInnerHTML={{ __html: msHtml ? msHtml.slice(0, 8000) : '<p><em>No preview available.</em></p>' }} />
-                    </div>
-                  </div>
-                </div>
-              )}
+              <p className="wz-manuscript-footnote">Accepted file types: .docx, .odt, .rtf, .txt · Max size: 50 MB</p>
             </div>
           )}
 
-          {/* ════════ STEP 4: Reading Style ════════ */}
-          {step === 4 && (() => {
+          {/* ════════ STEP 4: Book Health Check ════════ */}
+          {step === 4 && (
+            <div className="wz-step wz-step--healthcheck">
+              <div className="wz-healthcheck-layout">
+                <div className="wz-healthcheck-main">
+                  <div className="wz-healthcheck-header">
+                    <div>
+                      <h2>Book Health Check</h2>
+                      <p className="wz-sub">We've analyzed your manuscript to help ensure the best possible reading experience.</p>
+                    </div>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setHealthCheckInfoOpen(true)}>
+                      <span className="wz-healthcheck-info-icon">i</span> Learn how this works
+                    </button>
+                  </div>
+
+                  {!msStructure ? (
+                    <div className="wz-healthcheck-empty">
+                      <p>Upload a manuscript on the previous step to run a health check.</p>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => goTo(3)}>Go to Manuscript →</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="wz-healthcheck-score-card">
+                        <HealthScoreRing percent={readinessScore} />
+                        <div className="wz-healthcheck-score-copy">
+                          <h3>
+                            {readinessCriticalCount > 0
+                              ? 'A few things need your attention.'
+                              : readinessAllGood
+                                ? 'Your manuscript is in good shape.'
+                                : 'Your manuscript is almost ready.'}
+                          </h3>
+                          <p>Address the issues below to improve conversion quality and reader experience.</p>
+                          <span className="wz-healthcheck-score-tag">{readinessScoreLabel}</span>
+                        </div>
+                        <div className="wz-healthcheck-tallies">
+                          <div className="wz-healthcheck-tally">
+                            <span className="wz-healthcheck-tally-icon wz-healthcheck-tally-icon--good">✓</span>
+                            <strong>{readinessGoodCount}</strong>
+                            <span>Good</span>
+                            <small>All set</small>
+                          </div>
+                          <div className="wz-healthcheck-tally">
+                            <span className="wz-healthcheck-tally-icon wz-healthcheck-tally-icon--attention">!</span>
+                            <strong>{readinessAttentionCount}</strong>
+                            <span>Needs attention</span>
+                            <small>Review these</small>
+                          </div>
+                          <div className="wz-healthcheck-tally">
+                            <span className="wz-healthcheck-tally-icon wz-healthcheck-tally-icon--critical">✕</span>
+                            <strong>{readinessCriticalCount}</strong>
+                            <span>Critical</span>
+                            <small>Fix required</small>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="wz-healthcheck-table">
+                        <div className="wz-healthcheck-table-head">
+                          <span>Check</span>
+                          <span>Summary &amp; recommendations</span>
+                          <span>Status</span>
+                        </div>
+                        {readinessRows.map(row => (
+                          <div className="wz-healthcheck-row" key={row.key}>
+                            <div className="wz-healthcheck-row-check">
+                              <span className={`wz-healthcheck-row-icon wz-healthcheck-row-icon--${row.severity}`}>
+                                {READINESS_ICONS[row.icon]}
+                              </span>
+                              <div>
+                                <strong>{row.label}</strong>
+                                <span>{row.sub}</span>
+                              </div>
+                            </div>
+                            <ul className="wz-healthcheck-row-summary">
+                              {(row.issue ? row.issue.message : row.goodNote).split(/(?<=[.!])\s+(?=[A-Z])/).map((line, i) => (
+                                <li key={i}>{line}</li>
+                              ))}
+                            </ul>
+                            <div className="wz-healthcheck-row-status">
+                              <em className={`wz-readiness-status wz-readiness-status--${row.severity}`}>
+                                {row.severity === 'good' ? 'Good' : row.severity === 'error' ? 'Critical' : 'Needs attention'}
+                              </em>
+                              <button
+                                type="button"
+                                className={`wz-healthcheck-action wz-healthcheck-action--${row.severity === 'good' ? 'good' : row.severity === 'error' ? 'critical' : 'attention'}`}
+                                onClick={() => openRowDetail(row.key)}
+                              >
+                                {row.severity === 'good' ? 'Details' : row.severity === 'error' ? 'Fix issues' : 'Review'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <p className="wz-manuscript-footnote">Checks are based on best practices for print and digital conversion.</p>
+                    </>
+                  )}
+                </div>
+
+                <aside className="wz-healthcheck-side">
+                  <div className="wz-panel-card">
+                    <h3 className="wz-healthcheck-side-title">Publishing progress</h3>
+                    <span className="wz-healthcheck-progress-step">Step {step + 1} of {WIZARD_STEPS.length}</span>
+                    <div className="wz-healthcheck-progress-dots">
+                      {WIZARD_STEPS.map((s, i) => (
+                        <span key={i} className={`wz-healthcheck-dot ${i < step ? 'done' : i === step ? 'current' : ''}`} />
+                      ))}
+                    </div>
+                    {WIZARD_STEPS[step + 1] && (
+                      <button type="button" className="btn btn-primary btn-sm wz-healthcheck-next-btn" onClick={goNext}>
+                        Next up: {WIZARD_STEPS[step + 1].label} <span aria-hidden="true">→</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {msStructure && (
+                    <div className="wz-panel-card">
+                      <h3 className="wz-healthcheck-side-title">Manuscript overview</h3>
+                      <div className="wz-healthcheck-overview-list">
+                        <div className="wz-healthcheck-overview-row">
+                          <span>Word count</span>
+                          <strong>{(msStructure.wordCount || 0).toLocaleString()} words</strong>
+                        </div>
+                        <div className="wz-healthcheck-overview-row">
+                          <span>Estimated pages</span>
+                          <strong>{estimatedTrimPages ? `~${estimatedTrimPages} pages` : '—'}</strong>
+                        </div>
+                        <div className="wz-healthcheck-overview-row">
+                          <span>Trim size</span>
+                          <strong>{selectedTrim.label}</strong>
+                        </div>
+                        <div className="wz-healthcheck-overview-row">
+                          <span>Reading time</span>
+                          <strong>{readingTimeLabel}</strong>
+                        </div>
+                        <div className="wz-healthcheck-overview-row">
+                          <span>Language</span>
+                          <strong>{fd.language}</strong>
+                        </div>
+                      </div>
+                      <div className="wz-field wz-page-override">
+                        <label>Manual page count override <span className="opt">optional</span></label>
+                        <div className="wz-page-override-input">
+                          <input
+                            type="number"
+                            min="1"
+                            value={fd.pageCount}
+                            onChange={e => up('pageCount', e.target.value)}
+                            placeholder={estimatedTrimPages ? String(estimatedTrimPages) : 'e.g. 280'}
+                          />
+                          <span>pages</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {msStructure && (
+                    <div className="wz-panel-card">
+                      <h3 className="wz-healthcheck-side-title">Quality at a glance</h3>
+                      <div className="wz-healthcheck-donut-row">
+                        <HealthDonut good={readinessGoodCount} attention={readinessAttentionCount} critical={readinessCriticalCount} />
+                        <ul className="wz-healthcheck-legend">
+                          <li><span className="wz-healthcheck-legend-dot wz-healthcheck-legend-dot--good" />Good <b>{readinessGoodCount}</b></li>
+                          <li><span className="wz-healthcheck-legend-dot wz-healthcheck-legend-dot--attention" />Needs attention <b>{readinessAttentionCount}</b></li>
+                          <li><span className="wz-healthcheck-legend-dot wz-healthcheck-legend-dot--critical" />Critical <b>{readinessCriticalCount}</b></li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {msStructure && !readinessAllGood && (
+                    <div className="wz-panel-card">
+                      <h3 className="wz-healthcheck-side-title">Top recommendations</h3>
+                      <ul className="wz-healthcheck-recs">
+                        {readinessRows.filter(r => r.severity !== 'good').slice(0, 3).map(r => (
+                          <li key={r.key}>{r.issue.message.split(/(?<=[.!])\s/)[0]}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </aside>
+              </div>
+            </div>
+          )}
+
+          {healthCheckInfoOpen && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthCheckInfoOpen(false)}>
+              <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>How the Book Health Check works</span>
+                  <button type="button" onClick={() => setHealthCheckInfoOpen(false)} aria-label="Close">×</button>
+                </div>
+                <div className="wz-healthcheck-info-body">
+                  <p>We scan your uploaded manuscript for the same issues that commonly cause EPUB validation failures or a poor reading experience on retailers like Amazon KDP, Apple Books, and Kobo.</p>
+                  <ul>
+                    <li><strong>Good</strong> — no issues found, nothing to do.</li>
+                    <li><strong>Needs attention</strong> — worth a look, but won't block conversion.</li>
+                    <li><strong>Critical</strong> — likely to cause a conversion or validation failure. Fix these before publishing.</li>
+                  </ul>
+                  <p>Formatting, chapter/heading structure, file health, embedded image resolution, manual page breaks, and readability (Flesch reading ease) are all checked directly from your uploaded file. Front matter and metadata checks reflect what you've filled in on earlier steps.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthDetailModal === 'formatting' && (() => {
+            const formattingIssue = layoutIssues.find(issue => issue.type === 'excessive-blanks');
+            return (
+              <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+                <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                  <div className="wz-manuscript-view-head">
+                    <span>Formatting</span>
+                    <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                  </div>
+                  <div className="wz-healthcheck-info-body">
+                    {!formattingIssue ? (
+                      <p>No formatting issues found — spacing and paragraph styles look consistent across the document.</p>
+                    ) : (
+                      <>
+                        <p>{formattingIssue.message}</p>
+                        {msStructure?.maxBlankRunHeading && (
+                          <p>Location: shortly after <strong>{msStructure.maxBlankRunHeading}</strong>.</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {healthDetailModal === 'headings' && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+              <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>Headings</span>
+                  <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                </div>
+                <div className="wz-healthcheck-info-body">
+                  {!msStructure?.headings || msStructure.headings.length === 0 ? (
+                    <p>No chapter headings were detected. In Word, select each chapter title and apply the "Heading 1" style; in Google Docs, use Format → Paragraph styles → Heading 1.</p>
+                  ) : (
+                    <>
+                      <p>{msStructure.headings.length} heading{msStructure.headings.length === 1 ? '' : 's'} detected. Flagged ones below are what's affecting your Headings check.</p>
+                      <table className="wz-healthcheck-detail-table">
+                        <thead>
+                          <tr><th>#</th><th>Heading</th><th>Words</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                          {msStructure.headings.map((h, i) => {
+                            const isEmpty = h.words === 0;
+                            const isShort = !isEmpty && h.words < 100;
+                            const isAllCaps = h.text.length > 3 && h.text === h.text.toUpperCase() && /[A-Z]/.test(h.text);
+                            const isWrongStart = i === 0 && h.level > 1;
+                            const flagged = isEmpty || isAllCaps || isWrongStart;
+                            return (
+                              <tr key={i}>
+                                <td>{i + 1}</td>
+                                <td>{h.text || '(untitled)'}</td>
+                                <td>{h.words.toLocaleString()}</td>
+                                <td className={flagged ? 'is-warning' : 'is-good'}>
+                                  {isEmpty ? 'Empty' : isWrongStart ? `Starts at H${h.level}` : isAllCaps ? 'ALL CAPS' : isShort ? 'Short' : 'Good'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthDetailModal === 'readability' && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+              <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>Readability</span>
+                  <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                </div>
+                <div className="wz-healthcheck-info-body">
+                  {!readability ? (
+                    <p>Add more text to get a readability estimate.</p>
+                  ) : (
+                    <>
+                      <p>
+                        {readability.label} — this manuscript scores {readability.fleschScore} on the Flesch Reading Ease scale (0–100, higher is easier), roughly a US grade {readability.fleschGrade} reading level.
+                      </p>
+                      <table className="wz-healthcheck-detail-table">
+                        <tbody>
+                          <tr><td>Sentences</td><td>{readability.sentenceCount.toLocaleString()}</td></tr>
+                          <tr><td>Avg. words per sentence</td><td>{readability.avgWordsPerSentence.toFixed(1)}</td></tr>
+                          <tr><td>Avg. syllables per word</td><td>{readability.avgSyllablesPerWord.toFixed(2)}</td></tr>
+                          <tr><td>Estimated reading time</td><td>{readingTimeLabel}</td></tr>
+                        </tbody>
+                      </table>
+                      <p>Shorter sentences and simpler words push the score up; longer sentences and multi-syllable words push it down. There's no universally "right" score — literary fiction often reads harder than commercial genre fiction on purpose.</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthDetailModal === 'images' && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+              <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>Images</span>
+                  <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                </div>
+                <div className="wz-healthcheck-info-body">
+                  {msImages.length === 0 ? (
+                    <p>No images were found in this manuscript — there's nothing to check here.</p>
+                  ) : (
+                    <>
+                      <p>
+                        {msImages.length} image{msImages.length === 1 ? '' : 's'} found.{' '}
+                        {hasPrintFormat
+                          ? `Checked against ${selectedTrim.label} trim size — anything under 150dpi is flagged as low resolution for print.`
+                          : "You're only publishing eBook formats, so resolution isn't checked — screens don't need print-grade DPI."}
+                      </p>
+                      <table className="wz-healthcheck-detail-table">
+                        <thead>
+                          <tr><th>#</th><th>Type</th><th>Dimensions</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                          {msImages.map((img, i) => {
+                            const dpi = hasPrintFormat && img.width ? Math.round(img.width / trimWidthInches) : null;
+                            const low = dpi != null && dpi < 150;
+                            return (
+                              <tr key={i}>
+                                <td>{i + 1}</td>
+                                <td>{img.contentType?.replace('image/', '') || '—'}</td>
+                                <td>{img.width && img.height ? `${img.width} × ${img.height}px` : 'Unknown'}</td>
+                                <td className={low ? 'is-warning' : 'is-good'}>
+                                  {dpi == null ? 'Not checked' : low ? `Low res (~${dpi}dpi)` : `Good (~${dpi}dpi)`}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthDetailModal === 'pagebreaks' && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+              <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>Page Breaks</span>
+                  <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                </div>
+                <div className="wz-healthcheck-info-body">
+                  {msPageBreaks === 0 ? (
+                    <p>This manuscript has no manual page breaks. Pagination for print is calculated automatically from your word count and {selectedTrim.label} trim size — there's nothing you need to do here.</p>
+                  ) : (
+                    <p>
+                      This manuscript contains {msPageBreaks} manual page break{msPageBreaks === 1 ? '' : 's'} (from <code>Ctrl/Cmd + Enter</code> or Word's "Insert Page Break").
+                      They're kept wherever you placed them in the print edition, but ignored in reflowable eBook formats — eBook readers reflow text automatically based on the reader's screen and font size.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthDetailModal === 'spelling' && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+              <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>Spelling</span>
+                  <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                </div>
+                <div className="wz-healthcheck-info-body">
+                  {!msSpelling || visibleMisspelledCount === 0 ? (
+                    <p>{fd.spellingIgnored.length > 0 ? 'No remaining spelling issues — everything else was marked as ignored.' : 'No potential spelling issues found.'}</p>
+                  ) : (
+                    <>
+                      <p>{visibleMisspelledCount} word{visibleMisspelledCount === 1 ? '' : 's'} not in our dictionary, {visibleMisspelledOccurrences} occurrences total. Real typos and invented words (character names, places) both land here — use the suggestion if there is one, or ignore it if it's intentional.</p>
+                      <ul className="wz-healthcheck-spelling-list">
+                        {visibleMisspelled.map(m => (
+                          <li key={m.word}>
+                            <div className="wz-healthcheck-spelling-word">
+                              <strong>{m.word}</strong>
+                              <span>
+                                {m.count}× in this manuscript
+                                {m.suggestions.length > 0 && <> · did you mean "{m.suggestions[0]}"?</>}
+                              </span>
+                            </div>
+                            <button type="button" className="wz-text-link" onClick={() => ignoreSpellingWord(m.word)}>Ignore</button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {fd.spellingIgnored.length > 0 && (
+                    <p className="wz-healthcheck-ignored-note">
+                      {fd.spellingIgnored.length} word{fd.spellingIgnored.length === 1 ? '' : 's'} ignored.{' '}
+                      <button type="button" className="wz-text-link" onClick={resetIgnoredSpelling}>Reset</button>
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthDetailModal === 'metadata' && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+              <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>Metadata</span>
+                  <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                </div>
+                <div className="wz-healthcheck-info-body">
+                  <p>This is the metadata retailers and readers will see for this book.</p>
+                  <table className="wz-healthcheck-detail-table">
+                    <tbody>
+                      <tr><td>Title</td><td>{fd.title || '—'}</td></tr>
+                      <tr><td>Subtitle</td><td className={hasSubtitle ? 'is-good' : 'is-warning'}>{fd.subtitle || 'Not set'}</td></tr>
+                      <tr><td>Author</td><td>{authorName}</td></tr>
+                      <tr><td>Primary genre</td><td className={primaryGenreLabel ? 'is-good' : 'is-warning'}>{primaryGenreLabel || 'Not set'}</td></tr>
+                      <tr><td>Secondary genre</td><td>{genres.find(g => g.slug === fd.genreSecondary)?.label || 'Not set'}</td></tr>
+                      <tr><td>Keywords</td><td className={fd.keywords.length ? 'is-good' : 'is-warning'}>{fd.keywords.length ? fd.keywords.join(', ') : 'None added'}</td></tr>
+                      <tr><td>Language</td><td>{fd.language}</td></tr>
+                      <tr><td>ISBN-13</td><td>{(fd.isbnOption === 'own' || fd.isbnOption === 'register') ? (fd.isbn || 'Not entered yet') : 'Not provided'}</td></tr>
+                    </tbody>
+                  </table>
+                  {(!hasSubtitle || !fd.keywords.length) && (
+                    <p>
+                      Tip: adding {!hasSubtitle && !fd.keywords.length ? 'a subtitle and a few keywords' : !hasSubtitle ? 'a subtitle' : 'a few keywords'} helps readers discover this book while browsing or searching.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthDetailModal === 'frontmatter' && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+              <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>Front Matter</span>
+                  <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                </div>
+                <div className="wz-healthcheck-info-body">
+                  <p>These sections can appear before your first chapter, like the opening pages of a printed book.</p>
+                  <table className="wz-healthcheck-detail-table">
+                    <tbody>
+                      {FM_ITEMS.map(item => {
+                        const data = fd.frontMatter[item.key];
+                        const chapterCount = msStructure?.headings?.length || 0;
+                        const filled = item.isToc ? chapterCount > 0 : !!data?.content?.trim();
+                        const included = !!data?.enabled && filled;
+                        return (
+                          <tr key={item.key}>
+                            <td>{item.label}{!item.required && ' (optional)'}</td>
+                            <td className={included ? 'is-good' : item.required ? 'is-warning' : ''}>
+                              {item.isToc
+                                ? (filled ? `Auto-generated, ${chapterCount} entr${chapterCount === 1 ? 'y' : 'ies'}` : 'No chapter headings detected yet')
+                                : !data?.enabled
+                                  ? 'Not included'
+                                  : filled ? 'Written' : 'Enabled, but empty'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p>You'll write and enable these on the Front &amp; Back Matter step, later in this wizard.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {healthDetailModal === 'filehealth' && (() => {
+            const fileIssues = layoutIssues.filter(issue => FILE_HEALTH_ISSUE_TYPES.includes(issue.type));
+            return (
+              <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setHealthDetailModal(null)}>
+                <div className="wz-manuscript-view-modal wz-healthcheck-info-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                  <div className="wz-manuscript-view-head">
+                    <span>File Health</span>
+                    <button type="button" onClick={() => setHealthDetailModal(null)} aria-label="Close">×</button>
+                  </div>
+                  <div className="wz-healthcheck-info-body">
+                    <table className="wz-healthcheck-detail-table">
+                      <tbody>
+                        <tr><td>File</td><td>{manuscriptFileName || '—'}</td></tr>
+                        <tr><td>Type</td><td>{manuscriptFileType(manuscriptFileName).label}</td></tr>
+                        {fd.manuscriptFile && <tr><td>Size</td><td>{(fd.manuscriptFile.size / 1024).toFixed(0)} KB</td></tr>}
+                        <tr><td>Word count</td><td>{(msStructure?.wordCount || 0).toLocaleString()}</td></tr>
+                        <tr><td>Estimated pages</td><td>{estimatedTrimPages ? `~${estimatedTrimPages}` : '—'}</td></tr>
+                      </tbody>
+                    </table>
+
+                    {fileIssues.length === 0 ? (
+                      <p>No file-health issues found — this file is a good size and length for the retailers you're targeting.</p>
+                    ) : (
+                      <ul>
+                        {fileIssues.map(issue => <li key={issue.type}>{issue.message}</li>)}
+                      </ul>
+                    )}
+
+                    <div className="wz-healthcheck-detail-actions">
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => { setHealthDetailModal(null); goTo(3); }}>
+                        Go to Manuscript →
+                      </button>
+                      <Link to="/help/publishing" className="btn btn-outline btn-sm" onClick={() => setHealthDetailModal(null)}>
+                        Publishing help center
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {manuscriptViewOpen && (
+            <div className="wz-manuscript-view-backdrop" role="presentation" onClick={() => setManuscriptViewOpen(false)}>
+              <div className="wz-manuscript-view-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="wz-manuscript-view-head">
+                  <span>{manuscriptFileName || 'Manuscript'}</span>
+                  <button type="button" onClick={() => setManuscriptViewOpen(false)} aria-label="Close preview">×</button>
+                </div>
+                <div className="wz-manuscript-view-body"
+                  dangerouslySetInnerHTML={{ __html: msHtml ? msHtml.slice(0, 8000) : '<p><em>No preview available for this file type.</em></p>' }} />
+              </div>
+            </div>
+          )}
+
+          {/* ════════ STEP 5: Reading Style ════════ */}
+          {step === 5 && (() => {
             const currentPage = msPages[msPage] || null;
             const showMs = !!currentPage;
             const isLastPage = msPage >= msPages.length - 1;
@@ -2735,8 +3370,8 @@ export default function UploadWizard() {
             );
           })()}
 
-          {/* ════════ STEP 5: Cover ════════ */}
-          {step === 5 && (
+          {/* ════════ STEP 6: Cover ════════ */}
+          {step === 6 && (
             <div className="wz-step">
               <h2>Cover</h2>
               <p className="wz-sub">Create a clean starter cover, upload finished artwork, or hire a cover designer when you want a more polished launch.</p>
@@ -2955,44 +3590,20 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ════════ STEP 6: Pricing ════════ */}
-          {step === 6 && (
+          {/* ════════ STEP 7: Pricing ════════ */}
+          {step === 7 && (
             <div className="wz-step">
               <h2>Pricing</h2>
               <p className="wz-sub">Set your list price, see estimated royalties, and tell readers where to buy your book.</p>
 
               <div className="wz-fields">
                 {hasPrintFormat && (
-                  <div className="wz-print-cover-tool">
-                    <div>
-                      <strong>Need a full-wrap print cover?</strong>
-                      <span>Calculate spine width, bleed, safe area, and 300 DPI export size before you design or hire a cover designer.</span>
-                      {printCoverEstimate && (
-                        <>
-                          <div className="wz-print-cover-mini" aria-label="Estimated print cover size">
-                            <div>
-                              <span>Full wrap</span>
-                              <strong>{formatCoverInches(printCoverEstimate.fullCoverWidth)} x {formatCoverInches(printCoverEstimate.fullCoverHeight)}</strong>
-                            </div>
-                            <div>
-                              <span>Spine</span>
-                              <strong>{formatCoverInches(printCoverEstimate.spineWidth)}</strong>
-                            </div>
-                            <div>
-                              <span>300 DPI</span>
-                              <strong>{printCoverEstimate.pixelWidth} x {printCoverEstimate.pixelHeight}px</strong>
-                            </div>
-                          </div>
-                          <small className="wz-print-cover-assumption">
-                            Based on {selectedTrim.label}
-                            {resolvedSelectedPages ? `, ${resolvedSelectedPages} pages` : ', page count pending'}
-                            , black and white interior, white paper.
-                          </small>
-                        </>
-                      )}
-                    </div>
-                    <Link to={printCoverCalculatorPath}>Open calculator</Link>
-                  </div>
+                  <PrintCoverToolCard
+                    estimate={printCoverEstimate}
+                    calculatorPath={printCoverCalculatorPath}
+                    trimLabel={selectedTrim.label}
+                    pages={resolvedSelectedPages}
+                  />
                 )}
 
                 <div className="wz-pricing-snapshot" aria-label="Pricing summary">
@@ -3124,8 +3735,8 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ════════ STEP 7: Distribution ════════ */}
-          {step === 7 && (
+          {/* ════════ STEP 8: Distribution ════════ */}
+          {step === 8 && (
             <div className="wz-step">
               <h2>Distribution</h2>
               <p className="wz-sub">
@@ -3238,8 +3849,8 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ════════ STEP 8: Front & Back Matter ════════ */}
-          {step === 8 && (
+          {/* ════════ STEP 9: Front & Back Matter ════════ */}
+          {step === 9 && (
             <div className="wz-step">
               <h2>Front & Back Matter</h2>
               <p className="wz-sub">Optional pages that surround your main content. Templates are pre-filled — toggle on to customise.</p>
@@ -3470,8 +4081,8 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ════════ STEP 9: Book Structure (assembled preview) ════════ */}
-          {step === 9 && (() => {
+          {/* ════════ STEP 10: Book Structure (assembled preview) ════════ */}
+          {step === 10 && (() => {
             const currentPage = bookStructurePages[bsPage] || null;
             const hasPages = bookStructurePages.length > 0;
             const isLastPage = bsPage >= bookStructurePages.length - 1;
@@ -3593,8 +4204,8 @@ export default function UploadWizard() {
             );
           })()}
 
-          {/* ════════ STEP 10: Review & Publish ════════ */}
-          {step === 10 && (
+          {/* ════════ STEP 11: Review & Publish ════════ */}
+          {step === 11 && (
             <div className="wz-step">
               <h2>Review & Publish</h2>
               <p className="wz-sub">Check everything before going live. Click Edit to make changes.</p>
@@ -3630,7 +4241,10 @@ export default function UploadWizard() {
                     ['Trim size', selectedTrim.label],
                     ['Page count', pageCountDisplay || '—'],
                   ]},
-                  { title: 'Reading Style', to: 4, rows: [
+                  { title: 'Book Health Check', to: 4, rows: [
+                    ['Status', readinessAllGood ? 'All checks passed' : 'Needs attention'],
+                  ]},
+                  { title: 'Reading Style', to: 5, rows: [
                     ['Template', BOOK_STYLES.find(s => s.id === fd.bookStyle || s.legacyId === fd.bookStyle)?.title || '—'],
                     ['Appearance', [
                       PREVIEW_THEMES.find(t => t.id === fd.pTheme)?.name,
@@ -3639,10 +4253,10 @@ export default function UploadWizard() {
                       PREVIEW_SPACING.find(s => s.id === fd.pSpacing)?.label,
                     ].filter(Boolean).join(' · ') || '—'],
                   ]},
-                  { title: 'Cover', to: 5, rows: [
+                  { title: 'Cover', to: 6, rows: [
                     ['Cover', fd.coverFile?.name || `${selectedTemplate.name} template${fd.coverArtPreview ? ' + artwork' : ''}`],
                   ]},
-                  { title: 'Pricing', to: 6, rows: [
+                  { title: 'Pricing', to: 7, rows: [
                     ['Price',     fd.isFree ? 'Free' : (fd.price ? `$${fd.price}` : '—')],
                     ['Selling via', fd.sellDirect ? 'Direct through Indie Converters' : 'Retailer links'],
                     ['Best royalty estimate', royaltyEstimate.best ? `${formatRoyaltyMoney(royaltyEstimate.best.authorEarnings)} via ${royaltyEstimate.best.channel}` : '—'],
@@ -3653,13 +4267,13 @@ export default function UploadWizard() {
                         ])
                       : [['Where to buy', '—']]),
                   ]},
-                  { title: 'Distribution', to: 7, rows: [
+                  { title: 'Distribution', to: 8, rows: [
                     ['Route', distributionModeLabel],
                     ['Channels', selectedDistributionChannels.length
                       ? selectedDistributionChannels.map(channel => channel.label).join(', ')
                       : 'None selected — Indie Converters only'],
                   ]},
-                  { title: 'Front & Back Matter', to: 8, rows: [
+                  { title: 'Front & Back Matter', to: 9, rows: [
                     ['Front Matter', FM_ITEMS.filter(i => fd.frontMatter[i.key]?.enabled).map(i => i.label).join(', ') || 'None'],
                     ['Back Matter',  BM_ITEMS.filter(i => fd.backMatter[i.key]?.enabled).map(i => i.label).join(', ') || 'None'],
                   ]},
@@ -3684,7 +4298,7 @@ export default function UploadWizard() {
                   <ul>
                     {layoutIssues.filter(i => i.severity === 'error').map(i => <li key={i.type}>{i.message}</li>)}
                   </ul>
-                  <button type="button" className="wz-text-link" onClick={() => goTo(3)}>Go to Manuscript →</button>
+                  <button type="button" className="wz-text-link" onClick={() => goTo(4)}>Go to Book Health Check →</button>
                 </div>
               )}
 
@@ -3773,13 +4387,64 @@ export default function UploadWizard() {
             </div>
           )}
 
-          {/* ── Navigation ── */}
-          <div className="wz-nav">
+        </div>
+
+        <aside className="wz-side-panel">
+          <div className="wz-panel-card">
+            <div className="wz-panel-card-head">
+              <h3>Details</h3>
+              <span className="wz-panel-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+              </span>
+            </div>
+            <p className="wz-panel-blurb">{WIZARD_STEPS[step].blurb}</p>
+            <div className="wz-prog-bar wz-panel-prog-bar"><div className="wz-prog-fill" style={{ width: `${pct}%` }} /></div>
+            <span className="wz-panel-prog-label">{step + 1} of {WIZARD_STEPS.length} steps completed</span>
+          </div>
+
+          <div className="wz-panel-card">
+            <div className="wz-panel-card-head">
+              <h3>Quick tips</h3>
+              <span className="wz-panel-icon wz-panel-icon--tip">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.45 1 1.2 1 2.1h5c0-.9.4-1.65 1-2.1A6 6 0 0 0 12 3Z"/></svg>
+              </span>
+            </div>
+            <ul className="wz-panel-tips">
+              {WIZARD_STEPS[step].tips.map((tip, i) => (
+                <li key={i}><span className="wz-panel-tip-check">✓</span>{tip}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="wz-panel-card wz-panel-help">
+            <h3>Need help?</h3>
+            <p>Our publishing guide walks you through each step.</p>
+            <Link to="/help" className="wz-panel-help-btn">Open guide <span aria-hidden="true">↗</span></Link>
+          </div>
+        </aside>
+        </div>
+
+        {/* ── Navigation ── */}
+        <div className="wz-nav">
+          <span className="wz-nav-status">
+            {savingDraft
+              ? 'Saving…'
+              : draftSaved
+                ? <><span className="wz-nav-status-check">✓</span> All changes saved</>
+                : 'Not saved yet'}
+          </span>
+          <div className="wz-nav-actions">
             {step > 0 && <button type="button" className="btn btn-outline" onClick={goBack}>← Back</button>}
-            {step < 10 && <button type="button" className="btn btn-primary" onClick={goNext}>Continue →</button>}
+            {fd.title && <button type="button" className="btn btn-outline" onClick={handleSaveDraft} disabled={savingDraft}>Save draft</button>}
+            {step < 11 && <button type="button" className="btn btn-primary" onClick={goNext}>Save & continue →</button>}
           </div>
         </div>
       </div>
+      <PublishingAssistant
+        workflowContext={publishingAssistantContext}
+        onInsertSuggestion={insertAssistantSuggestion}
+        supportContact={{ name: authorName, email: user?.email || '' }}
+      />
     </div>
   );
 }

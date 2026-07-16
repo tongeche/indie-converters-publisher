@@ -49,6 +49,21 @@ export async function saveAssistantMessage({ sessionId, userId, visitorId, role,
   return true;
 }
 
+export async function submitAssistantHandoff(request) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const response = await fetch('/api/support-request', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
+    body: JSON.stringify(request),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'We could not send your request. Please try again.');
+  return payload;
+}
+
 /* ── Landing: dynamic quote cards ── */
 export async function fetchLandingQuotes() {
   try {

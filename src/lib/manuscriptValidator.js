@@ -1,4 +1,5 @@
 import mammoth from 'mammoth/mammoth.browser';
+import JSZip from 'jszip';
 
 function estimatePageCount(wordCount, wordsPerPage = 250) {
   const words = Number(wordCount) || 0;
@@ -72,13 +73,84 @@ export function validateManuscript({ headings = [], wordCount = 0, paragraphCoun
   return issues.sort((a, b) => order[a.severity] - order[b.severity]);
 }
 
+// ── Readability (Flesch Reading Ease / Flesch-Kincaid Grade) ────────────────
+// Standard vowel-group syllable heuristic (the same approach used by most
+// JS readability libraries) — not exact dictionary lookup, but accurate
+// enough for a manuscript-level average across thousands of words.
+function countSyllables(word) {
+  const w = word.toLowerCase().replace(/[^a-z]/g, '');
+  if (!w) return 0;
+  if (w.length <= 3) return 1;
+  const trimmed = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '');
+  const matches = trimmed.match(/[aeiouy]{1,2}/g);
+  return matches ? matches.length : 1;
+}
+
+export function computeReadability(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return null;
+  const words = clean.split(' ').filter(Boolean);
+  const sentences = clean.split(/[.!?]+(?:\s|$)/).map(s => s.trim()).filter(Boolean);
+  const wordCount = words.length;
+  if (wordCount === 0) return null;
+  const sentenceCount = Math.max(1, sentences.length);
+  const syllableCount = words.reduce((sum, w) => sum + countSyllables(w), 0);
+  const avgWordsPerSentence = wordCount / sentenceCount;
+  const avgSyllablesPerWord = syllableCount / wordCount;
+  const fleschScore = Math.round(206.835 - 1.015 * avgWordsPerSentence - 84.6 * avgSyllablesPerWord);
+  const fleschGrade = Math.max(0, Math.round((0.39 * avgWordsPerSentence + 11.8 * avgSyllablesPerWord - 15.59) * 10) / 10);
+  let label;
+  if (fleschScore >= 90) label = 'Very easy to read';
+  else if (fleschScore >= 80) label = 'Easy to read';
+  else if (fleschScore >= 70) label = 'Fairly easy to read';
+  else if (fleschScore >= 60) label = 'Standard, conversational';
+  else if (fleschScore >= 50) label = 'Fairly difficult';
+  else if (fleschScore >= 30) label = 'Difficult';
+  else label = 'Very difficult';
+  return { sentenceCount, avgWordsPerSentence, avgSyllablesPerWord, fleschScore, fleschGrade, label };
+}
+
+// ── Embedded image resolution (print only — screens don't need 300dpi) ─────
+// Takes the {width, height} pixel dimensions mammoth reads off each embedded
+// image and flags ones that would print below a legible DPI at the chosen
+// trim width. Skipped for eBook-only books since screen resolution isn't a
+// fixed physical constraint the way a printed page is.
+export function analyseImages(images = [], { trimWidthInches = 5, hasPrintFormat = false, dpiThreshold = 150 } = {}) {
+  const decoded = images.filter(img => img && img.width && img.height);
+  if (!hasPrintFormat) {
+    return { count: images.length, checked: false, lowResCount: 0, lowRes: [] };
+  }
+  const lowRes = decoded
+    .map((img, index) => ({ ...img, index, dpi: Math.round(img.width / trimWidthInches) }))
+    .filter(img => img.dpi < dpiThreshold);
+  return { count: images.length, checked: true, lowResCount: lowRes.length, lowRes };
+}
+
+// ── Manual page breaks (.docx only) ──────────────────────────────────────
+// A .docx is a zip archive; Word records a hard page break as a
+// <w:br w:type="page"/> run inside word/document.xml. Reading that
+// directly (rather than through mammoth's HTML output, which drops it)
+// gives a real count instead of guessing from paragraph spacing.
+export async function countManualPageBreaks(arrayBuffer) {
+  try {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const docXml = zip.file('word/document.xml');
+    if (!docXml) return 0;
+    const xml = await docXml.async('string');
+    const matches = xml.match(/<w:br[^>]*w:type="page"[^>]*\/?>/g);
+    return matches ? matches.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function analyseHtml(html, fileSize, options = {}) {
   const wordsPerPage = options.wordsPerPage || 250;
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const headings = [];
   const blocks = [];
-  let headingIdx = -1, maxBlankRun = 0, blankRun = 0;
+  let headingIdx = -1, maxBlankRun = 0, blankRun = 0, maxBlankRunHeading = null;
   for (const el of [...doc.body.children]) {
     const tag = el.tagName;
     if (/^H[1-4]$/.test(tag)) {
@@ -88,7 +160,11 @@ export function analyseHtml(html, fileSize, options = {}) {
       blocks.push({ type: 'heading', level, text });
       headingIdx = headings.length - 1; blankRun = 0;
     } else if (tag === 'P' && !el.textContent.trim()) {
-      blankRun++; if (blankRun > maxBlankRun) maxBlankRun = blankRun;
+      blankRun++;
+      if (blankRun > maxBlankRun) {
+        maxBlankRun = blankRun;
+        maxBlankRunHeading = headingIdx >= 0 ? headings[headingIdx].text : null;
+      }
     } else {
       blankRun = 0;
       const t = el.textContent.trim();
@@ -107,8 +183,10 @@ export function analyseHtml(html, fileSize, options = {}) {
     wordCount,
     paragraphCount,
     maxBlankRun,
+    maxBlankRunHeading,
     fileSize,
     estimatedPages,
+    readability: computeReadability(doc.body.textContent),
     issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize, wordsPerPage }),
   };
 }
@@ -132,10 +210,17 @@ export function analyseTxt(text, fileSize, options = {}) {
     if (headingIdx >= 0) headings[headingIdx].words += p.split(/\s+/).filter(Boolean).length;
     blocks.push({ type: 'para', text: p });
   });
-  let maxBlankRun = 0, blankRun = 0;
+  const headingTexts = new Set(headings.map(h => h.text));
+  let maxBlankRun = 0, blankRun = 0, maxBlankRunHeading = null, lastHeadingSeen = null;
   text.split('\n').forEach(line => {
-    if (!line.trim()) { blankRun++; if (blankRun > maxBlankRun) maxBlankRun = blankRun; }
-    else blankRun = 0;
+    const trimmed = line.trim();
+    if (!trimmed) {
+      blankRun++;
+      if (blankRun > maxBlankRun) { maxBlankRun = blankRun; maxBlankRunHeading = lastHeadingSeen; }
+    } else {
+      blankRun = 0;
+      if (headingTexts.has(trimmed)) lastHeadingSeen = trimmed;
+    }
   });
   const wordCount      = text.trim().split(/\s+/).filter(Boolean).length;
   const paragraphCount = paragraphs.length;
@@ -146,8 +231,10 @@ export function analyseTxt(text, fileSize, options = {}) {
     wordCount,
     paragraphCount,
     maxBlankRun,
+    maxBlankRunHeading,
     fileSize,
     estimatedPages,
+    readability: computeReadability(text),
     issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize, wordsPerPage }),
   };
 }

@@ -7,8 +7,85 @@ export const ASSISTANT_PROMPTS = [
   'Find books by African authors',
 ];
 
+export const ASSISTANT_HISTORY_LIMIT = 8;
+const ASSISTANT_HISTORY_MESSAGE_LIMIT = 1200;
+
+function isPrivateAssistantMessage(message) {
+  if (!message || typeof message !== 'object') return true;
+  if (
+    message.handoffFlow
+    || message.handoffSensitive
+    || message.private
+    || message.sensitive
+    || message.pending
+  ) return true;
+
+  const kind = String(message.kind || '').toLowerCase();
+  return message.id === 'welcome' || kind.includes('handoff') || kind.includes('human-offer');
+}
+
+function stripUnsafeControlCharacters(value) {
+  return Array.from(value, character => {
+    const code = character.charCodeAt(0);
+    const unsafe = code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31) || code === 127;
+    return unsafe ? ' ' : character;
+  }).join('');
+}
+
+/**
+ * Keep only a small, non-private transcript for conversational AI context.
+ * Handoff/contact collection messages stay in the UI and are never forwarded.
+ */
+export function sanitizeAssistantHistory(history, currentMessage = '', limit = ASSISTANT_HISTORY_LIMIT) {
+  if (!Array.isArray(history)) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || ASSISTANT_HISTORY_LIMIT, 1), 20);
+
+  const sanitized = history.slice(-(safeLimit * 3)).flatMap(entry => {
+    if (isPrivateAssistantMessage(entry)) return [];
+
+    const role = entry.role === 'user' || entry.role === 'assistant' ? entry.role : null;
+    const rawContent = typeof entry.content === 'string' ? entry.content : entry.text;
+    if (!role || typeof rawContent !== 'string') return [];
+
+    const content = stripUnsafeControlCharacters(rawContent)
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, ASSISTANT_HISTORY_MESSAGE_LIMIT);
+
+    return content ? [{ role, content }] : [];
+  });
+
+  const current = stripUnsafeControlCharacters(String(currentMessage || ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, ASSISTANT_HISTORY_MESSAGE_LIMIT);
+  const last = sanitized.at(-1);
+  if (current && last?.role === 'user' && last.content === current) sanitized.pop();
+
+  return sanitized.slice(-safeLimit);
+}
+
 export function normaliseAssistantText(value) {
   return String(value || '').toLowerCase().replace(/[^\w\s-]/g, ' ');
+}
+
+const HUMAN_SUPPORT_PATTERNS = [
+  /\b(?:talk|takl|speak|connect|transfer)(?:\s+me)?\s+(?:to|with)\s+(?:a\s+)?(?:human|person|someone|somebody|representative|support agent|team member)\b/i,
+  /\b(?:can|could|may)\s+i\s+(?:talk|speak|chat)\s+(?:to|with)\s+(?:a\s+)?(?:human|person|someone|somebody|support|the team)\b/i,
+  /\b(?:i\s+(?:need|want)|please\s+get\s+me)\s+(?:help\s+from\s+)?(?:a\s+)?(?:human|person|representative|support agent|team member|support)\b/i,
+  /\b(?:i need|i want|please|can i get)\s+(?:some\s+)?customer service\b/i,
+  /\b(?:human support|real person|support agent|team member|live chat)\b/i,
+  /\b(?:real|actual|live)\s+(?:human|person|agent|assistant)\b/i,
+  /\bhuman\s+(?:agent|assistant|representative|support)\b/i,
+  /\b(?:someone|somebody|a person)\s+(?:to\s+)?(?:help|contact|email|call|reply)\b/i,
+  /\b(?:can|could|will|would)\s+(?:someone|somebody|the team)\s+(?:contact|email|call|reply)\b/i,
+  /\b(?:escalate (?:this|my (?:issue|request|case))|talk to support|speak to support)\b/i,
+  /\b(?:message|contact|email)\s+(?:the|your|support)?\s*team\b/i,
+];
+
+export function isHumanSupportIntent(value) {
+  const message = String(value || '');
+  return HUMAN_SUPPORT_PATTERNS.some(pattern => pattern.test(message));
 }
 
 export function getAssistantPageContext(pathname = '/') {
@@ -158,14 +235,13 @@ export function findAssistantKnowledgeMatches(query, pageContext = getAssistantP
 
 function buildKnowledgeText(matches) {
   if (!matches.length) return '';
-  const [primary, ...related] = matches;
-  const relatedText = related.length
-    ? ` Related: ${related.map(item => item.title).join('; ')}.`
-    : '';
-  const ctaText = primary.cta?.label && primary.cta?.path
-    ? ` Next step: ${primary.cta.label}.`
-    : '';
-  return `${primary.body}${relatedText}${ctaText}`;
+  return matches[0].body;
+}
+
+function buildKnowledgeActions(matches) {
+  const cta = matches[0]?.cta;
+  if (!cta?.label || !cta?.path) return [];
+  return [{ label: cta.label, type: 'navigate', value: cta.path }];
 }
 
 function pickStarterBooks(books = []) {
@@ -184,6 +260,63 @@ export function buildAssistantReply(message, books = [], pageContext = getAssist
   const publishingIntent = /(publish|publishing|start|launch|upload|manuscript|cover|file|isbn)/.test(text);
   const accountIntent = /(account|setup|sign|login|profile|dashboard)/.test(text);
   const catalogueIntent = /(find|show|recommend|discover|browse|search|title|author|genre|african|fiction|poetry|novel|essay|read|reader)/.test(text);
+  const humanSupportIntent = isHumanSupportIntent(text);
+  const greetingIntent = /^(hi|hello|hey|hiya|good morning|good afternoon|good evening)\b/.test(text.trim());
+  const thanksIntent = /^(thanks|thank you|cheers|got it|okay thanks|ok thanks)\b/.test(text.trim());
+  const idleIntent = /^(nothing|nothing really|not much|just looking|just browsing|only looking|no reason|nope)\b/.test(text.trim());
+  const unsureIntent = /^(not sure|i m not sure|unsure|i don t know|no idea|what can i do)\b/.test(text.trim());
+
+  if (humanSupportIntent) {
+    return {
+      text: 'I can connect you with the Indie Converters team. They’ll continue with you by email.',
+      context,
+      sources: ['human_support_guidance'],
+    };
+  }
+
+  if (idleIntent) {
+    return {
+      text: 'No pressure. Have a look around, and I’ll be here when you need me.',
+      actions: [
+        { label: 'Browse books', type: 'navigate', value: '/shop' },
+        { label: 'Explore publishing', type: 'navigate', value: '/publish' },
+      ],
+      context,
+      sources: ['conversation_guidance', 'page_context'],
+    };
+  }
+
+  if (greetingIntent) {
+    return {
+      text: 'Hi! Are you here to find your next read, or are you working on a book?',
+      actions: [
+        { label: 'Find a book', type: 'ask', value: 'Help me find a book' },
+        { label: 'Work on my book', type: 'ask', value: 'Help me publish my book' },
+      ],
+      context,
+      sources: ['conversation_guidance', 'page_context'],
+    };
+  }
+
+  if (thanksIntent) {
+    return {
+      text: 'You’re welcome.',
+      context,
+      sources: ['conversation_guidance'],
+    };
+  }
+
+  if (unsureIntent) {
+    return {
+      text: 'That’s okay. Pick whichever feels closest and we’ll take it one step at a time.',
+      actions: [
+        { label: 'I want to publish', type: 'ask', value: 'I want to publish a book' },
+        { label: 'I want something to read', type: 'ask', value: 'Help me find something to read' },
+      ],
+      context,
+      sources: ['conversation_guidance', 'page_context'],
+    };
+  }
 
   if (bookMatches.length && catalogueIntent && !pricingIntent && !buyingIntent && !publishingIntent && !accountIntent) {
     return {
@@ -218,6 +351,7 @@ export function buildAssistantReply(message, books = [], pageContext = getAssist
     const knowledgeText = buildKnowledgeText(knowledgeMatches);
     return {
       text: knowledgeText || 'Direct-sale books use the Indie Converters cart and checkout. Discovery-only books open retailer, publisher, library, or author store options. Final price, tax, delivery, and availability are confirmed at checkout or on the retailer site.',
+      actions: buildKnowledgeActions(knowledgeMatches),
       context,
       sources: ['knowledge_base', 'retailer_guidance', 'page_context'],
     };
@@ -244,6 +378,7 @@ export function buildAssistantReply(message, books = [], pageContext = getAssist
     const knowledgeText = buildKnowledgeText(knowledgeMatches);
     return {
       text: knowledgeText || 'To publish, start with your manuscript, cover, book details, formats, price, and retailer links. Indie Converters keeps the process private first, then lets you preview before launch so you stay in control of the listing.',
+      actions: buildKnowledgeActions(knowledgeMatches),
       context,
       sources: ['knowledge_base', 'publishing_guidance', 'page_context'],
     };
@@ -253,6 +388,7 @@ export function buildAssistantReply(message, books = [], pageContext = getAssist
     const knowledgeText = buildKnowledgeText(knowledgeMatches);
     return {
       text: knowledgeText || 'For pricing, use one clear default currency, compare retailer prices where available, and keep the final checkout price confirmed by the store. For authors, the key setup is list price, format, retailer links, and whether the book is direct-sale or discovery-only.',
+      actions: buildKnowledgeActions(knowledgeMatches),
       context,
       sources: ['knowledge_base', 'pricing_guidance', 'page_context'],
     };
@@ -262,6 +398,7 @@ export function buildAssistantReply(message, books = [], pageContext = getAssist
     const knowledgeText = buildKnowledgeText(knowledgeMatches);
     return {
       text: knowledgeText || 'Account setup starts with creating an author account, completing your profile, then using the dashboard to manage books, links, pricing, and publishing status. Once signed in, the assistant can later become account-aware.',
+      actions: buildKnowledgeActions(knowledgeMatches),
       context,
       sources: ['knowledge_base', 'account_guidance', 'page_context'],
     };
@@ -288,6 +425,7 @@ export function buildAssistantReply(message, books = [], pageContext = getAssist
   if (knowledgeMatches.length) {
     return {
       text: buildKnowledgeText(knowledgeMatches),
+      actions: buildKnowledgeActions(knowledgeMatches),
       context,
       sources: ['knowledge_base', 'page_context'],
     };
@@ -318,22 +456,33 @@ export function createWelcomeMessage(user) {
   return {
     id: 'welcome',
     role: 'assistant',
-    text: displayName
-      ? `Hi there ${displayName}, what are we writing today?`
-      : 'Hi, I can help with publishing, uploading, pricing, retailer links, account setup, and finding books in the catalogue.',
+    text: `Hi${displayName ? ` ${displayName}` : ''}, I’m Indie. What are you working on today?`,
     time: formatAssistantTime(),
   };
 }
 
-export async function requestAssistantReply({ message, books = [], sessionId, pageUrl, pageContext }) {
+export async function requestAssistantReply({ message, books = [], sessionId, pageUrl, pageContext, workflowContext, history = [] }) {
   const context = pageContext || getAssistantPageContext('/');
   if (typeof fetch !== 'function') return buildAssistantReply(message, books, context);
+
+  const recentHistory = sanitizeAssistantHistory(
+    history,
+    message,
+    workflowContext?.mode === 'publishing_upload' ? 16 : ASSISTANT_HISTORY_LIMIT,
+  );
 
   try {
     const response = await fetch('/api/assistant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, sessionId, pageUrl, pageContext: context }),
+      body: JSON.stringify({
+        message,
+        sessionId,
+        pageUrl,
+        pageContext: context,
+        workflowContext: workflowContext || null,
+        history: recentHistory,
+      }),
     });
 
     if (!response.ok) throw new Error(`Assistant endpoint returned ${response.status}`);
@@ -342,6 +491,8 @@ export async function requestAssistantReply({ message, books = [], sessionId, pa
     return {
       text: data.text,
       books: data.books || [],
+      actions: data.actions || [],
+      fieldSuggestions: data.fieldSuggestions || [],
       context: data.context || context.section,
       sources: data.sources || ['assistant_endpoint'],
     };

@@ -1,5 +1,21 @@
 # React + Vite
 
+## Human support handoff
+
+The assistant's guided human-support chat flow submits to the Netlify function at `/api/support-request` and stores validated requests in `assistant_handoffs`. Apply the Supabase migrations before enabling human handoff in production.
+
+Configure these server-side environment variables in Netlify:
+
+```text
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPPORT_REQUEST_HASH_SECRET=
+```
+
+`SUPPORT_REQUEST_HASH_SECRET` is optional but recommended for generating abuse-prevention fingerprints. Keep the service-role key server-only; never expose it through a `VITE_*` variable.
+
+This is an asynchronous email handoff, not live chat. Requests are queued in the Supabase `assistant_handoffs` table; assign someone to monitor that queue or connect it to the team's support inbox before launch.
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:

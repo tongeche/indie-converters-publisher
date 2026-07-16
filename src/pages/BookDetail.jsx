@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useParams, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import BookCover from '../components/BookCover';
+import BookDiscoveryBar from '../components/BookDiscoveryBar';
 import SEO from '../components/SEO';
 import { fetchBook, fetchRelatedBooks, toggleSave, checkSaved, addToCart } from '../lib/api';
 import { convertToDisplayCurrency, formatDisplayMoney, isConvertedCurrency } from '../lib/currency';
@@ -20,35 +21,6 @@ function Stars({ rating }) {
   );
 }
 
-/* Extract dominant color from an <img> element via canvas */
-function extractColor(imgEl) {
-  try {
-    const c = document.createElement('canvas');
-    c.width = 12; c.height = 18;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(imgEl, 0, 0, 12, 18);
-    const d = ctx.getImageData(0, 0, 12, 18).data;
-    let r = 0, g = 0, b = 0, n = d.length / 4;
-    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i+1]; b += d[i+2]; }
-    return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
-  } catch {
-    return null;
-  }
-}
-
-function heroGradient(c) {
-  if (!c) return { '--bd-hero-top': '#3a3a3c', '--bd-hero-bottom': '#1c1c1e' };
-  const t = `rgb(${Math.round(c.r*.38)},${Math.round(c.g*.38)},${Math.round(c.b*.38)})`;
-  const b = `rgb(${Math.round(c.r*.18)},${Math.round(c.g*.18)},${Math.round(c.b*.18)})`;
-  return { '--bd-hero-top': t, '--bd-hero-bottom': b };
-}
-
-function coverImageStyle(url, color) {
-  const style = heroGradient(color);
-  if (url) style['--bd-cover-bg'] = `url("${url.replace(/"/g, '\\"')}")`;
-  return style;
-}
-
 function retailerDisplayName(link, book) {
   if (link.slug === 'publisher-site' && book.publisher) return book.publisher;
   if (/publisher/i.test(link.label) && book.publisher) return book.publisher;
@@ -64,16 +36,19 @@ export default function BookDetail() {
   const [loading,     setLoading]    = useState(true);
   const [saved,       setSaved]      = useState(false);
   const [savePending, setSavePending] = useState(false);
-  const [heroColor,   setHeroColor]  = useState(null);
-  const [coverCorsBlocked, setCoverCorsBlocked] = useState(false);
   const [buyModalOpen, setBuyModalOpen] = useState(false);
   const [copied,      setCopied]     = useState(false);
   const [buyingNow,   setBuyingNow]  = useState(false);
+  const [searchValue, setSearchValue] = useState('');
+
+  function handleSearchSubmit(e) {
+    e.preventDefault();
+    const q = searchValue.trim();
+    navigate(q ? `/browse?q=${encodeURIComponent(q)}` : '/browse');
+  }
 
   useEffect(() => {
     setLoading(true);
-    setHeroColor(null);
-    setCoverCorsBlocked(false);
     setBuyModalOpen(false);
     fetchBook(id).then(b => {
       setBook(b);
@@ -88,47 +63,6 @@ export default function BookDetail() {
     if (!book?.dbId || !user) { setSaved(false); return; }
     checkSaved(book.dbId, user.id).then(setSaved);
   }, [book?.dbId, user?.id]);
-
-  const handleCoverLoad = useCallback((e) => {
-    const color = extractColor(e.currentTarget);
-    if (color) setHeroColor(color);
-  }, []);
-
-  // Some cover hosts (e.g. Google Books) don't send CORS headers, so the
-  // crossOrigin="anonymous" load fails outright — retry once without it so
-  // the cover still displays (just without the dominant-color extraction).
-  const handleCoverError = useCallback(() => {
-    setCoverCorsBlocked(blocked => blocked ? blocked : true);
-  }, []);
-
-  function handleTiltMove(e) {
-    const el = e.currentTarget;
-    const { left, top, width, height } = el.getBoundingClientRect();
-    const x = (e.clientX - left) / width;
-    const y = (e.clientY - top) / height;
-    const ry =  (x - 0.5) * 24;
-    const rx = -(y - 0.5) * 18;
-    el.style.transition = 'transform 60ms linear, box-shadow 60ms linear';
-    el.style.setProperty('--rx',   `${rx}deg`);
-    el.style.setProperty('--ry',   `${ry}deg`);
-    el.style.setProperty('--rx-v', rx);
-    el.style.setProperty('--ry-v', ry);
-    el.style.setProperty('--gx',   `${x * 100}%`);
-    el.style.setProperty('--gy',   `${y * 100}%`);
-    el.style.setProperty('--g-op', 1);
-    el.style.setProperty('--sc',   1.04);
-  }
-
-  function handleTiltLeave(e) {
-    const el = e.currentTarget;
-    el.style.transition = 'transform 550ms cubic-bezier(0.2,0,0.2,1), box-shadow 550ms cubic-bezier(0.2,0,0.2,1)';
-    el.style.setProperty('--rx',   '0deg');
-    el.style.setProperty('--ry',   '0deg');
-    el.style.setProperty('--rx-v', 0);
-    el.style.setProperty('--ry-v', 0);
-    el.style.setProperty('--g-op', 0);
-    el.style.setProperty('--sc',   1);
-  }
 
   async function handleSave() {
     if (!user) { navigate('/login', { state: { from: `/book/${book.id}` } }); return; }
@@ -175,8 +109,20 @@ export default function BookDetail() {
     }
   }
 
+  const searchBar = (
+    <form onSubmit={handleSearchSubmit}>
+      <BookDiscoveryBar
+        value={searchValue}
+        onChange={setSearchValue}
+        placeholder="Search for another book…"
+        className="bd-search-bar"
+      />
+    </form>
+  );
+
   if (loading) return (
     <div className="bd-page">
+      {searchBar}
       <div className="bd-hero bd-hero--loading" />
     </div>
   );
@@ -217,127 +163,89 @@ export default function BookDetail() {
         path={`/book/${id}`}
       />
 
-      {/* ═══════════════ HERO ═══════════════ */}
-      <section className="bd-hero" style={coverImageStyle(book.coverUrl, heroColor)}>
+      {searchBar}
 
-        {/* Mobile-only top-right action buttons: Save and Share */}
-        <div className="bd-hero-actions">
-          <button
-            className={`bd-hero-action-btn${saved ? ' bd-hero-action-btn--saved' : ''}`}
-            onClick={handleSave}
-            disabled={savePending}
-            aria-label={saved ? 'Saved' : 'Save'}
-          >
-            {saved
-              ? <svg viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><path d="M10 17s-7-4.35-7-9a5 5 0 0 1 7-4.58A5 5 0 0 1 17 8c0 4.65-7 9-7 9z"/></svg>
-              : <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" width="20" height="20"><path d="M10 4v12M4 10h12"/></svg>
-            }
-          </button>
-
-          <button
-            className="bd-hero-action-btn"
-            onClick={handleShare}
-            aria-label={copied ? 'Link copied' : 'Share'}
-          >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
-              <path d="M10 3v10M6 7l4-4 4 4"/><path d="M4 13v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/>
-            </svg>
-          </button>
-        </div>
-
-        <div className="container bd-hero-inner">
-
-          {/* Cover */}
-          <div className="bd-cover-wrap">
-            <div
-              className="bd-cover-mockup"
-              onMouseMove={handleTiltMove}
-              onMouseLeave={handleTiltLeave}
-            >
-              {book.coverUrl
-                ? <img
-                    key={`${book.coverUrl}-${coverCorsBlocked}`}
-                    src={book.coverUrl}
-                    alt={book.title}
-                    className="bd-cover-img"
-                    crossOrigin={coverCorsBlocked ? undefined : 'anonymous'}
-                    onLoad={handleCoverLoad}
-                    onError={coverCorsBlocked ? undefined : handleCoverError}
-                  />
-                : <BookCover title={book.title} author={book.author} colorClass={book.coverColor} size="lg" />
-              }
-              <div className="bd-cover-spine" />
-              <div className="bd-cover-glare" />
-            </div>
-          </div>
-
-          {/* Info column */}
-          <div className="bd-info">
-            {genreLabel && (
-              <Link to={`/browse?genre=${book.genre}`} className="bd-genre-tag">
-                {genreLabel}
-              </Link>
-            )}
-
-            <h1 className="bd-title">{book.title}</h1>
-            {book.subtitle && <p className="bd-subtitle">{book.subtitle}</p>}
-
-            <div className="bd-authors">
-              {book.authors.length > 0
-                ? book.authors.map((a, i) => (
-                    <span key={a.slug}>
-                      {i > 0 && <span className="bd-author-sep"> &amp; </span>}
-                      <Link to={`/author/${a.slug}`} className="bd-author-link">
-                        {a.display_name} <span className="bd-author-arrow">›</span>
-                      </Link>
-                    </span>
-                  ))
-                : <span className="bd-author-link">{book.author}</span>
-              }
-            </div>
-
-            {book.rating > 0 && (
-              <div className="bd-rating-row">
-                <Stars rating={book.rating} />
-                <span className="bd-rating-source">Goodreads</span>
+      {/* ═══════════════ HERO — mirrors the "Weekly pick" feature card ═══════════════ */}
+      <section className="bd-hero">
+        <div className="container">
+          <article className="bd-feature">
+            <div className="bd-cover-stage">
+              <div className="bd-cover-mockup">
+                <BookCover title={book.title} author={book.author} colorClass={book.coverColor} coverUrl={book.coverUrl} size="lg" />
               </div>
-            )}
+              <span className="bd-cover-glow" aria-hidden="true" />
+            </div>
 
-            {/* Buy card */}
-            <div className="bd-buy-card">
-              <div className="bd-buy-card-left">
-                <span className="bd-buy-type">Book</span>
-                {metaPills.length > 0 && (
-                  <span className="bd-buy-meta">{metaPills.join(' · ')}</span>
+            <div className="bd-content">
+              <div className="bd-label-row">
+                {genreLabel && (
+                  <Link to={`/browse?genre=${book.genre}`} className="bd-label-chip">{genreLabel}</Link>
                 )}
+                <span className="bd-label-chip bd-label-chip--muted">Book</span>
               </div>
 
-              {/* Actions row */}
-              <div className="bd-actions">
-                <div className="bd-actions-row">
-                  {/* Direct-sale books: single "Get now" pill, no dropdown needed */}
+              <h1 className="bd-title">{book.title}</h1>
+              {book.subtitle && <p className="bd-subtitle">{book.subtitle}</p>}
+
+              <div className="bd-authors">
+                {book.authors.length > 0
+                  ? book.authors.map((a, i) => (
+                      <span key={a.slug}>
+                        {i > 0 && <span className="bd-author-sep"> &amp; </span>}
+                        <Link to={`/author/${a.slug}`} className="bd-author-link">
+                          {a.display_name} <span className="bd-author-arrow">›</span>
+                        </Link>
+                      </span>
+                    ))
+                  : <span className="bd-author-link">{book.author}</span>
+                }
+              </div>
+
+              {book.rating > 0 && (
+                <div className="bd-rating-row">
+                  <Stars rating={book.rating} />
+                  <span className="bd-rating-source">Goodreads</span>
+                </div>
+              )}
+
+              {metaPills.length > 0 && <p className="bd-meta-line">{metaPills.join(' · ')}</p>}
+
+              {book.blurb && (
+                <div className="bd-blurb">
+                  {book.blurb.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
+                </div>
+              )}
+
+              <div className="bd-feature-footer">
+                {book.isDirectSale ? (
+                  <div className="bd-price-block">
+                    <span>Direct from the author</span>
+                    <strong>{formatDisplayMoney(book.directSalePrice, 'USD')}</strong>
+                  </div>
+                ) : bestDisplayPrice != null && (
+                  <div className="bd-price-block">
+                    <span>Available from retailers</span>
+                    <strong>{formatDisplayMoney(bestDisplayPrice, 'EUR')}</strong>
+                  </div>
+                )}
+
+                <div className="bd-feature-actions">
                   {book.isDirectSale ? (
                     <button
                       className="bd-buy-btn bd-buy-btn--primary"
                       onClick={handleBuyNow}
                       disabled={buyingNow}
                     >
-                      {buyingNow ? 'Adding…' : `Get now · ${formatDisplayMoney(book.directSalePrice, 'USD')}`}
+                      {buyingNow ? 'Adding…' : 'Get now'} <span aria-hidden="true">→</span>
                     </button>
                   ) : buyLinks.length > 0 && (
-                    <div className="bd-buy-wrap">
-                      <button
-                        className="bd-buy-btn"
-                        onClick={() => setBuyModalOpen(true)}
-                      >
-                        Get it
-                      </button>
-                    </div>
+                    <button className="bd-buy-btn bd-buy-btn--primary" onClick={() => setBuyModalOpen(true)}>
+                      Get it <span aria-hidden="true">→</span>
+                    </button>
                   )}
 
-                  {/* Save + Share — desktop only, hidden on mobile (mobile has its own hero buttons) */}
                   <button
-                    className={`bd-icon-btn bd-icon-btn--desktop${saved ? ' bd-icon-btn--saved' : ''}`}
+                    className={`bd-icon-btn${saved ? ' bd-icon-btn--saved' : ''}`}
                     onClick={handleSave}
                     disabled={savePending}
                   >
@@ -347,7 +255,7 @@ export default function BookDetail() {
                     <span>{saved ? 'Saved' : 'Save'}</span>
                   </button>
 
-                  <button className="bd-icon-btn bd-icon-btn--desktop" onClick={handleShare}>
+                  <button className="bd-icon-btn" onClick={handleShare}>
                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16">
                       <path d="M10 3v10M6 7l4-4 4 4"/><path d="M4 13v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/>
                     </svg>
@@ -356,14 +264,7 @@ export default function BookDetail() {
                 </div>
               </div>
             </div>
-
-            {book.blurb && (
-              <div className="bd-hero-excerpt">
-                <span className="bd-hero-excerpt-label">Excerpt</span>
-                {book.blurb.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
-              </div>
-            )}
-          </div>
+          </article>
         </div>
       </section>
 

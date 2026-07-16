@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Nav from './components/Nav';
@@ -39,11 +39,20 @@ import CheckVerify from './pages/CheckVerify';
 import PrintCoverCalculator from './pages/PrintCoverCalculator';
 import RevenueCalculatorPage from './pages/RevenueCalculatorPage';
 
+// The persistent page rails are a Landing-page-only visual accent — everywhere
+// else (dashboard, wizard, checkout, etc.) they cut across app chrome that was
+// never designed around them.
+function PageRails() {
+  const location = useLocation();
+  if (location.pathname !== '/') return null;
+  return <div className="page-rails" aria-hidden="true" />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <div className="page-rails" aria-hidden="true" />
+        <PageRails />
         <Nav />
         <Routes>
           <Route path="/"           element={<Landing />}      />
