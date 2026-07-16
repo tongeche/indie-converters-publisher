@@ -128,6 +128,8 @@ export default function BookDetail() {
   );
   if (!book) return <Navigate to="/browse" replace />;
 
+  const formatLabel = book.formats?.length ? book.formats.join(' · ') : null;
+
   const metaPills = [
     book.language,
     book.pubYear,
@@ -181,7 +183,7 @@ export default function BookDetail() {
                 {genreLabel && (
                   <Link to={`/browse?genre=${book.genre}`} className="bd-label-chip">{genreLabel}</Link>
                 )}
-                <span className="bd-label-chip bd-label-chip--muted">Book</span>
+                <span className="bd-label-chip bd-label-chip--muted">{formatLabel || 'Book'}</span>
               </div>
 
               <h1 className="bd-title">{book.title}</h1>
@@ -219,12 +221,12 @@ export default function BookDetail() {
               <div className="bd-feature-footer">
                 {book.isDirectSale ? (
                   <div className="bd-price-block">
-                    <span>Direct from the author</span>
+                    <span>Direct from the author{formatLabel ? ` · ${formatLabel}` : ''}</span>
                     <strong>{formatDisplayMoney(book.directSalePrice, 'USD')}</strong>
                   </div>
                 ) : bestDisplayPrice != null && (
                   <div className="bd-price-block">
-                    <span>Available from retailers</span>
+                    <span>Available from retailers{formatLabel ? ` · ${formatLabel}` : ''}</span>
                     <strong>{formatDisplayMoney(bestDisplayPrice, 'EUR')}</strong>
                   </div>
                 )}

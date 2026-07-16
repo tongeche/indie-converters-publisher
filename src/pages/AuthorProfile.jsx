@@ -40,6 +40,10 @@ const GENRE_LABELS = {
   romance: 'Romance',
 };
 
+function initials(name = '') {
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+}
+
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -141,6 +145,11 @@ export default function AuthorProfile() {
         <img src={authorHeroImg} alt="" className="author-hero-img" />
         <div className="author-hero-overlay" />
         <div className="container author-hero-inner">
+          {author.photo_url ? (
+            <img src={author.photo_url} alt={author.display_name} className="author-avatar" />
+          ) : (
+            <div className="author-avatar author-avatar--fallback">{initials(author.display_name)}</div>
+          )}
           <div className="author-meta">
             <h1>{author.display_name}</h1>
             {heroBio && (

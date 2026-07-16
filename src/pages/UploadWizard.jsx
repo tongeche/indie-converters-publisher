@@ -2133,6 +2133,49 @@ export default function UploadWizard() {
   const readinessScoreLabel = readinessScore >= 90 ? 'Mostly ready' : readinessScore >= 70 ? 'Almost there' : 'Needs work';
 
   const pct    = Math.round((step / (WIZARD_STEPS.length - 1)) * 100);
+  const publishingReadiness = useMemo(() => {
+    const hasBlockingLayoutIssue = layoutIssues.some(issue => issue.severity === 'error');
+    const items = [
+      { id: 'title', label: 'Book title', status: fd.title.trim() ? 'complete' : 'missing', message: fd.title.trim() ? 'Title added.' : 'Add the title readers will see.', step: 0, field: 'title' },
+      { id: 'description', label: 'Book description', status: !fd.description.trim() ? 'missing' : fd.description.trim().length < 100 ? 'recommended' : 'complete', message: !fd.description.trim() ? 'Add your reader-facing description.' : fd.description.trim().length < 100 ? 'Consider adding more premise, conflict, and stakes.' : 'Description added.', step: 1, field: 'description' },
+      { id: 'genre', label: 'Primary genre', status: fd.genre ? 'complete' : 'missing', message: fd.genre ? 'Primary genre selected.' : 'Choose the category readers will search first.', step: 1, field: 'genre' },
+      { id: 'keywords', label: 'Discovery keywords', status: fd.keywords.length >= 3 ? 'complete' : 'recommended', message: fd.keywords.length >= 3 ? `${fd.keywords.length} keywords added.` : 'Add at least three specific reader search phrases.', step: 1, field: 'keywords' },
+      { id: 'manuscript', label: 'Manuscript file', status: manuscriptFileName ? 'complete' : 'missing', message: manuscriptFileName ? 'Manuscript uploaded.' : 'Upload the manuscript you want to convert.', step: 3 },
+      { id: 'formats', label: 'Publishing formats', status: fd.formats.length ? 'complete' : 'missing', message: fd.formats.length ? fd.formats.join(', ') : 'Select at least one publishing format.', step: 3 },
+      { id: 'conversion', label: 'Conversion readiness', status: hasBlockingLayoutIssue ? 'blocker' : msStructure ? 'complete' : manuscriptFileName ? 'recommended' : 'missing', message: hasBlockingLayoutIssue ? 'Resolve critical manuscript issues before publishing.' : msStructure ? 'No blocking conversion issues detected.' : manuscriptFileName ? 'Run the manuscript health check.' : 'Available after manuscript upload.', step: 4 },
+      { id: 'cover', label: 'Book cover', status: fd.coverMode === 'upload' && !fd.coverPreview ? 'missing' : fd.title.trim() ? 'complete' : 'recommended', message: fd.coverMode === 'upload' && !fd.coverPreview ? 'Upload the selected cover artwork.' : fd.title.trim() ? 'Cover source selected.' : 'Add a title before finalising the template cover.', step: 6 },
+      { id: 'price', label: 'List price', status: fd.isFree || Number.parseFloat(fd.price) > 0 ? 'complete' : 'recommended', message: fd.isFree ? 'Book is set to free.' : Number.parseFloat(fd.price) > 0 ? `List price set to ${fd.price}.` : 'Set a price or mark the book as free.', step: 7, field: 'price' },
+      { id: 'frontmatter', label: 'Essential front matter', status: fd.frontMatter.copyright?.enabled ? 'complete' : 'missing', message: fd.frontMatter.copyright?.enabled ? 'Copyright page enabled.' : 'Enable the copyright page.', step: 9 },
+      { id: 'release', label: 'Release plan', status: releaseDateInvalid ? 'blocker' : 'complete', message: releaseDateInvalid ? `Choose a release date at least ${RELEASE_LEAD_DAYS} days away.` : releaseSummary, step: 11 },
+    ];
+    const complete = items.filter(item => item.status === 'complete').length;
+    return {
+      score: Math.round((complete / items.length) * 100),
+      complete,
+      total: items.length,
+      blockers: items.filter(item => item.status === 'blocker').length,
+      missing: items.filter(item => item.status === 'missing').length,
+      recommended: items.filter(item => item.status === 'recommended').length,
+      items,
+    };
+  }, [fd, layoutIssues, manuscriptFileName, msStructure, releaseDateInvalid, releaseSummary]);
+
+  function navigateToReadinessItem(item) {
+    if (!item || item.step > step) return false;
+    setStepError('');
+    setStep(item.step);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (item.field) {
+      window.setTimeout(() => {
+        const definition = ASSISTANT_FIELD_DEFINITIONS[item.field];
+        const field = Array.from(document.querySelectorAll('.wz-field'))
+          .find(container => container.querySelector(':scope > label')?.textContent?.trim().toLowerCase().startsWith(definition?.label.toLowerCase()));
+        field?.querySelector('input, textarea, select')?.focus();
+      }, 350);
+    }
+    return true;
+  }
+
   const publishingAssistantContext = useMemo(() => ({
     mode: 'publishing_upload',
     draftKey: draftId || 'new',
@@ -2142,6 +2185,7 @@ export default function UploadWizard() {
     stepGroup: WIZARD_STEPS[step]?.group || 'Publishing',
     stepGuidance: WIZARD_STEPS[step]?.blurb || '',
     stepTips: WIZARD_STEPS[step]?.tips || [],
+    readiness: publishingReadiness,
     activeField: assistantActiveField ? {
       ...assistantActiveField,
       value: assistantActiveField.id === 'keywords'
@@ -2163,7 +2207,7 @@ export default function UploadWizard() {
       isFree: fd.isFree,
       publisher: fd.publisher.slice(0, 160),
     },
-  }), [step, draftId, assistantActiveField, fd]);
+  }), [step, draftId, assistantActiveField, fd, publishingReadiness]);
 
   // ─────────────────── SUCCESS / DRAFT SCREEN ──────────────────
   if (step === 12) {
@@ -2270,7 +2314,7 @@ export default function UploadWizard() {
       </aside>
 
       {/* ── Main ── */}
-      <div className="wz-main" onFocusCapture={captureAssistantField} onInputCapture={captureAssistantField}>
+      <div className="wz-main" onFocusCapture={captureAssistantField}>
         <div className="wz-topbar">
           <span className="wz-topbar-label">
             <span className="wz-topbar-num">Step {String(step + 1).padStart(2, '0')}</span>
@@ -4443,6 +4487,7 @@ export default function UploadWizard() {
       <PublishingAssistant
         workflowContext={publishingAssistantContext}
         onInsertSuggestion={insertAssistantSuggestion}
+        onNavigateReadiness={navigateToReadinessItem}
         supportContact={{ name: authorName, email: user?.email || '' }}
       />
     </div>

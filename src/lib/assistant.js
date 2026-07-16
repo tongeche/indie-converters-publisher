@@ -461,7 +461,7 @@ export function createWelcomeMessage(user) {
   };
 }
 
-export async function requestAssistantReply({ message, books = [], sessionId, pageUrl, pageContext, workflowContext, history = [] }) {
+export async function requestAssistantReply({ message, books = [], sessionId, pageUrl, pageContext, workflowContext, requestType = 'chat', history = [] }) {
   const context = pageContext || getAssistantPageContext('/');
   if (typeof fetch !== 'function') return buildAssistantReply(message, books, context);
 
@@ -481,13 +481,14 @@ export async function requestAssistantReply({ message, books = [], sessionId, pa
         pageUrl,
         pageContext: context,
         workflowContext: workflowContext || null,
+        requestType,
         history: recentHistory,
       }),
     });
 
     if (!response.ok) throw new Error(`Assistant endpoint returned ${response.status}`);
     const data = await response.json();
-    if (!data?.text) throw new Error('Assistant endpoint returned an empty response');
+    if (!data?.text && requestType !== 'proactive_guidance') throw new Error('Assistant endpoint returned an empty response');
     return {
       text: data.text,
       books: data.books || [],
@@ -498,6 +499,9 @@ export async function requestAssistantReply({ message, books = [], sessionId, pa
     };
   } catch (error) {
     console.warn('[assistant] falling back to local reply:', error?.message || error);
+    if (requestType === 'proactive_guidance') {
+      return { text: '', books: [], actions: [], fieldSuggestions: [], context: context.section, sources: ['proactive_unavailable'] };
+    }
     return buildAssistantReply(message, books, context);
   }
 }

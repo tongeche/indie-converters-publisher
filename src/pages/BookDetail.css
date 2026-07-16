@@ -34,24 +34,11 @@
   display: flex;
   width: 100%;
   min-height: 500px;
+  padding: 48px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 45%, rgba(139, 111, 225, 0.24), transparent 35%),
-    linear-gradient(145deg, #211342 0%, #2c1b55 54%, #17102f 100%);
-}
-
-.bd-cover-stage::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0.38;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: 46px 46px;
-  mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 75%, transparent);
+  background: #e5e5ea;
 }
 
 .bd-cover-mockup {
@@ -66,7 +53,7 @@
   width: 100% !important;
   height: auto !important;
   aspect-ratio: 2 / 3;
-  box-shadow: 0 30px 52px -15px rgba(4, 1, 12, 0.5), 0 8px 18px rgba(4, 1, 12, 0.25);
+  box-shadow: 0 30px 52px -15px rgba(4, 1, 12, 0.28), 0 8px 18px rgba(4, 1, 12, 0.14);
 }
 
 .bd-cover-glow {
@@ -77,7 +64,7 @@
   width: 56%;
   height: 22px;
   border-radius: 50%;
-  background: rgba(6, 2, 18, 0.42);
+  background: rgba(0, 0, 0, 0.16);
   filter: blur(12px);
   transform: translateX(-50%);
 }
@@ -116,7 +103,7 @@ a.bd-label-chip:hover { background: #eee9fa; }
   max-width: 580px;
   margin: 0 0 6px;
   color: #171126;
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
   font-size: clamp(1.9rem, 3.4vw, 2.75rem);
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -124,7 +111,7 @@ a.bd-label-chip:hover { background: #eee9fa; }
 }
 
 .bd-subtitle {
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 1.1rem;
   font-weight: 300;
   font-style: italic;
@@ -206,7 +193,7 @@ a.bd-label-chip:hover { background: #eee9fa; }
 }
 .bd-price-block strong {
   color: #171126;
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 1.2rem;
 }
 
@@ -474,7 +461,7 @@ a.bd-label-chip:hover { background: #eee9fa; }
 .bd-icon-btn--saved:hover { background: rgba(167,139,250,0.22); color: #a78bfa; }
 
 .bd-section-title {
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 1.2rem;
   font-weight: 700;
   color: #1c1c1e;
@@ -573,14 +560,14 @@ a.bd-label-chip:hover { background: #eee9fa; }
 
   .bd-feature { grid-template-columns: 1fr; }
 
-  .bd-cover-stage { min-height: 380px; }
+  .bd-cover-stage { min-height: 380px; padding: 36px; }
   .bd-cover-mockup { width: min(230px, 48%); }
 }
 
 @media (max-width: 540px) {
   .bd-hero { padding: 16px 0 0; }
 
-  .bd-cover-stage { min-height: 300px; }
+  .bd-cover-stage { min-height: 300px; padding: 28px; }
   .bd-cover-mockup { width: min(195px, 58%); }
 
   .bd-content { padding: 28px 20px; }

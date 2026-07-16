@@ -41,6 +41,21 @@ function sanitizePublishingWorkflow(value) {
         validation: cleanWorkflowText(rawActive.validation, 240),
       }
     : null;
+  const readinessStatuses = new Set(['complete', 'recommended', 'missing', 'blocker']);
+  const readinessItems = Array.isArray(value.readiness?.items)
+    ? value.readiness.items.slice(0, 20).map(item => ({
+        id: cleanWorkflowText(item?.id, 50),
+        label: cleanWorkflowText(item?.label, 100),
+        status: readinessStatuses.has(item?.status) ? item.status : 'recommended',
+        message: cleanWorkflowText(item?.message, 240),
+        step: Math.min(Math.max(Number(item?.step) || 0, 0), 19),
+        field: PUBLISHING_ASSISTANT_FIELDS.has(item?.field) ? item.field : null,
+      })).filter(item => item.id && item.label)
+    : [];
+  const readinessComplete = readinessItems.filter(item => item.status === 'complete').length;
+  const rawDescriptionBrief = value.descriptionBrief && typeof value.descriptionBrief === 'object'
+    ? value.descriptionBrief
+    : null;
 
   return {
     mode: 'publishing_upload',
@@ -50,6 +65,22 @@ function sanitizePublishingWorkflow(value) {
     stepGroup: cleanWorkflowText(value.stepGroup, 80),
     stepGuidance: cleanWorkflowText(value.stepGuidance, 500),
     stepTips: Array.isArray(value.stepTips) ? value.stepTips.slice(0, 5).map(tip => cleanWorkflowText(tip, 200)) : [],
+    readiness: {
+      score: readinessItems.length ? Math.round((readinessComplete / readinessItems.length) * 100) : 100,
+      complete: readinessComplete,
+      total: readinessItems.length,
+      blockers: readinessItems.filter(item => item.status === 'blocker').length,
+      missing: readinessItems.filter(item => item.status === 'missing').length,
+      recommended: readinessItems.filter(item => item.status === 'recommended').length,
+      items: readinessItems,
+    },
+    descriptionBrief: rawDescriptionBrief ? {
+      premise: cleanWorkflowText(rawDescriptionBrief.premise, 700),
+      subject: cleanWorkflowText(rawDescriptionBrief.subject, 500),
+      conflict: cleanWorkflowText(rawDescriptionBrief.conflict, 500),
+      appeal: cleanWorkflowText(rawDescriptionBrief.appeal, 400),
+      tone: cleanWorkflowText(rawDescriptionBrief.tone, 80),
+    } : null,
     activeField,
     bookDetails: {
       title: cleanWorkflowText(details.title, 160),
@@ -254,7 +285,7 @@ function summariseBook(book) {
   };
 }
 
-function buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext }) {
+function buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType }) {
   const context = pageContext || {};
   const bookContext = books.slice(0, 5).map(summariseBook);
   const isUploadWorkflow = workflowContext?.mode === 'publishing_upload';
@@ -268,7 +299,19 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
         'Do not invent facts about the book. When information is missing, ask one focused question. When brainstorming copy, provide 2 or 3 concise options that preserve the author’s voice.',
         'Never draft a description, blurb, subtitle, keywords, or marketing copy from only a title or genre. First collect enough real material from the author—such as premise, protagonist or subject, central goal or conflict, stakes, tone, and intended reader. Ask for the most important missing detail one question at a time.',
         'The activeField is the field the author is currently using. Resolve words like “this”, “it”, “here”, and “the field” against activeField without asking them to identify it again.',
+        'Treat publishing_workflow.readiness as the authoritative readiness checklist. Never invent or upgrade a readiness status. When asked whether the book is ready, mention blockers first, then missing essentials, then at most one recommendation.',
         'When you can provide ready-to-insert wording for activeField, include it in fieldSuggestions. Suggest only activeField.id and never another field. Do not suggest values for numeric, legal, identifier, file, price, or distribution fields.',
+        ...(requestType === 'proactive_guidance' ? [
+          'This is a proactive review, not a user question. Identify at most one concrete, actionable issue supported by the current step, active field, validation, or book details.',
+          'Do not give generic tips, praise, summaries, or broad offers to help. Do not repeat advice already obvious from the field label.',
+          'Do not return placeholder wording or generic insertable copy. Return fieldSuggestions only when you can revise meaningful existing text without inventing book facts; otherwise explain the issue or ask one targeted question.',
+          'Keep useful guidance under 45 words. If there is no meaningful issue worth interrupting the author about, return an empty text string and no actions or fieldSuggestions.',
+        ] : []),
+        ...(requestType === 'description_builder' ? [
+          'The author has completed the guided description brief. Write one polished reader-facing book description using only facts in descriptionBrief and bookDetails.',
+          'Use 2 or 3 short paragraphs and 100 to 170 words. Lead with a hook, establish the subject or central character and conflict, convey stakes or reader value, and end with a concise invitation suited to the supplied tone.',
+          'Do not add names, events, claims, credentials, reviews, comparisons, or outcomes the author did not provide. Return exactly one fieldSuggestion for the description field, labelled “Use this description”.',
+        ] : []),
         'Treat supplied book details as private working context. Do not request manuscript text, passwords, payment data, contact details, or other sensitive information.',
       ]
     : [
@@ -299,6 +342,7 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
       role: 'user',
       content: JSON.stringify({
         user_message: message,
+        request_type: requestType,
         page_context: {
           section: context.section || 'landing',
           label: context.label || 'Landing page',
@@ -321,7 +365,7 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
   ];
 }
 
-async function generateAssistantReply({ message, baseReply, books, pageContext, articles, history, workflowContext }) {
+async function generateAssistantReply({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType }) {
   const openaiBaseUrl = getEnv('OPENAI_BASE_URL');
   const openaiApiKey = getEnv('OPENAI_API_KEY');
   if (!openaiBaseUrl && !openaiApiKey) return baseReply;
@@ -333,17 +377,20 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
     });
     const completion = await openai.chat.completions.create({
       model: getAssistantModel(),
-      messages: buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext }),
+      messages: buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType }),
       response_format: { type: 'json_object' },
       temperature: 0.35,
-      max_tokens: 220,
+      max_tokens: requestType === 'description_builder' ? 500 : 220,
     });
 
     const content = completion.choices?.[0]?.message?.content;
     if (!content) return baseReply;
 
     const parsed = JSON.parse(content);
-    if (!parsed?.text) return baseReply;
+    if (requestType !== 'proactive_guidance' && !parsed?.text) return baseReply;
+    if (requestType === 'proactive_guidance' && !String(parsed?.text || '').trim()) {
+      return { ...baseReply, text: '', actions: [], fieldSuggestions: [], sources: ['openai', 'proactive_review'] };
+    }
 
     const allowedNavigatePaths = new Set(
       (baseReply.actions || [])
@@ -362,8 +409,8 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
         type: action.type,
         value: action.value.trim().slice(0, 240),
       }));
-    const activeFieldId = workflowContext?.activeField?.id;
-    const maxFieldLength = workflowContext?.activeField?.maxLength || 4000;
+    const activeFieldId = requestType === 'description_builder' ? 'description' : workflowContext?.activeField?.id;
+    const maxFieldLength = requestType === 'description_builder' ? 4000 : workflowContext?.activeField?.maxLength || 4000;
     const safeFieldSuggestions = activeFieldId
       ? (Array.isArray(parsed.fieldSuggestions) ? parsed.fieldSuggestions : [])
           .filter(suggestion => (
@@ -380,7 +427,9 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
 
     return {
       ...baseReply,
-      text: String(parsed.text).trim().slice(0, 600),
+      text: requestType === 'description_builder' && safeFieldSuggestions.length
+        ? 'I drafted a description from your answers. Review it below, then insert it or adjust your brief.'
+        : String(parsed.text).trim().slice(0, 600),
       actions: safeActions,
       fieldSuggestions: safeFieldSuggestions,
       sources: Array.from(new Set([
@@ -418,6 +467,9 @@ export default async (req) => {
   ]);
   const pageContext = payload?.pageContext || null;
   const workflowContext = sanitizePublishingWorkflow(payload?.workflowContext);
+  const requestType = workflowContext && ['proactive_guidance', 'description_builder'].includes(payload?.requestType)
+    ? payload.requestType
+    : 'chat';
   const history = sanitizeAssistantHistory(payload?.history, message, workflowContext ? 16 : undefined);
   const baseReply = buildAssistantReply(message, books, pageContext, articles);
   const reply = await generateAssistantReply({
@@ -428,6 +480,7 @@ export default async (req) => {
     articles,
     history,
     workflowContext,
+    requestType,
   });
 
   return json({

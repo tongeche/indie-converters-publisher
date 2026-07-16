@@ -34,13 +34,32 @@
   align-items: flex-end;
   gap: 32px;
 }
+.author-avatar {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 10px 26px rgba(10, 5, 30, 0.3);
+}
+.author-avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--cream);
+  font-family: 'Inter', sans-serif;
+  font-size: 1.7rem;
+  font-weight: 700;
+}
 .author-meta {
   display: flex;
   flex-direction: column;
   gap: 14px;
   max-width: 760px;
 }
-.author-meta h1 { font-size: clamp(1.8rem, 4vw, 2.8rem); color: var(--cream); }
+.author-meta h1 { font-family: 'Inter', sans-serif; font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 650; color: var(--cream); }
 .author-hero-bio {
   max-width: 680px;
   color: rgba(252, 251, 255, 0.82);
@@ -112,7 +131,9 @@
 
 .author-guide-copy h2 {
   margin-bottom: 10px;
+  font-family: 'Inter', sans-serif;
   font-size: clamp(1.5rem, 2.4vw, 2rem);
+  font-weight: 650;
   line-height: 1.1;
   color: var(--ink);
 }
@@ -126,7 +147,10 @@
 
 .author-guide-links {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.72fr);
+  /* auto-fit (not a fixed 2-column split) so a single-book author's "Start
+     here" card stretches to fill the row instead of leaving the second
+     column looking like a missing/broken slot. */
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
   margin-top: 20px;
 }
@@ -157,7 +181,7 @@
 }
 
 .author-guide-link strong {
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 1.08rem;
   line-height: 1.25;
   color: var(--ink);
@@ -221,7 +245,9 @@
   padding-bottom: 6px;
 }
 .author-books-col h2 {
+  font-family: 'Inter', sans-serif;
   font-size: clamp(1.45rem, 2vw, 1.85rem);
+  font-weight: 650;
   line-height: 1.1;
 }
 .author-books-heading p {
@@ -263,7 +289,7 @@
   min-width: 0;
 }
 .author-book-info h3 {
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 1.05rem;
   font-weight: 600;
   line-height: 1.24;
