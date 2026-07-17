@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import BookCover from '../components/BookCover';
+import ChatAvatar from '../components/ChatAvatar';
 import SEO from '../components/SEO';
 import OurStorySection from '../components/OurStorySection';
 import MissionCardSection from '../components/MissionCardSection';
@@ -20,6 +23,7 @@ import {
   ASSISTANT_PROMPTS,
   createWelcomeMessage,
   formatAssistantTime,
+  getAssistantActionMessage,
   getAssistantPageContext,
   isHumanSupportIntent,
   requestAssistantReply,
@@ -60,6 +64,43 @@ const DISTRIBUTION_CHANNELS = [
 ];
 
 const DISTRIBUTION_ROWS = [DISTRIBUTION_CHANNELS];
+
+function escapeRegularExpression(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function linkCatalogueTitles(text, books = []) {
+  return [...books]
+    .filter(book => book?.title && book?.slug)
+    .sort((a, b) => b.title.length - a.title.length)
+    .reduce((content, book) => {
+      const titlePattern = new RegExp(escapeRegularExpression(book.title), 'gi');
+      return content.replace(titlePattern, (matchedTitle, offset, source) => (
+        source[offset - 1] === '[' ? matchedTitle : `[${matchedTitle}](/book/${encodeURIComponent(book.slug)})`
+      ));
+    }, text);
+}
+
+function AssistantMessageContent({ text, books }) {
+  const formattedText = linkCatalogueTitles(
+    String(text || '').replace(/\s+(?=\d+\.\s+\*\*)/g, '\n'),
+    books,
+  );
+  return (
+    <div className="landing-assistant-rich-text">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href = '', children }) => href.startsWith('/')
+            ? <Link to={href}>{children}</Link>
+            : <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+        }}
+      >
+        {formattedText}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 function DistributionLogo({ channel }) {
   if (channel.id === 'apple') {
@@ -479,6 +520,10 @@ export default function Landing() {
   const [featuredScrollState, setFeaturedScrollState] = useState({ atStart: true, atEnd: false });
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantCollapsed, setAssistantCollapsed] = useState(false);
+  const [assistantMaximized, setAssistantMaximized] = useState(false);
+  const [assistantDarkMode, setAssistantDarkMode] = useState(() => (
+    typeof window !== 'undefined' && window.localStorage.getItem('ic_jane_theme') === 'dark'
+  ));
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantPending, setAssistantPending] = useState(false);
   const [assistantConsent, setAssistantConsent] = useState(() => readAssistantConsent());
@@ -502,6 +547,10 @@ export default function Landing() {
   const assistantToggleRef = useRef(null);
   const assistantDragStartRef = useRef(null);
 
+  useEffect(() => {
+    window.localStorage.setItem('ic_jane_theme', assistantDarkMode ? 'dark' : 'light');
+  }, [assistantDarkMode]);
+
   const clearHandoffState = useCallback(() => {
     setHandoffStep('idle');
     setHandoffDraft(createAssistantHandoffDraft());
@@ -515,6 +564,7 @@ export default function Landing() {
     handoffRequestIdRef.current += 1;
     setAssistantOpen(false);
     setAssistantCollapsed(false);
+    setAssistantMaximized(false);
     setAssistantPending(false);
     setAssistantInput('');
     setAssistantMessages(messages => messages.filter(message => (
@@ -1186,11 +1236,12 @@ export default function Landing() {
 
       <OurStorySection />
 
+      <hr className="section-divider" />
+
       {/* ── Distribution channels ── */}
-      <section className="distribution-strip" aria-labelledby="distribution-heading">
+      <section className="distribution-strip" aria-label="Sell your book where readers already are">
         <div className="container distribution-inner">
           <div className="distribution-copy">
-            <h2 id="distribution-heading">Sell your book where readers already are</h2>
             <p>Retailers, libraries, and regional ebookstores authors already trust.</p>
           </div>
           <div className="distribution-marquee" aria-label="Distribution channels">
@@ -1373,7 +1424,7 @@ export default function Landing() {
         onAction={() => trackEvent('Create Account Click', { location: 'landing-bottom-cta' })}
       />
 
-      <div className={`landing-assistant${assistantOpen ? ' landing-assistant--open' : ''}${assistantCollapsed ? ' landing-assistant--collapsed' : ''}`}>
+      <div className={`landing-assistant${assistantOpen ? ' landing-assistant--open' : ''}${assistantCollapsed ? ' landing-assistant--collapsed' : ''}${assistantOpen && assistantMaximized ? ' landing-assistant--maximized' : ''}${assistantDarkMode ? ' landing-assistant--dark' : ''}`}>
         {assistantOpen && (
           <aside
             ref={assistantPanelRef}
@@ -1382,6 +1433,15 @@ export default function Landing() {
             aria-modal="true"
             aria-labelledby="landing-assistant-dialog-title"
           >
+            <aside className="landing-assistant-max-sidebar landing-assistant-max-sidebar--left" aria-label="Assistant shortcuts">
+              <div className="landing-assistant-max-sidebar-heading"><ChatAvatar variant="jane" /><span><strong>Jane</strong><small>Your Indie guide</small></span></div>
+              <nav>
+                <button type="button" onClick={resetAssistantChat}><span aria-hidden="true">＋</span><span><strong>New conversation</strong><small>Start with a clear chat</small></span></button>
+                <button type="button" onClick={() => sendAssistantMessage('Help me publish my book')}><span aria-hidden="true">↗</span><span><strong>Publish a book</strong><small>Understand the next steps</small></span></button>
+                <button type="button" onClick={() => sendAssistantMessage('Help me find a book to read')}><span aria-hidden="true">⌕</span><span><strong>Discover books</strong><small>Find your next read</small></span></button>
+                <button type="button" onClick={() => sendAssistantMessage('I need to talk to a real person')}><span aria-hidden="true">◎</span><span><strong>Contact support</strong><small>Reach the Indie team</small></span></button>
+              </nav>
+            </aside>
             <div
               className="landing-assistant-brand-row"
               onTouchStart={startAssistantDrag}
@@ -1389,15 +1449,18 @@ export default function Landing() {
               onClick={expandCollapsedAssistant}
             >
               <div className="landing-assistant-brand">
-                <span className="landing-assistant-logo" aria-hidden="true">.in</span>
-                <span id="landing-assistant-dialog-title">indie<strong>converters</strong></span>
+                <ChatAvatar variant="jane" />
+                <span className="landing-assistant-identity"><strong id="landing-assistant-dialog-title">Jane</strong><small>Indie Converters assistant</small></span>
               </div>
               <div className="landing-assistant-window-actions">
-                <button type="button" onClick={resetAssistantChat} aria-label="Start a new chat" title="New chat">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                </button>
+                <details className="landing-assistant-overflow">
+                  <summary aria-label="More chat options" title="More options">⋮</summary>
+                  <div role="menu">
+                    <button type="button" role="menuitem" onClick={resetAssistantChat}><span aria-hidden="true">＋</span>New conversation</button>
+                    <button type="button" role="menuitem" onClick={() => setAssistantDarkMode(value => !value)}><span aria-hidden="true">◐</span>{assistantDarkMode ? 'Light mode' : 'Dark mode'}</button>
+                    <button type="button" role="menuitem" onClick={() => { setAssistantCollapsed(false); setAssistantMaximized(value => !value); }}><span aria-hidden="true">↗</span>{assistantMaximized ? 'Restore window' : 'Expand window'}</button>
+                  </div>
+                </details>
                 <button
                   type="button"
                   className="landing-assistant-close"
@@ -1433,6 +1496,12 @@ export default function Landing() {
 
                   return (
                     <div key={message.id} className={messageClassName}>
+                      <ChatAvatar
+                        variant={message.role === 'assistant' ? 'jane' : 'user'}
+                        name={user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'You'}
+                        photoUrl={user?.user_metadata?.avatar_url || user?.user_metadata?.picture || ''}
+                        className="landing-assistant-message-avatar"
+                      />
                       {message.kind === 'handoff-error' ? (
                         <div className="landing-assistant-inline-warning" role="alert">
                           <span className="landing-assistant-inline-warning-icon" aria-hidden="true">!</span>
@@ -1450,9 +1519,9 @@ export default function Landing() {
                             )}
                           </div>
                         </div>
-                      ) : (
-                        <p>{message.text}</p>
-                      )}
+                      ) : message.role === 'assistant' ? (
+                        <AssistantMessageContent text={message.text} books={message.books} />
+                      ) : <p>{message.text}</p>}
                       {message.actions?.length > 0 && (
                         <div className="landing-assistant-message-actions" aria-label="Suggested next steps">
                           {message.actions.map(action => (
@@ -1461,7 +1530,7 @@ export default function Landing() {
                                 {action.label} <span aria-hidden="true">→</span>
                               </Link>
                             ) : (
-                              <button key={`${action.type}-${action.value}`} type="button" onClick={() => sendAssistantMessage(action.value)}>
+                              <button key={`${action.type}-${action.value}`} type="button" onClick={() => sendAssistantMessage(getAssistantActionMessage(action))}>
                                 {action.label}
                               </button>
                             )
@@ -1509,7 +1578,7 @@ export default function Landing() {
                   );
                 })}
                 {(assistantPending || handoffPending) && (
-                  <div className="landing-assistant-message landing-assistant-message--assistant landing-assistant-message--typing" aria-label="Indie is typing">
+                  <div className="landing-assistant-message landing-assistant-message--assistant landing-assistant-message--typing" aria-label="Jane is typing">
                     <span></span><span></span><span></span>
                   </div>
                 )}
@@ -1542,7 +1611,7 @@ export default function Landing() {
                     value={assistantInput}
                     onChange={event => setAssistantInput(event.target.value)}
                     placeholder={handoffComposerPlaceholder(handoffStep)}
-                    aria-label={handoffStep === 'idle' ? 'Ask Indie Converters assistant' : handoffComposerPlaceholder(handoffStep)}
+                    aria-label={handoffStep === 'idle' ? 'Ask Jane, the Indie Converters assistant' : handoffComposerPlaceholder(handoffStep)}
                     disabled={composerDisabled}
                   />
                   <button type="submit" disabled={!assistantInput.trim() || composerDisabled} aria-label="Send message">
@@ -1557,6 +1626,16 @@ export default function Landing() {
                 By sending a message, you agree to our <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.
               </p>
             </div>
+            <aside className="landing-assistant-max-sidebar landing-assistant-max-sidebar--right" aria-label="Suggested conversations">
+              <span className="landing-assistant-max-eyebrow">Try asking Jane</span>
+              <h3>What would you like to do?</h3>
+              <p>Choose a starting point or continue naturally in the conversation.</p>
+              <div className="landing-assistant-max-suggestions">
+                {ASSISTANT_PROMPTS.map(prompt => <button key={`max-${prompt}`} type="button" onClick={() => sendAssistantMessage(prompt)}>{prompt}<span aria-hidden="true">→</span></button>)}
+                <button type="button" onClick={() => sendAssistantMessage('How does Indie Converters work?')}>How Indie Converters works<span aria-hidden="true">→</span></button>
+              </div>
+              <div className="landing-assistant-max-note"><strong>Private by design</strong><span>Your support details are only collected when you choose to contact the team.</span></div>
+            </aside>
           </aside>
         )}
 

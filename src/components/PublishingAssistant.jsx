@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { isHumanSupportIntent, requestAssistantReply } from '../lib/assistant';
-import { submitAssistantHandoff } from '../lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import ChatAvatar from './ChatAvatar';
+import { getAssistantActionMessage, isHumanSupportIntent, requestAssistantReply } from '../lib/assistant';
+import { createAssistantSession, submitAssistantHandoff } from '../lib/api';
 import { buildPricingCoachScenarios, formatRoyaltyMoney } from '../lib/royaltyCalculator';
 import './PublishingAssistant.css';
 
@@ -86,6 +89,10 @@ function TypewriterText({ text, animate, onComplete }) {
   );
 }
 
+function PublishingMessageContent({ text }) {
+  return <div className="publishing-assistant-rich-text"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target={href?.startsWith('/') ? undefined : '_blank'} rel={href?.startsWith('/') ? undefined : 'noreferrer'}>{children}</a> }}>{text}</ReactMarkdown></div>;
+}
+
 function MetadataItem({ title, item, applyLabel, applied, onApply }) {
   if (!item) return null;
   return <article className="publishing-assistant-metadata-item"><div><strong>{title}</strong><span className={`is-${item.confidence}`}>{item.confidence} confidence</span></div><p>{item.label || item.value}</p>{item.rationale && <small>{item.rationale}</small>}{onApply && <button type="button" onClick={onApply} disabled={applied}>{applied ? 'Applied ✓' : applyLabel}</button>}</article>;
@@ -108,19 +115,38 @@ function PricingScenarios({ scenarios }) {
   return <div className="publishing-assistant-pricing-scenarios">{scenarios.map(scenario => <details key={scenario.id} open={scenario.id === 'balanced'}><summary className="publishing-assistant-pricing-scenario-head"><strong>{scenario.label}</strong><small>Estimated per sale</small></summary>{scenario.comparisons.map((item, index) => <div key={`${item.channel}-${item.format}-${index}`}><span><strong>{item.format} · {item.channel}</strong><small>{formatRoyaltyMoney(item.listPrice)} list{item.platformFees == null ? ` · ${item.note}` : ` · ${formatRoyaltyMoney(item.platformFees)} fees${item.printCost ? ` · ${formatRoyaltyMoney(item.printCost)} print` : ''}`}</small></span><em>{item.estimatedRoyalty == null ? 'Not available' : formatRoyaltyMoney(item.estimatedRoyalty)}</em></div>)}</details>)}</div>;
 }
 
-export default function PublishingAssistant({ workflowContext, onInsertSuggestion, onNavigateReadiness, onInsertMatterDraft, onApplyDistributionStrategy, onRememberBookFacts, supportContact = {} }) {
+export default function PublishingAssistant({ workflowContext, onInsertSuggestion, onNavigateReadiness, onInsertMatterDraft, onApplyDistributionStrategy, onRememberBookFacts, onContinue, supportContact = {} }) {
   const storageKey = `ic_publishing_assistant_${workflowContext.draftKey || 'new'}`;
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => (
+    typeof window !== 'undefined' && window.localStorage.getItem('ic_alex_theme') === 'dark'
+  ));
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
   const [messages, setMessages] = useState(() => readSessionMessages(storageKey) || [
-    newMessage('assistant', 'I can help with each publishing step. Select a field or ask me what to do next.'),
+    newMessage('assistant', 'Hi, I’m Alex. I can help with each publishing step. Select a field or ask me what to do next.'),
   ]);
   const [insertedSuggestion, setInsertedSuggestion] = useState('');
   const [typingMessageId, setTypingMessageId] = useState('');
   const [humanFlow, setHumanFlow] = useState(null);
   const [showReadiness, setShowReadiness] = useState(false);
+  const agentSessionIdRef = useRef(null);
+  const agentSessionPromiseRef = useRef(null);
+  const agentSessionNeedsCreateRef = useRef(false);
+  const agentSessionResetRef = useRef(false);
+  if (!agentSessionIdRef.current) {
+    const savedSessionId = typeof window !== 'undefined' ? window.sessionStorage.getItem(`${storageKey}_agent_session`) : null;
+    const validSavedId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(savedSessionId || '') ? savedSessionId : null;
+    agentSessionIdRef.current = validSavedId || crypto.randomUUID();
+    agentSessionNeedsCreateRef.current = !validSavedId;
+    if (typeof window !== 'undefined' && !validSavedId) window.sessionStorage.setItem(`${storageKey}_agent_session`, agentSessionIdRef.current);
+  }
+
+  useEffect(() => {
+    window.localStorage.setItem('ic_alex_theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
   const [showDescriptionBuilder, setShowDescriptionBuilder] = useState(false);
   const [descriptionBrief, setDescriptionBrief] = useState(EMPTY_DESCRIPTION_BRIEF);
   const [descriptionBuilderStep, setDescriptionBuilderStep] = useState(0);
@@ -138,6 +164,29 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
   const dragStartRef = useRef(null);
   const proactiveReviewedRef = useRef(new Set());
   const proactiveRequestRef = useRef(0);
+
+  const ensureAgentSession = useCallback(async () => {
+    if (!agentSessionNeedsCreateRef.current) return agentSessionIdRef.current;
+    if (!agentSessionPromiseRef.current) {
+      agentSessionPromiseRef.current = createAssistantSession({
+        id: agentSessionIdRef.current,
+        userId: supportContact.userId,
+        visitorId: null,
+        consentAcceptedAt: new Date().toISOString(),
+        pageUrl: typeof window !== 'undefined' ? window.location.href : '/upload',
+      }).then(sessionId => {
+        agentSessionNeedsCreateRef.current = false;
+        return sessionId;
+      }).catch(error => {
+        agentSessionPromiseRef.current = null;
+        console.error('[publishing assistant] could not create durable session:', error?.message || error);
+        return agentSessionIdRef.current;
+      });
+    }
+    return agentSessionPromiseRef.current;
+  }, [supportContact.userId]);
+
+  useEffect(() => { ensureAgentSession(); }, [ensureAgentSession]);
 
   useEffect(() => {
     if (!open || !messageListRef.current) return;
@@ -174,7 +223,10 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     const timer = window.setTimeout(async () => {
       proactiveReviewedRef.current.add(reviewKey);
       window.sessionStorage.setItem(`${storageKey}_reviewed`, JSON.stringify([...proactiveReviewedRef.current]));
+      await ensureAgentSession();
       const reply = await requestAssistantReply({
+        sessionId: agentSessionIdRef.current,
+        resetSession: agentSessionResetRef.current,
         message: 'Review the current publishing context and surface one important issue only if it is genuinely useful.',
         requestType: 'proactive_guidance',
         history: messages,
@@ -186,6 +238,7 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
         },
         workflowContext,
       });
+      agentSessionResetRef.current = false;
       if (proactiveRequestRef.current !== requestId || !reply.text?.trim()) return;
       const guidance = newMessage('assistant', reply.text, { ...reply, kind: 'proactive-guidance' });
       setTypingMessageId(guidance.id);
@@ -196,7 +249,7 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       window.clearTimeout(timer);
       proactiveRequestRef.current += 1;
     };
-  }, [collapsed, humanFlow, input, messages, open, pending, showDescriptionBuilder, showDistributionAdvisor, showMatterGenerator, showMetadataIntelligence, showPricingCoach, showReadiness, storageKey, workflowContext]);
+  }, [collapsed, ensureAgentSession, humanFlow, input, messages, open, pending, showDescriptionBuilder, showDistributionAdvisor, showMatterGenerator, showMetadataIntelligence, showPricingCoach, showReadiness, storageKey, workflowContext]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || window.innerWidth > 640 || !open || collapsed) return undefined;
@@ -232,6 +285,30 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       setShowPricingCoach(false);
       setShowMatterGenerator(false);
       setShowDistributionAdvisor(false);
+      return;
+    }
+    if (!showDescriptionBuilder && /\b(?:help|build|write|create|improve|draft)\b.*\b(?:description|blurb)\b/i.test(text)) {
+      setInput('');
+      setMessages(current => [...current, userMessage]);
+      startDescriptionBuilder();
+      return;
+    }
+    if (!showPricingCoach && /\b(?:price|pricing|royalt|earnings)\b/i.test(text) && /\b(?:help|coach|compare|choose|recommend|scenario)\b/i.test(text)) {
+      setInput('');
+      setMessages(current => [...current, userMessage]);
+      startPricingCoach();
+      return;
+    }
+    if (!showDistributionAdvisor && /\b(?:distribution|wide|exclusive|exclusivity|retailers|libraries)\b/i.test(text) && /\b(?:help|choose|decide|compare|strategy)\b/i.test(text)) {
+      setInput('');
+      setMessages(current => [...current, userMessage]);
+      startDistributionAdvisor();
+      return;
+    }
+    if (!showMatterGenerator && /\b(?:copyright|dedication|biography|bio|acknowledgements|also.by|reader call|reading.group|front matter|back matter)\b/i.test(text) && /\b(?:write|create|draft|generate|help)\b/i.test(text)) {
+      setInput('');
+      setMessages(current => [...current, userMessage]);
+      startMatterGenerator();
       return;
     }
     if (showDescriptionBuilder) {
@@ -271,12 +348,33 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       else setMessages(current => [...current, userMessage, newMessage('assistant', 'Choose the closest priority below. You can revise the strategy later.', { kind: 'distribution-advisor-question', actions: DISTRIBUTION_PRIORITIES.map(item => ({ type: 'distribution_priority', label: item.label, value: item.value })) })]);
       return;
     }
+    if (/^(?:next|what(?:'s| is) next|continue|what should i do (?:now|next))\??$/i.test(text)) {
+      const next = workflowContext.nextAction;
+      const actions = next?.kind === 'fix' && next.field
+        ? [{ type: 'wizard', label: `Go to ${next.label}`, value: next.field }]
+        : next?.kind === 'continue'
+          ? [{ type: 'wizard_next', label: `Continue to ${next.label}`, value: 'continue' }]
+          : [];
+      const replyText = next?.kind === 'fix'
+        ? `Next, ${next.message || `complete ${next.label}`}`
+        : next?.kind === 'continue'
+          ? `This step is ready. Continue to **${next.label}**.`
+          : 'Your publishing details are ready for final review. Check the readiness list, then confirm your release plan.';
+      const nextMessage = newMessage('assistant', replyText, { kind: 'next-guidance', actions });
+      setInput('');
+      setMessages(current => [...current, userMessage, nextMessage]);
+      setTypingMessageId(nextMessage.id);
+      return;
+    }
     const history = [...messages, userMessage];
     setInput('');
     setPending(true);
     setMessages(current => [...current, userMessage]);
 
+    await ensureAgentSession();
     const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
       message: text,
       history,
       pageUrl: typeof window !== 'undefined' ? window.location.href : '/upload',
@@ -287,6 +385,7 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       },
       workflowContext,
     });
+    agentSessionResetRef.current = false;
 
     const assistantMessage = newMessage('assistant', reply.text, reply);
     setTypingMessageId(assistantMessage.id);
@@ -315,6 +414,12 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     proactiveRequestRef.current += 1;
     proactiveReviewedRef.current = new Set();
     if (typeof window !== 'undefined') {
+      const nextSessionId = crypto.randomUUID();
+      agentSessionIdRef.current = nextSessionId;
+      agentSessionPromiseRef.current = null;
+      agentSessionNeedsCreateRef.current = true;
+      agentSessionResetRef.current = true;
+      window.sessionStorage.setItem(`${storageKey}_agent_session`, nextSessionId);
       window.sessionStorage.removeItem(storageKey);
       window.sessionStorage.removeItem(`${storageKey}_reviewed`);
     }
@@ -434,7 +539,10 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
   async function buildDescription(completedBrief, history) {
     onRememberBookFacts?.({ centralSubject: completedBrief.subject });
     setPending(true);
+    await ensureAgentSession();
     const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
       message: 'Create my guided book description from the completed brief.',
       requestType: 'description_builder',
       history,
@@ -446,6 +554,7 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
         descriptionBrief: completedBrief,
       },
     });
+    agentSessionResetRef.current = false;
     const result = newMessage('assistant', reply.text, { ...reply, kind: 'description-builder' });
     setTypingMessageId(result.id);
     setMessages(current => [...current, result]);
@@ -461,7 +570,10 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     }
     setMetadataError('');
     setPending(true);
+    await ensureAgentSession();
     const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
       message: 'Review my established book facts and suggest grounded publishing metadata.',
       requestType: 'metadata_intelligence',
       history: messages,
@@ -469,6 +581,7 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       pageContext: { section: 'publishing', label: 'Metadata intelligence', hint: 'Separate author-confirmed facts from AI-inferred recommendations.' },
       workflowContext,
     });
+    agentSessionResetRef.current = false;
     setMetadataAnalysis(reply.metadataAnalysis);
     if (!reply.metadataAnalysis) setMetadataError('I could not produce reliable suggestions from the available facts. Add more detail to the description and try again.');
     setPending(false);
@@ -492,7 +605,10 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     const scenarios = buildPricingCoachScenarios({ objective, ...pricing });
     setMessages(current => [...current, userMessage]);
     setPending(true);
+    await ensureAgentSession();
     const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
       message: `My pricing objective is: ${choice.label}. Explain the trade-offs in the calculated scenarios.`,
       requestType: 'pricing_coach',
       history: [...messages, userMessage],
@@ -500,6 +616,7 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       pageContext: { section: 'publishing', label: 'Pricing coach', hint: 'Explain deterministic royalty scenarios without promising sales.' },
       workflowContext: { ...workflowContext, pricingCoach: { objective: choice.value, objectiveLabel: choice.label, scenarios } },
     });
+    agentSessionResetRef.current = false;
     const result = newMessage('assistant', reply.text, { ...reply, kind: 'pricing-coach-result', pricingScenarios: scenarios });
     setTypingMessageId(result.id);
     setMessages(current => [...current, result]);
@@ -540,7 +657,10 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     }
     setMessages(current => [...current, userMessage]);
     setPending(true);
+    await ensureAgentSession();
     const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
       message: `Create an editable ${option.label} draft from my answer.`,
       requestType: 'matter_generator',
       history: [...messages, userMessage],
@@ -548,6 +668,7 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       pageContext: { section: 'publishing', label: 'Front and back matter generator', hint: 'Generate one editable, fact-grounded matter section.' },
       workflowContext: { ...workflowContext, matterRequest: { type: matterType, authorAnswer: answer } },
     });
+    agentSessionResetRef.current = false;
     const result = newMessage('assistant', reply.matterDraft ? `I drafted your ${option.label.toLowerCase()}. Review it carefully before inserting it.` : 'I could not create a reliable draft from those details. Add more specific facts and try again.', { ...reply, kind: 'matter-generator-result' });
     setTypingMessageId(result.id);
     setMessages(current => [...current, result]);
@@ -602,113 +723,47 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
   const readinessIssues = readiness?.items?.filter(item => item.status !== 'complete') || [];
 
   return (
-    <div className={`publishing-assistant${open ? ' publishing-assistant--open' : ''}${collapsed ? ' publishing-assistant--collapsed' : ''}`}>
+    <div className={`publishing-assistant${open ? ' publishing-assistant--open' : ''}${collapsed ? ' publishing-assistant--collapsed' : ''}${open && maximized ? ' publishing-assistant--maximized' : ''}${darkMode ? ' publishing-assistant--dark' : ''}`}>
       {open && (
         <aside ref={panelRef} className="publishing-assistant-panel" role="dialog" aria-modal="false" aria-label="Publishing assistant">
+          <aside className="publishing-assistant-max-sidebar publishing-assistant-max-sidebar--left" aria-label="Publishing context">
+            <div className="publishing-assistant-max-sidebar-heading"><ChatAvatar variant="alex" /><span><strong>Alex</strong><small>Your publishing guide</small></span></div>
+            <span className="publishing-assistant-max-eyebrow">Current position</span>
+            <div className="publishing-assistant-max-current-step"><b>{workflowContext.stepNumber || '•'}</b><span><strong>{workflowContext.stepLabel}</strong><small>{workflowContext.activeField?.label ? `Working on ${workflowContext.activeField.label}` : 'Publishing workflow'}</small></span></div>
+            <nav>
+              <button type="button" onClick={() => sendMessage('What should I do next?')}><span aria-hidden="true">→</span><span><strong>Continue publishing</strong><small>Get the next useful action</small></span></button>
+              <button type="button" onClick={() => sendMessage('Help me with this field')}><span aria-hidden="true">?</span><span><strong>Help with this field</strong><small>Explain what readers need</small></span></button>
+              <button type="button" onClick={() => sendMessage('Review my publishing readiness and tell me the most important next action')}><span aria-hidden="true">✓</span><span><strong>Check readiness</strong><small>Review missing details</small></span></button>
+            </nav>
+          </aside>
           <header onTouchStart={startDrag} onTouchEnd={endDrag} onClick={expandFromHeader}>
             <div>
-              <span className="publishing-assistant-mark" aria-hidden="true">.in</span>
+              <ChatAvatar variant="alex" />
               <span>
-                <strong>Publishing assistant</strong>
-                <small>{workflowContext.activeField?.label || workflowContext.stepLabel}</small>
+                <strong>Alex</strong>
               </span>
             </div>
             <nav aria-label="Chat controls">
               <button type="button" className="publishing-assistant-collapse" onClick={() => setCollapsed(true)} aria-label="Collapse assistant" title="Collapse assistant">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
               </button>
-              <button type="button" onClick={clearMessages} aria-label="Clear messages" title="Clear messages">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5" /></svg>
-              </button>
-              <button type="button" onClick={() => { setOpen(false); setCollapsed(false); }} aria-label="Close assistant">×</button>
+              <details className="publishing-assistant-overflow">
+                <summary aria-label="More chat options" title="More options">⋮</summary>
+                <div role="menu">
+                  <button type="button" role="menuitem" onClick={clearMessages}><span aria-hidden="true">＋</span>New conversation</button>
+                  <button type="button" role="menuitem" onClick={() => setDarkMode(value => !value)}><span aria-hidden="true">◐</span>{darkMode ? 'Light mode' : 'Dark mode'}</button>
+                  <button type="button" role="menuitem" onClick={() => { setCollapsed(false); setMaximized(value => !value); }}><span aria-hidden="true">↗</span>{maximized ? 'Restore window' : 'Expand window'}</button>
+                </div>
+              </details>
+              <button type="button" onClick={() => { setOpen(false); setCollapsed(false); setMaximized(false); }} aria-label="Close assistant">×</button>
             </nav>
           </header>
 
-          {readiness && (
-            <button
-              type="button"
-              className={`publishing-assistant-readiness-trigger${showReadiness ? ' is-active' : ''}`}
-              onClick={() => setShowReadiness(value => !value)}
-              aria-expanded={showReadiness}
-            >
-              <span className="publishing-assistant-readiness-score" style={{ '--readiness-score': readiness.score }} aria-hidden="true">{readiness.score}</span>
-              <span><strong>Publishing readiness</strong><small>{readiness.complete} of {readiness.total} checks complete</small></span>
-              {(readiness.blockers > 0 || readiness.missing > 0) && (
-                <em>{readiness.blockers ? `${readiness.blockers} blocker${readiness.blockers === 1 ? '' : 's'}` : `${readiness.missing} missing`}</em>
-              )}
-              <span className="publishing-assistant-readiness-chevron" aria-hidden="true">{showReadiness ? '↑' : '↓'}</span>
-            </button>
-          )}
-
-          {workflowContext.stepNumber === 2 && !showDescriptionBuilder && !showMetadataIntelligence && !showReadiness && (
-            <div className="publishing-assistant-tools">
-              <button type="button" className="publishing-assistant-description-trigger" onClick={startDescriptionBuilder}>
-                <span aria-hidden="true">✦</span><span><strong>Build my description</strong><small>Answer 4 short questions</small></span><em>Start →</em>
-              </button>
-              <button type="button" className="publishing-assistant-metadata-trigger" onClick={() => { setShowDescriptionBuilder(false); setShowMetadataIntelligence(true); }}>
-                <span aria-hidden="true">◎</span><span><strong>Metadata intelligence</strong><small>Genres, keywords and positioning</small></span><em>Review →</em>
-              </button>
-            </div>
-          )}
-          {workflowContext.stepNumber === 8 && !showPricingCoach && !showReadiness && (
-            <div className="publishing-assistant-tools"><button type="button" className="publishing-assistant-metadata-trigger" onClick={startPricingCoach}><span aria-hidden="true">$</span><span><strong>Pricing coach</strong><small>Compare royalties by objective</small></span><em>Start →</em></button></div>
-          )}
-          {workflowContext.stepNumber === 9 && !showDistributionAdvisor && !showReadiness && (
-            <div className="publishing-assistant-tools"><button type="button" className="publishing-assistant-metadata-trigger" onClick={startDistributionAdvisor}><span aria-hidden="true">⇄</span><span><strong>Distribution advisor</strong><small>{workflowContext.pricingContext?.distributionStrategy ? 'Review your remembered strategy' : 'Wide, exclusive, or direct-first'}</small></span><em>{workflowContext.pricingContext?.distributionStrategy ? 'Review →' : 'Start →'}</em></button></div>
-          )}
-          {workflowContext.stepNumber === 10 && !showMatterGenerator && !showReadiness && (
-            <div className="publishing-assistant-tools"><button type="button" className="publishing-assistant-metadata-trigger" onClick={startMatterGenerator}><span aria-hidden="true">¶</span><span><strong>Matter generator</strong><small>Draft book-opening and closing pages</small></span><em>Start →</em></button></div>
-          )}
-          {showDescriptionBuilder && !showReadiness && (
-            <div className="publishing-assistant-conversation-mode">
-              <span aria-hidden="true">✦</span><span><strong>Building your description</strong><small>Question {Math.min(descriptionBuilderStep + 1, 4)} of 4</small></span>
-              <button type="button" onClick={() => { setShowDescriptionBuilder(false); setDescriptionBuilderStep(0); }}>Exit</button>
-            </div>
-          )}
-          {showPricingCoach && !showReadiness && (
-            <div className="publishing-assistant-conversation-mode"><span aria-hidden="true">$</span><span><strong>Pricing coach</strong><small>Choose your main objective</small></span><button type="button" onClick={() => setShowPricingCoach(false)}>Exit</button></div>
-          )}
-          {showDistributionAdvisor && !showReadiness && (
-            <div className="publishing-assistant-conversation-mode"><span aria-hidden="true">⇄</span><span><strong>Distribution advisor</strong><small>Choose your main priority</small></span><button type="button" onClick={() => setShowDistributionAdvisor(false)}>Exit</button></div>
-          )}
-          {showMatterGenerator && !showReadiness && (
-            <div className="publishing-assistant-conversation-mode"><span aria-hidden="true">¶</span><span><strong>Front &amp; back matter</strong><small>{matterType ? MATTER_OPTIONS.find(item => item.value === matterType)?.label : 'Choose a section'}</small></span><button type="button" onClick={() => { setShowMatterGenerator(false); setMatterType(''); }}>Exit</button></div>
-          )}
-
-          {showReadiness ? (
-            <section className="publishing-assistant-readiness" aria-label="Publishing readiness checklist">
-              <div className="publishing-assistant-readiness-summary">
-                <div><strong>{readiness.score}%</strong><span>ready</span></div>
-                <div>
-                  <strong>{readiness.blockers ? 'Resolve blockers first' : readiness.missing ? 'Complete the essentials' : 'Ready for final review'}</strong>
-                  <span>{readiness.blockers} blockers · {readiness.missing} missing · {readiness.recommended} recommended</span>
-                </div>
-              </div>
-              <div className="publishing-assistant-readiness-progress" aria-hidden="true"><i style={{ width: `${readiness.score}%` }} /></div>
-              {readinessIssues.length ? (
-                <div className="publishing-assistant-readiness-list">
-                  {readinessIssues.map(item => {
-                    const available = item.step <= workflowContext.stepNumber - 1;
-                    return (
-                      <button key={item.id} type="button" onClick={() => goToReadinessItem(item)} disabled={!available}>
-                        <span className={`publishing-assistant-readiness-status is-${item.status}`} aria-hidden="true">
-                          {item.status === 'blocker' ? '!' : item.status === 'missing' ? '•' : 'i'}
-                        </span>
-                        <span><strong>{item.label}</strong><small>{item.message}</small></span>
-                        <em>{available ? 'Open' : `Step ${item.step + 1}`}</em>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="publishing-assistant-readiness-complete"><span aria-hidden="true">✓</span><strong>All readiness checks are complete.</strong><small>Review the details before publishing.</small></div>
-              )}
-            </section>
-          ) : showMetadataIntelligence ? (
+          {showMetadataIntelligence ? (
             <section className="publishing-assistant-metadata">
               <div className="publishing-assistant-builder-heading"><span>◎</span><div><strong>Metadata intelligence</strong><small>Confirmed facts stay separate from AI recommendations.</small></div></div>
               {!metadataAnalysis ? <>
-                <div className="publishing-assistant-metadata-note"><strong>Before the review</strong><p>Indie uses your title, description, current genres, audience, and keywords. It does not read or send your manuscript.</p></div>
+                <div className="publishing-assistant-metadata-note"><strong>Before the review</strong><p>Alex uses your title, description, current genres, audience, and keywords. Alex does not read or send your manuscript.</p></div>
                 {metadataError && <p className="publishing-assistant-metadata-error" role="alert">{metadataError}</p>}
                 <div className="publishing-assistant-metadata-actions"><button type="button" onClick={reviewMetadata} disabled={pending}>{pending ? 'Reviewing…' : 'Review my metadata'}</button><button type="button" onClick={() => setShowMetadataIntelligence(false)}>Cancel</button></div>
               </> : <>
@@ -726,17 +781,18 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
             )}
             {messages.map(message => (
               <div key={message.id} className={`publishing-assistant-message publishing-assistant-message--${message.role}`}>
+                <ChatAvatar variant={message.role === 'assistant' ? 'alex' : 'user'} name={supportContact.name || supportContact.email || 'You'} photoUrl={supportContact.photoUrl || ''} className="publishing-assistant-message-avatar" />
                 {message.kind === 'proactive-guidance' && <small className="publishing-assistant-guidance-label">Suggestion</small>}
                 {message.kind === 'description-builder-question' && <small className="publishing-assistant-guidance-label">Description builder</small>}
-                <p>
-                  {message.role === 'assistant' ? (
+                {message.role === 'assistant' ? (
+                  typingMessageId === message.id ? <p>
                     <TypewriterText
                       text={message.text}
-                      animate={typingMessageId === message.id}
+                      animate
                       onComplete={() => setTypingMessageId(current => current === message.id ? '' : current)}
                     />
-                  ) : message.text}
-                </p>
+                  </p> : <PublishingMessageContent text={message.text} />
+                ) : <p>{message.text}</p>}
                 {typingMessageId !== message.id && message.pricingScenarios?.length > 0 && <PricingScenarios scenarios={message.pricingScenarios} />}
                 {typingMessageId !== message.id && message.matterDraft && (
                   <div className="publishing-assistant-matter-draft">
@@ -761,18 +817,18 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
                     })}
                   </div>
                 )}
-                {typingMessageId !== message.id && message.actions?.filter(action => ['wizard', 'ask', 'pricing_objective', 'matter_type', 'distribution_priority', 'distribution_strategy'].includes(action.type) && !isHumanSupportIntent(action.value)).length > 0 && (
+                {typingMessageId !== message.id && message.actions?.filter(action => ['wizard', 'wizard_next', 'ask', 'pricing_objective', 'matter_type', 'distribution_priority', 'distribution_strategy'].includes(action.type) && !isHumanSupportIntent(action.value)).length > 0 && (
                   <div className="publishing-assistant-suggestions">
-                    {message.actions.filter(action => ['wizard', 'ask', 'pricing_objective', 'matter_type', 'distribution_priority', 'distribution_strategy'].includes(action.type) && !isHumanSupportIntent(action.value)).map(action => (
-                      <button key={`${action.type}:${action.value}`} className={action.type === 'wizard' || action.type === 'distribution_strategy' ? 'is-wizard-link' : undefined} type="button" onClick={() => action.type === 'wizard' ? followWizardAction(action.value) : action.type === 'pricing_objective' ? choosePricingObjective(action.value) : action.type === 'matter_type' ? chooseMatterType(action.value) : action.type === 'distribution_priority' ? chooseDistributionPriority(action.value) : action.type === 'distribution_strategy' ? applyDistributionStrategy(action.value) : sendMessage(action.value)}>
-                        {action.type === 'wizard' && <span aria-hidden="true">↗</span>}{action.label}
+                    {message.actions.filter(action => ['wizard', 'wizard_next', 'ask', 'pricing_objective', 'matter_type', 'distribution_priority', 'distribution_strategy'].includes(action.type) && !isHumanSupportIntent(action.value)).map(action => (
+                      <button key={`${action.type}:${action.value}`} className={action.type === 'wizard' || action.type === 'wizard_next' || action.type === 'distribution_strategy' ? 'is-wizard-link' : undefined} type="button" onClick={() => action.type === 'wizard' ? followWizardAction(action.value) : action.type === 'wizard_next' ? onContinue?.() : action.type === 'pricing_objective' ? choosePricingObjective(action.value) : action.type === 'matter_type' ? chooseMatterType(action.value) : action.type === 'distribution_priority' ? chooseDistributionPriority(action.value) : action.type === 'distribution_strategy' ? applyDistributionStrategy(action.value) : sendMessage(getAssistantActionMessage(action))}>
+                        {(action.type === 'wizard' || action.type === 'wizard_next') && <span aria-hidden="true">↗</span>}{action.label}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
             ))}
-            {pending && <div className="publishing-assistant-thinking" aria-label="Indie is thinking"><i /><i /><i /></div>}
+            {pending && <div className="publishing-assistant-thinking" aria-label="Alex is thinking"><i /><i /><i /></div>}
             {humanFlow && !humanFlow.sent && (
               <form className="publishing-assistant-handoff" onSubmit={sendHumanRequest}>
                 <div className="publishing-assistant-handoff-heading">
@@ -829,6 +885,18 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
             <button type="submit" disabled={!input.trim() || pending} aria-label="Send message">→</button>
           </form>}
           {!showReadiness && !showMetadataIntelligence && <small className="publishing-assistant-privacy">{showDescriptionBuilder ? 'Your answers are used only to draft this description. Nothing is inserted until you approve it.' : 'Book details may be sent to AI. Manuscript files are never included.'}</small>}
+          <aside className="publishing-assistant-max-sidebar publishing-assistant-max-sidebar--right" aria-label="Publishing readiness summary">
+            <span className="publishing-assistant-max-eyebrow">Publishing readiness</span>
+            {readiness ? <>
+              <div className="publishing-assistant-max-score"><strong>{readiness.score}</strong><span><b>{readiness.complete} of {readiness.total}</b><small>checks complete</small></span></div>
+              <div className="publishing-assistant-max-issues">
+                {readinessIssues.slice(0, 5).map(item => <button key={item.id || item.label} type="button" onClick={() => onNavigateReadiness?.(item)}><span className={`is-${item.status}`}>{item.status === 'blocker' ? '!' : '•'}</span><span><strong>{item.label}</strong><small>{item.message || item.detail}</small></span><i aria-hidden="true">→</i></button>)}
+                {!readinessIssues.length && <p>Your essential publishing details are complete.</p>}
+              </div>
+              <button type="button" className="publishing-assistant-max-review" onClick={() => sendMessage('Review my publishing readiness and tell me what to fix first')}>Ask Alex what to fix first</button>
+            </> : <p>Complete your book details and Alex will track what is ready and what needs attention.</p>}
+            <div className="publishing-assistant-max-note"><strong>Context aware</strong><span>Alex uses the current step and the details already entered in this publishing session.</span></div>
+          </aside>
         </aside>
       )}
       <button
@@ -837,12 +905,13 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
         onClick={() => setOpen(value => {
           const next = !value;
           if (next) setCollapsed(false);
+          else setMaximized(false);
           return next;
         })}
         aria-expanded={open}
         aria-label={open ? 'Close publishing assistant' : 'Open publishing assistant'}
       >
-        {open ? '×' : <><span aria-hidden="true">✦</span> Ask Indie</>}
+        {open ? '×' : <><span aria-hidden="true">✦</span> Ask Alex</>}
       </button>
     </div>
   );

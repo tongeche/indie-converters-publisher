@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
-import { buildAssistantReply, sanitizeAssistantHistory } from '../../src/lib/assistant.js';
+import { buildAssistantReply, buildPublishingSocialReply, getAssistantActionMessage, sanitizeAssistantHistory } from '../../src/lib/assistant.js';
 import { formatDisplayMoney } from '../../src/lib/currency.js';
 import { buildPricingCoachScenarios } from '../../src/lib/royaltyCalculator.js';
+import { runAlexAgent } from './_alex-agent.js';
+import { createPublishingFactLedger } from '../../src/lib/publishingAgent.js';
 
 const BOOK_SELECT = `
   id, slug, title, description, cover_url, formats, keywords, pub_year, price, language,
@@ -96,9 +98,20 @@ function sanitizePublishingWorkflow(value) {
   const pricingObjectives = new Set(['readership', 'earnings', 'launch', 'series', 'premium']);
   const pricingObjective = pricingObjectives.has(value.pricingCoach?.objective) ? value.pricingCoach.objective : null;
   const matterType = MATTER_TYPES[value.matterRequest?.type] ? value.matterRequest.type : null;
+  const rawNextAction = value.nextAction && typeof value.nextAction === 'object' ? value.nextAction : null;
+  const nextAction = rawNextAction && ['fix', 'continue', 'review'].includes(rawNextAction.kind) ? {
+    kind: rawNextAction.kind,
+    id: cleanWorkflowText(rawNextAction.id, 80),
+    label: cleanWorkflowText(rawNextAction.label, 100),
+    message: cleanWorkflowText(rawNextAction.message, 240),
+    status: ['blocker', 'missing', 'recommended'].includes(rawNextAction.status) ? rawNextAction.status : null,
+    step: Math.min(Math.max(Number(rawNextAction.step) || 0, 0), 19),
+    field: PUBLISHING_ASSISTANT_FIELDS.has(rawNextAction.field) ? rawNextAction.field : null,
+  } : null;
 
   return {
     mode: 'publishing_upload',
+    draftKey: cleanWorkflowText(value.draftKey, 160) || 'new',
     stepNumber: Math.min(Math.max(Number(value.stepNumber) || 1, 1), 20),
     totalSteps: Math.min(Math.max(Number(value.totalSteps) || 12, 1), 20),
     stepLabel: cleanWorkflowText(value.stepLabel, 80),
@@ -137,6 +150,7 @@ function sanitizePublishingWorkflow(value) {
       authorBio: cleanWorkflowText(value.matterContext?.authorBio, 1500),
     },
     matterRequest: matterType ? { type: matterType, authorAnswer: cleanWorkflowText(value.matterRequest?.authorAnswer, 2000) } : null,
+    nextAction,
     activeField,
     bookDetails: {
       title: cleanWorkflowText(details.title, 160),
@@ -175,6 +189,87 @@ function getEnv(name) {
 
 function getAssistantModel() {
   return getEnv('OPENAI_MODEL') || 'gpt-4o-mini';
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function resolvePublishingAgentPersistence(req, sessionId, workflowContext, resetSession = false) {
+  if (!workflowContext || !UUID_PATTERN.test(String(sessionId || ''))) return null;
+  const supabaseUrl = getEnv('SUPABASE_URL') || getEnv('VITE_SUPABASE_URL');
+  const serviceRoleKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
+  const authorization = req.headers.get('authorization') || '';
+  const accessToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+  if (!supabaseUrl || !serviceRoleKey || !accessToken) return null;
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: authData } = await supabase.auth.getUser(accessToken);
+  const userId = authData?.user?.id;
+  if (!userId) return null;
+
+  const { data: session } = await supabase
+    .from('assistant_sessions')
+    .select('id, user_id')
+    .eq('id', sessionId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (!session) return null;
+
+  const { data: state } = await supabase
+    .from('publishing_agent_state')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('draft_key', workflowContext.draftKey)
+    .maybeSingle();
+  const historySessionId = state?.assistant_session_id || sessionId;
+  const { data: storedMessages } = await supabase
+    .from('assistant_messages')
+    .select('role, content')
+    .eq('session_id', historySessionId)
+    .order('created_at', { ascending: false })
+    .limit(16);
+  return {
+    supabase,
+    userId,
+    sessionId,
+    state: resetSession ? null : state,
+    history: resetSession ? [] : (storedMessages || []).reverse(),
+  };
+}
+
+async function persistPublishingAgentTurn(persistence, workflowContext, message, reply, requestType) {
+  if (!persistence) return;
+  const ledger = createPublishingFactLedger(workflowContext);
+  const agentRun = reply.agentRun || {};
+  const unresolvedQuestion = /\?\s*$/.test(reply.text || '') ? String(reply.text).slice(0, 600) : null;
+  const workingState = {
+    currentStep: workflowContext.stepNumber,
+    activeField: workflowContext.activeField?.id || null,
+    currentTask: requestType,
+    unresolvedQuestion,
+    pendingProposal: Boolean(reply.fieldSuggestions?.length),
+  };
+  const now = new Date().toISOString();
+  const { error: stateError } = await persistence.supabase.from('publishing_agent_state').upsert({
+    assistant_session_id: persistence.sessionId,
+    user_id: persistence.userId,
+    draft_key: workflowContext.draftKey,
+    confirmed_facts: ledger.confirmed,
+    author_decisions: ledger.decisions,
+    working_state: workingState,
+    last_response_id: agentRun.responseId || persistence.state?.last_response_id || null,
+    last_agent: agentRun.agent || 'Alex',
+    last_tools: agentRun.tools || [],
+    expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: now,
+  }, { onConflict: 'user_id,draft_key' });
+  if (stateError) console.error('[assistant function] agent state save failed:', stateError.code || stateError.message);
+
+  const rows = [
+    { session_id: persistence.sessionId, user_id: persistence.userId, role: 'user', content: String(message).slice(0, 1200), metadata: { requestType } },
+    { session_id: persistence.sessionId, user_id: persistence.userId, role: 'assistant', content: String(reply.text).slice(0, 4000), metadata: { requestType, mode: reply.sources?.includes('openai_agents_sdk') ? 'agents_sdk' : 'fallback', tools: agentRun.tools || [] } },
+  ];
+  const { error: messageError } = await persistence.supabase.from('assistant_messages').insert(rows);
+  if (messageError) console.error('[assistant function] agent messages save failed:', messageError.code || messageError.message);
 }
 
 function normaliseBook(row) {
@@ -348,15 +443,21 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
   const recentHistory = sanitizeAssistantHistory(history, message, isUploadWorkflow ? 16 : undefined);
   const roleInstructions = isUploadWorkflow
     ? [
-        'You are Indie, a focused publishing workflow assistant inside the Indie Converters book-upload wizard.',
+        'You are Alex, a focused publishing workflow assistant inside the Indie Converters book-upload wizard.',
+        'You are also the author’s steady publishing coworker. Relate to the person before routing the task: respond naturally to greetings, gratitude, uncertainty, frustration, overwhelm, and celebration. Do not turn a social message into a publishing menu or generic offer.',
+        'Use a calm, human rhythm. Briefly acknowledge emotion without exaggerating it, then help with one manageable thing. Never claim to be human, conscious, or personally experienced.',
         'Only help the author complete the publishing wizard: book metadata, description, genre, keywords, publication details, manuscript preparation, reading style, cover, pricing, distribution, front and back matter, structure, and final review.',
         'Prioritise the current wizard step supplied below. If the question belongs to another publishing step, answer briefly and name that step. Politely redirect unrelated requests back to publishing.',
         'Help the author think and write; never claim you changed, saved, uploaded, validated, or published anything. The author must enter and confirm all values in the wizard.',
         'Do not invent facts about the book. When information is missing, ask one focused question. When brainstorming copy, provide 2 or 3 concise options that preserve the author’s voice.',
         'Never draft a description, blurb, subtitle, keywords, or marketing copy from only a title or genre. First collect enough real material from the author—such as premise, protagonist or subject, central goal or conflict, stakes, tone, and intended reader. Ask for the most important missing detail one question at a time.',
         'The activeField is the field the author is currently using. Resolve words like “this”, “it”, “here”, and “the field” against activeField without asking them to identify it again.',
+        'Use inspect_publishing_context before answering when the request depends on the current field or established book facts. Treat its author_confirmed facts and decisions as authoritative. Never treat inferred suggestions as confirmed facts.',
+        'Use check_publishing_readiness for readiness questions, get_next_publishing_action for short continuation requests, and inspect_pricing_and_distribution for price or distribution decisions. Do not claim you used a tool or expose tool names to the author.',
+        'The propose_active_field_wording tool creates a reviewable proposal only. It never saves. Describe the proposal honestly and return the same wording in fieldSuggestions so the interface can ask the author to approve it.',
         'Treat publishing_workflow.readiness as the authoritative readiness checklist. Never invent or upgrade a readiness status. When asked whether the book is ready, mention blockers first, then missing essentials, then at most one recommendation.',
         'When pricingContext.distributionStrategy is present, remember it as the author’s chosen distribution strategy and use it consistently in pricing, distribution, and final-review answers. Do not silently replace it with another strategy.',
+        'nextAction is the application’s authoritative answer to short messages such as “next”, “what next?”, “continue”, or “what should I do now?”. For kind fix, explain that single issue and use a wizard action when its field is mapped. For kind continue, say the current step is ready and return {"label":"Continue to [label]","type":"wizard_next","value":"continue"}. For kind review, guide the author to final review. Never recite completed fields or ask what they want to do next.',
         'wizardNavigation is the authoritative map of fields to wizard steps. When the user asks how to find, set, edit, or change a mapped field on the current or an earlier step, include one wizard action with that exact field value, such as {"label":"Go to Title","type":"wizard","value":"title"}. Never create a wizard action for an unmapped field or a future locked step.',
         'When you can provide ready-to-insert wording for activeField, include it in fieldSuggestions. Suggest only activeField.id and never another field. Do not suggest values for numeric, legal, identifier, file, price, or distribution fields.',
         ...(requestType === 'proactive_guidance' ? [
@@ -395,7 +496,7 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
         'Treat supplied book details as private working context. Do not request manuscript text, passwords, payment data, contact details, or other sensitive information.',
       ]
     : [
-        'You are the Indie Converters assistant.',
+        'You are Jane, the general Indie Converters assistant.',
         'Help authors and readers with publishing, manuscript uploads, pricing, retailer links, account setup, and public book discovery.',
       ];
 
@@ -406,6 +507,8 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
         ...roleInstructions,
         'Sound like a capable publishing guide: direct, warm, specific, and calm.',
         'Lead with the answer. Keep the text under 70 words and usually to 1 to 3 short sentences.',
+        'Use clean Markdown when formatting helps: **bold** for short labels and a new line for every list item. Never place multiple numbered items on one line. Do not use Markdown tables or raw HTML.',
+        'When catalogue_matches are supplied, the interface renders book cards with title, author, format, and price. Give only a short introduction or recommendation rationale in text; do not repeat the full card details as a numbered list.',
         'Give only the most useful next step. Do not add background, summaries, related topics, or generic offers to help.',
         'If one detail is required to help well, ask one focused question instead of guessing.',
         'Use the supplied catalogue context for book facts. Do not invent books, prices, availability, retailer links, or account data.',
@@ -413,8 +516,9 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
         'If a user asks for private account details and no account data is supplied, explain that account-aware support is coming and give the next best general step.',
         'If a user asks for a person, briefly say that you can connect them with the Indie Converters team.',
         'Do not ask for or repeat contact details in AI replies; the guided human-support steps in the chat collect those details outside OpenAI.',
-        'Return valid JSON only with this shape: {"text":"...", "actions":[{"label":"...","type":"ask|navigate|wizard","value":"..."}], "fieldSuggestions":[{"field":"...","label":"...","value":"..."}], "metadataAnalysis":null, "matterDraft":null, "sources":["..."]}. For metadata_intelligence or matter_generator, replace the corresponding null with the required structured result.',
+        'Return valid JSON only with this shape: {"text":"...", "actions":[{"label":"...","type":"ask|navigate|wizard|wizard_next","value":"..."}], "fieldSuggestions":[{"field":"...","label":"...","value":"..."}], "metadataAnalysis":null, "matterDraft":null, "sources":["..."]}. For metadata_intelligence or matter_generator, replace the corresponding null with the required structured result.',
         'Return at most 2 actions. Use ask for a useful suggested reply and navigate only for a supplied site path. Keep action labels under 28 characters.',
+        'For every ask action, value must be the exact natural sentence the user would say next, written in the user’s voice (for example, “Show me the publishing steps”). Never put an assistant follow-up question or second-person wording such as “What are you working on?” in an ask value.',
       ].join('\n'),
     },
     ...recentHistory,
@@ -489,25 +593,41 @@ function sanitizeMetadataAnalysis(value, workflowContext) {
   };
 }
 
-async function generateAssistantReply({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType }) {
+async function generateAssistantReply({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType, sessionId }) {
   const openaiBaseUrl = getEnv('OPENAI_BASE_URL');
   const openaiApiKey = getEnv('OPENAI_API_KEY');
   if (!openaiBaseUrl && !openaiApiKey) return baseReply;
 
   try {
-    const openai = new OpenAI({
-      apiKey: openaiApiKey || 'netlify-ai-gateway',
-      baseURL: openaiBaseUrl || undefined,
-    });
-    const completion = await openai.chat.completions.create({
-      model: getAssistantModel(),
-      messages: buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType }),
-      response_format: { type: 'json_object' },
-      temperature: 0.35,
-      max_tokens: requestType === 'metadata_intelligence' ? 1100 : requestType === 'matter_generator' ? 1000 : requestType === 'description_builder' ? 500 : 220,
-    });
-
-    const content = completion.choices?.[0]?.message?.content;
+    const modelMessages = buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType });
+    let content;
+    let agentRun = null;
+    if (workflowContext) {
+      try {
+        agentRun = await runAlexAgent({
+          messages: modelMessages,
+          workflowContext,
+          model: getAssistantModel(),
+          baseURL: openaiBaseUrl,
+          apiKey: openaiApiKey,
+          sessionId,
+        });
+        content = agentRun.content;
+      } catch (agentError) {
+        console.error('[assistant function] Agents SDK run failed; using direct completion:', agentError?.message || agentError);
+      }
+    }
+    if (!content) {
+      const openai = new OpenAI({ apiKey: openaiApiKey || 'netlify-ai-gateway', baseURL: openaiBaseUrl || undefined });
+      const completion = await openai.chat.completions.create({
+        model: getAssistantModel(),
+        messages: modelMessages,
+        response_format: { type: 'json_object' },
+        temperature: 0.35,
+        max_tokens: requestType === 'metadata_intelligence' ? 1100 : requestType === 'matter_generator' ? 1000 : requestType === 'description_builder' ? 500 : 220,
+      });
+      content = completion.choices?.[0]?.message?.content;
+    }
     if (!content) return baseReply;
 
     const parsed = JSON.parse(content);
@@ -529,16 +649,18 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
     const safeActions = (Array.isArray(parsed.actions) ? parsed.actions : baseReply.actions || [])
       .filter(action => (
         action && typeof action.label === 'string' && typeof action.value === 'string'
-        && ['ask', 'navigate', 'wizard'].includes(action.type)
+        && ['ask', 'navigate', 'wizard', 'wizard_next'].includes(action.type)
         && (action.type !== 'navigate' || allowedNavigatePaths.has(action.value))
         && (action.type !== 'wizard' || allowedWizardFields.has(action.value))
+        && (action.type !== 'wizard_next' || (workflowContext?.nextAction?.kind === 'continue' && action.value === 'continue'))
       ))
       .slice(0, 2)
       .map(action => ({
         label: action.label.trim().slice(0, 28),
         type: action.type,
         value: action.value.trim().slice(0, 240),
-      }));
+      }))
+      .map(action => action.type === 'ask' ? { ...action, value: getAssistantActionMessage(action).slice(0, 240) } : action);
     const activeFieldId = requestType === 'description_builder' ? 'description' : workflowContext?.activeField?.id;
     const maxFieldLength = requestType === 'description_builder' ? 4000 : workflowContext?.activeField?.maxLength || 4000;
     const safeFieldSuggestions = activeFieldId
@@ -581,7 +703,13 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
         ...(baseReply.sources || []),
         ...(Array.isArray(parsed.sources) ? parsed.sources : []),
         'openai',
+        ...(agentRun ? ['openai_agents_sdk'] : []),
       ])),
+      agentRun: agentRun ? {
+        agent: agentRun.agent,
+        tools: agentRun.toolCalls,
+        responseId: agentRun.lastResponseId,
+      } : null,
     };
   } catch (error) {
     console.error('[assistant function] OpenAI reply failed:', error?.message || error);
@@ -611,12 +739,35 @@ export default async (req) => {
     fetchArticleContext(message),
   ]);
   const pageContext = payload?.pageContext || null;
-  const workflowContext = sanitizePublishingWorkflow(payload?.workflowContext);
+  let workflowContext = sanitizePublishingWorkflow(payload?.workflowContext);
   const requestType = workflowContext && ['proactive_guidance', 'description_builder', 'metadata_intelligence', 'pricing_coach', 'matter_generator'].includes(payload?.requestType)
     ? payload.requestType
     : 'chat';
-  const history = sanitizeAssistantHistory(payload?.history, message, workflowContext ? 16 : undefined);
+  const persistence = await resolvePublishingAgentPersistence(req, payload?.sessionId, workflowContext, payload?.resetSession === true).catch(error => {
+    console.error('[assistant function] durable memory lookup failed:', error?.message || error);
+    return null;
+  });
+  if (workflowContext && persistence?.state) {
+    workflowContext = {
+      ...workflowContext,
+      rememberedAgentState: {
+        confirmedFacts: persistence.state.confirmed_facts || [],
+        authorDecisions: persistence.state.author_decisions || [],
+        workingState: persistence.state.working_state || {},
+      },
+    };
+  }
+  const historySource = persistence?.history?.length ? persistence.history : payload?.history;
+  const history = sanitizeAssistantHistory(historySource, message, workflowContext ? 16 : undefined);
   const baseReply = buildAssistantReply(message, books, pageContext, articles);
+  const socialReply = workflowContext && requestType === 'chat'
+    ? buildPublishingSocialReply(message, workflowContext)
+    : null;
+  if (socialReply) {
+    const response = { ...baseReply, ...socialReply, mode: 'publishing_social', sessionId: payload?.sessionId || null };
+    await persistPublishingAgentTurn(persistence, workflowContext, message, response, requestType);
+    return json(response);
+  }
   const reply = await generateAssistantReply({
     message,
     baseReply,
@@ -626,7 +777,10 @@ export default async (req) => {
     history,
     workflowContext,
     requestType,
+    sessionId: payload?.sessionId || null,
   });
+
+  await persistPublishingAgentTurn(persistence, workflowContext, message, reply, requestType);
 
   return json({
     ...reply,

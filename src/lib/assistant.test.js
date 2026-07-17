@@ -1,17 +1,43 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildPublishingSocialReply,
   createWelcomeMessage,
+  getAssistantActionMessage,
   isHumanSupportIntent,
   requestAssistantReply,
   sanitizeAssistantHistory,
 } from './assistant.js';
 
-test('introduces Indie to anonymous and signed-in visitors', () => {
-  assert.match(createWelcomeMessage(null).text, /I’m Indie/i);
+test('Alex responds socially before routing a publishing task', () => {
+  const context = { stepLabel: 'Book details', activeField: { label: 'Title' } };
+  assert.equal(
+    buildPublishingSocialReply('Hi', context).text,
+    'Hi — good to see you. How are you feeling about title today?',
+  );
+  assert.match(buildPublishingSocialReply("I'm overwhelmed", context).text, /I understand/i);
+  assert.match(buildPublishingSocialReply('I finally finished the manuscript', context).text, /congratulations/i);
+  assert.equal(buildPublishingSocialReply('Help me price my paperback', context), null);
+});
+
+test('converts assistant-style pill questions into natural user replies', () => {
+  assert.equal(getAssistantActionMessage({
+    type: 'ask',
+    label: 'Ask about publishing steps',
+    value: 'What specific step are you working on?',
+  }), 'Tell me about publishing steps.');
+  assert.equal(getAssistantActionMessage({
+    type: 'ask',
+    label: 'Work on my book',
+    value: 'Help me publish my book',
+  }), 'Help me publish my book');
+});
+
+test('introduces Jane to anonymous and signed-in visitors', () => {
+  assert.match(createWelcomeMessage(null).text, /I’m Jane/i);
   assert.match(
     createWelcomeMessage({ email: 'maya@example.com' }).text,
-    /^Hi maya, I’m Indie/i,
+    /^Hi maya, I’m Jane/i,
   );
 });
 

@@ -88,6 +88,22 @@ export function isHumanSupportIntent(value) {
   return HUMAN_SUPPORT_PATTERNS.some(pattern => pattern.test(message));
 }
 
+export function getAssistantActionMessage(action) {
+  const value = String(action?.value || '').trim();
+  if (action?.type !== 'ask' || !value) return value;
+  const soundsLikeAssistantQuestion = /^(?:what|which|how|where|when|why|who|can|could|would|do|does|are|is)\b[^?]*\?$/i.test(value)
+    && /\b(?:you|your)\b/i.test(value);
+  if (!soundsLikeAssistantQuestion) return value;
+
+  const label = String(action?.label || '').trim().replace(/[?.!]+$/, '');
+  const askTopic = label.match(/^ask about\s+(.+)$/i)?.[1];
+  if (askTopic) return `Tell me about ${askTopic}.`;
+  const learnTopic = label.match(/^learn about\s+(.+)$/i)?.[1];
+  if (learnTopic) return `Tell me about ${learnTopic}.`;
+  if (/^(?:i\b|help me\b|show me\b|tell me\b|find me\b|let's\b)/i.test(label)) return `${label}.`;
+  return label ? `I'd like help with ${label.toLowerCase()}.` : 'Please tell me more.';
+}
+
 export function getAssistantPageContext(pathname = '/') {
   const path = String(pathname || '/').toLowerCase();
   if (path.startsWith('/book/')) {
@@ -248,6 +264,47 @@ function pickStarterBooks(books = []) {
   return books
     .filter(book => book?.slug && book?.title)
     .slice(0, 3);
+}
+
+/** Keep social moments human before Alex routes the author into a task. */
+export function buildPublishingSocialReply(message = '', workflowContext = {}) {
+  const text = normaliseAssistantText(message).trim();
+  const currentWork = workflowContext?.activeField?.label || workflowContext?.stepLabel;
+
+  if (/^(hi|hello|hey|hiya|good morning|good afternoon|good evening)[!. ]*$/.test(text)) {
+    return {
+      text: currentWork
+        ? `Hi — good to see you. How are you feeling about ${currentWork.toLowerCase()} today?`
+        : 'Hi — good to see you. How is the book going today?',
+      actions: [], sources: ['publishing_social_policy'],
+    };
+  }
+  if (/^(thanks|thank you|cheers|that helps|helpful|got it)[!. ]*$/.test(text)) {
+    return { text: 'You’re welcome. We can take it one step at a time.', actions: [], sources: ['publishing_social_policy'] };
+  }
+  if (/\b(i(?: m| am)? (?:stuck|lost|confused|overwhelmed|frustrated)|this is (?:confusing|hard|difficult)|i don t understand)\b/.test(text)) {
+    return {
+      text: currentWork
+        ? `I understand. ${currentWork} can feel like a lot when you’re already carrying the whole book. Tell me what feels unclear, and we’ll handle just that part first.`
+        : 'I understand. Publishing can feel like a lot when you’re already carrying the whole book. Tell me what feels unclear, and we’ll handle just that part first.',
+      actions: [], sources: ['publishing_social_policy'],
+    };
+  }
+  if (/\b(i (?:finally )?finished|manuscript is (?:done|finished)|i did it|it'?s finished|i completed)\b/.test(text)) {
+    return {
+      text: 'That’s a real milestone — congratulations. Finishing a manuscript takes a great deal of persistence. When you’re ready, we can look at the next publishing step together.',
+      actions: [], sources: ['publishing_social_policy'],
+    };
+  }
+  if (/^(i don t know|not sure|i m not sure|no idea)[!. ]*$/.test(text)) {
+    return {
+      text: currentWork
+        ? `That’s okay. You don’t need to have ${currentWork.toLowerCase()} figured out yet. Tell me what you already know, even if it is rough, and I’ll help shape the next step.`
+        : 'That’s okay. Tell me what you already know about the book, even if it is rough, and I’ll help you find the next step.',
+      actions: [], sources: ['publishing_social_policy'],
+    };
+  }
+  return null;
 }
 
 export function buildAssistantReply(message, books = [], pageContext = getAssistantPageContext('/'), extraKnowledgeDocuments = []) {
@@ -456,12 +513,12 @@ export function createWelcomeMessage(user) {
   return {
     id: 'welcome',
     role: 'assistant',
-    text: `Hi${displayName ? ` ${displayName}` : ''}, I’m Indie. What are you working on today?`,
+    text: `Hi${displayName ? ` ${displayName}` : ''}, I’m Jane. What are you working on today?`,
     time: formatAssistantTime(),
   };
 }
 
-export async function requestAssistantReply({ message, books = [], sessionId, pageUrl, pageContext, workflowContext, requestType = 'chat', history = [] }) {
+export async function requestAssistantReply({ message, books = [], sessionId, resetSession = false, pageUrl, pageContext, workflowContext, requestType = 'chat', history = [] }) {
   const context = pageContext || getAssistantPageContext('/');
   if (typeof fetch !== 'function') return buildAssistantReply(message, books, context);
 
@@ -472,12 +529,26 @@ export async function requestAssistantReply({ message, books = [], sessionId, pa
   );
 
   try {
+    let accessToken = '';
+    if (workflowContext?.mode === 'publishing_upload') {
+      try {
+        const { supabase } = await import('./supabase.js');
+        const { data } = await supabase.auth.getSession();
+        accessToken = data?.session?.access_token || '';
+      } catch {
+        // The server can still provide a non-persistent reply when auth is unavailable.
+      }
+    }
     const response = await fetch('/api/assistant', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({
         message,
         sessionId,
+        resetSession,
         pageUrl,
         pageContext: context,
         workflowContext: workflowContext || null,

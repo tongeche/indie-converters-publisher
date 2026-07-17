@@ -162,13 +162,36 @@
   min-height: calc(100vh - 64px);
 }
 
+/* Sticky at the same top offset as the sidebar, so Back/Next stay reachable
+   without scrolling all the way down a long step (the old bottom-only nav
+   bar could sit several screens below the fold on steps like Cover or
+   Conversion Readiness). */
 .wz-topbar {
+  position: sticky;
+  top: 64px;
+  z-index: 15;
   background: var(--parchment-dim);
   border-bottom: 1px solid var(--sand);
-  padding: 13px 48px;
+  padding: 10px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+}
+.wz-topbar-side {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.wz-topbar-side--prev { justify-content: flex-start; }
+.wz-topbar-side--next { justify-content: flex-end; }
+.wz-topbar-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  text-align: center;
 }
 .wz-topbar-label {
   display: flex;
@@ -184,11 +207,42 @@
   color: var(--clay);
 }
 .wz-topbar-group {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgba(27,19,48,0.3);
+}
+.wz-topbar-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  padding: 4px 2px;
+  border: none;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+.wz-topbar-nav-btn:hover {
+  color: var(--clay);
+}
+.wz-topbar-nav-btn:hover .wz-topbar-nav-text {
+  text-decoration: underline;
+}
+.wz-topbar-nav-arrow {
+  flex-shrink: 0;
+  color: var(--clay);
+  font-size: 0.95rem;
+}
+.wz-topbar-nav-text {
+  min-width: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wz-content-row {
@@ -254,6 +308,12 @@
   grid-template-columns: 1fr;
 }
 .wizard:has(.wz-step--bookstructure) .wz-sidebar {
+  display: none;
+}
+/* This step already has its own sticky bottom Back/Continue toolbar (above) —
+   the sticky top nav would just duplicate it and re-add chrome this step
+   deliberately hides everywhere else. */
+.wizard:has(.wz-step--bookstructure) .wz-topbar {
   display: none;
 }
 
@@ -2655,10 +2715,6 @@
 .wz-draft-btn   { font-size: 1rem; padding: 14px 28px; }
 .wz-publish-note { font-size: 0.78rem; color: var(--ink-soft); opacity: 0.7; max-width: 520px; line-height: 1.6; }
 
-.wz-topbar-right {
-  display: flex; align-items: center; gap: 16px;
-}
-
 /* ── Front / Back Matter ─────────────────────────────────────── */
 .wz-matter-list {
   display: flex;
@@ -3217,7 +3273,12 @@
 }
 
 @media (max-width: 560px) {
-  .wz-topbar { padding: 12px 20px; }
+  .wz-topbar { padding: 8px 10px; gap: 6px; }
+  .wz-topbar-nav-btn { max-width: 96px; padding: 4px 2px; gap: 4px; }
+  .wz-topbar-nav-text { font-size: 0.68rem; }
+  .wz-topbar-group { display: none; }
+  .wz-topbar-label { font-size: 0.7rem; gap: 6px; }
+  .wz-topbar-num { font-size: 0.78rem; }
   .wz-preview-bar { gap: 16px; }
   .wz-contributor-row { grid-template-columns: 1fr 28px; }
   .wz-contributor-row select { display: none; }
@@ -3259,7 +3320,12 @@
   .wz-device-preview--phone .wz-device-cover-slot { width: min(206px, 100%); }
   .wz-device-preview--tablet .wz-device-frame { width: 205px; }
   .wz-template-builder { padding: 12px; }
-  .wz-cover-thumb-grid,
+  /* Two compact columns, not one full-width column — at 1 column the 5:8
+     aspect-ratio preview inside each card stretched to viewport width and
+     blew up to 600px+ tall per card, making the template list nearly
+     unusable (five screens of scrolling just to see all the options). */
+  .wz-cover-thumb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .wz-back-block-list { gap: 8px; }
   .wz-palette-row { grid-template-columns: 1fr; }
   .wz-template-section-head { flex-direction: column; gap: 8px; }
   .wz-palette-chip { justify-content: flex-start; }

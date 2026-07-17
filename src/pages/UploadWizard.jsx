@@ -2522,6 +2522,16 @@ export default function UploadWizard() {
     return true;
   }
 
+  const assistantNextAction = useMemo(() => {
+    const rank = { blocker: 0, missing: 1, recommended: 2 };
+    const availableIssues = publishingReadiness.items
+      .filter(item => item.status !== 'complete' && item.step <= step)
+      .sort((a, b) => (a.step === step ? -1 : 1) - (b.step === step ? -1 : 1) || rank[a.status] - rank[b.status]);
+    if (availableIssues[0]) return { kind: 'fix', ...availableIssues[0] };
+    if (step < WIZARD_STEPS.length - 1) return { kind: 'continue', step: step + 1, label: WIZARD_STEPS[step + 1].label };
+    return { kind: 'review', step, label: 'Review and publish' };
+  }, [publishingReadiness, step]);
+
   const publishingAssistantContext = useMemo(() => ({
     mode: 'publishing_upload',
     draftKey: draftId || 'new',
@@ -2532,6 +2542,7 @@ export default function UploadWizard() {
     stepGuidance: WIZARD_STEPS[step]?.blurb || '',
     stepTips: WIZARD_STEPS[step]?.tips || [],
     readiness: publishingReadiness,
+    nextAction: assistantNextAction,
     metadataOptions: {
       genres: genres.slice(0, 80).map(item => ({ value: item.slug, label: item.label })),
       audiences: AUDIENCES.filter(item => !fd.matureContent || item.value === 'adult').map(item => ({ value: item.value, label: item.label })),
@@ -2577,7 +2588,7 @@ export default function UploadWizard() {
       isFree: fd.isFree,
       publisher: fd.publisher.slice(0, 160),
     },
-  }), [step, draftId, assistantActiveField, authorName, authorProfileBio, fd, genres, publishingReadiness, resolvedSelectedPages]);
+  }), [step, draftId, assistantActiveField, assistantNextAction, authorName, authorProfileBio, fd, genres, publishingReadiness, resolvedSelectedPages]);
 
   // ─────────────────── SUCCESS / DRAFT SCREEN ──────────────────
   if (step === 12) {
@@ -2686,12 +2697,30 @@ export default function UploadWizard() {
       {/* ── Main ── */}
       <div className="wz-main" onFocusCapture={captureAssistantField}>
         <div className="wz-topbar">
-          <span className="wz-topbar-label">
-            <span className="wz-topbar-num">Step {String(step + 1).padStart(2, '0')}</span>
-            {WIZARD_STEPS[step].label}
-          </span>
-          <div className="wz-topbar-right">
+          <div className="wz-topbar-side wz-topbar-side--prev">
+            {step > 0 && (
+              <button type="button" className="wz-topbar-nav-btn" onClick={goBack}>
+                <span className="wz-topbar-nav-arrow" aria-hidden="true">←</span>
+                <span className="wz-topbar-nav-text">{WIZARD_STEPS[step - 1].label}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="wz-topbar-center">
+            <span className="wz-topbar-label">
+              <span className="wz-topbar-num">Step {String(step + 1).padStart(2, '0')}</span>
+              {WIZARD_STEPS[step].label}
+            </span>
             <span className="wz-topbar-group">{WIZARD_STEPS[step].group}</span>
+          </div>
+
+          <div className="wz-topbar-side wz-topbar-side--next">
+            {step < 11 && (
+              <button type="button" className="wz-topbar-nav-btn" onClick={goNext}>
+                <span className="wz-topbar-nav-text">{WIZARD_STEPS[step + 1].label}</span>
+                <span className="wz-topbar-nav-arrow" aria-hidden="true">→</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -5138,7 +5167,8 @@ export default function UploadWizard() {
         onInsertMatterDraft={insertAssistantMatterDraft}
         onApplyDistributionStrategy={applyAssistantDistributionStrategy}
         onRememberBookFacts={rememberAssistantBookFacts}
-        supportContact={{ name: authorName, email: user?.email || '' }}
+        onContinue={goNext}
+        supportContact={{ userId: user?.id || '', name: authorName, email: user?.email || '', photoUrl: authorProfile?.photo_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '' }}
       />
     </div>
   );
