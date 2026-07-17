@@ -48,6 +48,7 @@ function IconBriefcase() { return <svg width="16" height="16" viewBox="0 0 24 24
 function IconUpload()    { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
 function IconUser()      { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function IconSignOut()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>; }
+function IconMenu()      { return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>; }
 function IconX()         { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>; }
 function IconDownload()  { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>; }
 function IconCheckCircle({ done }) {
@@ -66,6 +67,9 @@ function IconHelpCircle(){ return <svg width="18" height="18" viewBox="0 0 24 24
 function IconCart()      { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="20" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="20" r="1.2" fill="currentColor" stroke="none"/><path d="M2.5 3h2l2.2 11.4a2 2 0 0 0 2 1.6h8.1a2 2 0 0 0 2-1.6L21 7H6"/></svg>; }
 function IconWallet()    { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18a2 2 0 0 1 2 2v2"/><path d="M3 7.5v9A2.5 2.5 0 0 0 5.5 19H19a1 1 0 0 0 1-1v-3"/><rect x="14" y="11" width="7" height="5" rx="1"/><circle cx="17" cy="13.5" r="0.6" fill="currentColor" stroke="none"/></svg>; }
 function IconTrendUp()   { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 17 10 10 14 14 21 6"/><polyline points="15 6 21 6 21 12"/></svg>; }
+function IconAlertTriangle() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.6 3.5 2 19h20L13.4 3.5a1.6 1.6 0 0 0-2.8 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg>; }
+function IconLink()      { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5 12.5 5A3.5 3.5 0 1 1 17.5 10L16 11.5"/><path d="M13 17.5 11.5 19A3.5 3.5 0 1 1 6.5 14l1.5-1.5"/></svg>; }
+function IconSearch()    { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg>; }
 
 /* ── main component ──────────────────────────────────────────── */
 export default function Dashboard() {
@@ -78,6 +82,7 @@ export default function Dashboard() {
   const [preview, setPreview]   = useState({ loading: false, text: null, url: null });
   const [saveCounts, setSaveCounts] = useState({}); // bookId → count
   const [isEditor, setIsEditor] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const name     = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Author';
   const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -157,17 +162,29 @@ export default function Dashboard() {
   function switchView(v) {
     setView(v);
     setSelected(null);
+    setMobileNavOpen(false);
   }
 
   return (
     <div className="dashboard">
       <SEO title="Dashboard | IndieConverters" description="Manage your books, briefs, and author profile." path="/dashboard" />
       {/* ── Sidebar ─────────────────────────────────────────── */}
-      <aside className="dash-sidebar">
-        <Link to="/" className="dash-logo">
-          <span className="dash-logo-dot">··</span>
-          <span>indieconverters</span>
-        </Link>
+      <aside className={`dash-sidebar ${mobileNavOpen ? 'dash-sidebar--open' : ''}`}>
+        <div className="dash-sidebar-topbar">
+          <Link to="/" className="dash-logo">
+            <span className="dash-logo-dot">··</span>
+            <span>indieconverters</span>
+          </Link>
+          <button
+            type="button"
+            className="dash-mobile-nav-toggle"
+            onClick={() => setMobileNavOpen(o => !o)}
+            aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileNavOpen}
+          >
+            {mobileNavOpen ? <IconX /> : <IconMenu />}
+          </button>
+        </div>
 
         <nav className="dash-nav">
           <span className="dash-nav-label">Author</span>
@@ -253,7 +270,7 @@ export default function Dashboard() {
           {view === 'books'    && <BooksView    books={books} loading={loading} selected={selected} openBook={openBook} saveCounts={saveCounts} />}
           {view === 'buylinks' && <BuyLinksView books={books} />}
           {view === 'sales'    && <SalesView user={user} />}
-          {view === 'reports'  && <ReportsView  books={books} saveCounts={saveCounts} />}
+          {view === 'reports'  && <ReportsView  user={user} books={books} saveCounts={saveCounts} />}
           {view === 'briefs'   && <BriefsView   user={user} />}
           {view === 'profile'  && <ProfileView  user={user} />}
           {view === 'editorPrices' && isEditor && <EditorPricesView />}
@@ -326,7 +343,7 @@ function WorkstationView({ name, books, loading, saveCounts }) {
     .slice(0, 4);
 
   return (
-    <>
+    <div className="workstation-view">
       <header className="dash-header">
         <div>
           <h1 className="dash-title">{greeting()}, {firstName}</h1>
@@ -390,10 +407,10 @@ function WorkstationView({ name, books, loading, saveCounts }) {
             <section className="ws-card">
               <div className="ws-card-head"><h2 className="ws-card-title">Publishing Progress</h2></div>
               <div className="ws-stat-tiles">
-                <div className="ws-stat-tile"><IconEye /><strong>{totalViews}</strong><span>Page views</span></div>
-                <div className="ws-stat-tile"><IconBookmark /><strong>{totalSaves}</strong><span>Saves</span></div>
-                <div className="ws-stat-tile"><IconBooks /><strong>{books.length}</strong><span>Total books</span></div>
-                <div className="ws-stat-tile"><IconCheckCircle done /><strong>{published}</strong><span>Published</span></div>
+                <div className="ws-stat-tile"><span className="dash-stat-icon"><IconEye /></span><strong>{totalViews}</strong><span>Page views</span></div>
+                <div className="ws-stat-tile"><span className="dash-stat-icon"><IconBookmark /></span><strong>{totalSaves}</strong><span>Saves</span></div>
+                <div className="ws-stat-tile"><span className="dash-stat-icon"><IconBooks /></span><strong>{books.length}</strong><span>Total books</span></div>
+                <div className="ws-stat-tile"><span className="dash-stat-icon"><IconCheckCircle done /></span><strong>{published}</strong><span>Published</span></div>
               </div>
               {topByViews.length > 0 && (
                 <div className="ws-bar-list">
@@ -478,7 +495,7 @@ function WorkstationView({ name, books, loading, saveCounts }) {
           ))}
         </div>
       </section>
-    </>
+    </div>
   );
 }
 
@@ -506,11 +523,19 @@ function ProgressRing({ percent }) {
 
 /* ── Books view ──────────────────────────────────────────────── */
 function BooksView({ books, loading, selected, openBook, saveCounts }) {
+  const [search, setSearch] = useState('');
+
   const published  = books.filter(b => b.is_published).length;
   const totalViews = books.reduce((s, b) => s + (b.view_count || 0), 0);
   const totalSaves = Object.values(saveCounts).reduce((s, c) => s + c, 0);
+
+  const visibleBooks = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? books.filter(b => b.title.toLowerCase().includes(q)) : books;
+  }, [books, search]);
+
   return (
-    <>
+    <div className="books-view">
       <header className="dash-header">
         <div>
           <h1 className="dash-title">My Books</h1>
@@ -519,11 +544,27 @@ function BooksView({ books, loading, selected, openBook, saveCounts }) {
         <Link to="/upload" className="btn dash-publish-btn">+ Publish a book</Link>
       </header>
 
-      <div className="dash-stats-row">
-        <StatCard value={books.length} label="Total books" />
-        <StatCard value={published}    label="Published" />
-        <StatCard value={totalViews}   label="Page views" />
-        <StatCard value={totalSaves}   label="Saves" highlight />
+      <div className="dash-stats-row dash-stats-row--sales">
+        <div className="dash-stat-card dash-stat-card--icon">
+          <span className="dash-stat-icon"><IconBooks /></span>
+          <span className="dash-stat-val">{books.length}</span>
+          <span className="dash-stat-lbl">Total books</span>
+        </div>
+        <div className="dash-stat-card dash-stat-card--icon">
+          <span className="dash-stat-icon"><IconCheckCircle done /></span>
+          <span className="dash-stat-val">{published}</span>
+          <span className="dash-stat-lbl">Published</span>
+        </div>
+        <div className="dash-stat-card dash-stat-card--icon">
+          <span className="dash-stat-icon"><IconEye /></span>
+          <span className="dash-stat-val">{totalViews}</span>
+          <span className="dash-stat-lbl">Page views</span>
+        </div>
+        <div className="dash-stat-card dash-stat-card--icon dash-stat-card--selected">
+          <span className="dash-stat-icon"><IconBookmark /></span>
+          <span className="dash-stat-val">{totalSaves}</span>
+          <span className="dash-stat-lbl">Saves</span>
+        </div>
       </div>
 
       {loading && <p className="dash-loading-msg">Loading…</p>}
@@ -538,59 +579,96 @@ function BooksView({ books, loading, selected, openBook, saveCounts }) {
       )}
 
       {!loading && books.length > 0 && (
-        <div className="dash-book-list">
-          <div className="dash-book-list-head">
-            <span style={{ flex: 1 }}>Title</span>
-            <span className="dash-col-status">Status</span>
-            <span className="dash-col-price">Price</span>
-            <span className="dash-col-earn">Earned</span>
+        <section className="dash-card dash-books-table-card">
+          <div className="dash-console-table-head">
+            <h2 className="dash-section-title">All books</h2>
+            <label className="dash-console-search">
+              <IconSearch />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search books…"
+              />
+            </label>
           </div>
-          {books.map(book => {
-            const status = bookStatus(book);
-            return (
-              <button
-                key={book.id}
-                className={`dash-book-row ${selected?.id === book.id ? 'dash-book-row--active' : ''}`}
-                onClick={() => openBook(book)}
-              >
-                <div className="dash-row-cover">
-                  {book.cover_url
-                    ? <img src={book.cover_url} alt={book.title} />
-                    : <span className="dash-row-cover-ph">··</span>
-                  }
-                </div>
-                <div className="dash-row-info">
-                  <span className="dash-row-title">{book.title}</span>
-                  {book.pub_date
-                    ? <span className="dash-row-year">Release {formatDashboardDate(book.pub_date)}</span>
-                    : book.pub_year && <span className="dash-row-year">{book.pub_year}</span>}
-                  {book.manuscript_path && (
-                    <span className="dash-row-ms-badge">manuscript</span>
-                  )}
-                </div>
-                <span className={`dash-col-status dash-status ${status.className}`}>
-                  {status.label}
-                </span>
-                <span className="dash-col-price dash-row-price">
-                  {book.price != null ? `$${Number(book.price).toFixed(2)}` : 'Free'}
-                </span>
-                <span className="dash-col-earn dash-row-earn">$0.00</span>
-                <span className="dash-row-arrow">›</span>
-              </button>
-            );
-          })}
-        </div>
+
+          <div className="dash-book-list">
+            <div className="dash-book-list-head">
+              <span style={{ flex: 1 }}>Title</span>
+              <span className="dash-col-status">Status</span>
+              <span className="dash-col-price">Price</span>
+              <span className="dash-col-earn">Earned</span>
+            </div>
+            {visibleBooks.length === 0
+              ? <p className="dash-table-empty">No books match "{search}".</p>
+              : visibleBooks.map(book => {
+                  const status = bookStatus(book);
+                  return (
+                    <button
+                      key={book.id}
+                      className={`dash-book-row ${selected?.id === book.id ? 'dash-book-row--active' : ''}`}
+                      onClick={() => openBook(book)}
+                    >
+                      <div className="dash-row-cover">
+                        {book.cover_url
+                          ? <img src={book.cover_url} alt={book.title} />
+                          : <span className="dash-row-cover-ph">··</span>
+                        }
+                      </div>
+                      <div className="dash-row-info">
+                        <span className="dash-row-title">{book.title}</span>
+                        {book.pub_date
+                          ? <span className="dash-row-year">Release {formatDashboardDate(book.pub_date)}</span>
+                          : book.pub_year && <span className="dash-row-year">{book.pub_year}</span>}
+                        {book.manuscript_path && (
+                          <span className="dash-row-ms-badge">manuscript</span>
+                        )}
+                        <span className="dash-row-mobile-meta">
+                          <span className={`dash-status ${status.className}`}>{status.label}</span>
+                          <span>{book.price != null ? `$${Number(book.price).toFixed(2)}` : 'Free'}</span>
+                        </span>
+                      </div>
+                      <span className={`dash-col-status dash-status ${status.className}`}>
+                        {status.label}
+                      </span>
+                      <span className="dash-col-price dash-row-price">
+                        {book.price != null ? `$${Number(book.price).toFixed(2)}` : 'Free'}
+                      </span>
+                      <span className="dash-col-earn dash-row-earn">$0.00</span>
+                      <span className="dash-row-arrow">›</span>
+                    </button>
+                  );
+                })}
+          </div>
+        </section>
       )}
-    </>
+    </div>
   );
 }
 
 /* ── Buy Links view ──────────────────────────────────────────── */
 function BuyLinksView({ books }) {
-  const withLinks    = books.filter(b => b.book_retailer_links?.length);
-  const withoutLinks = books.filter(b => !b.book_retailer_links?.length);
+  const [search, setSearch] = useState('');
+
+  const withCount    = books.filter(b => b.book_retailer_links?.length).length;
+  const withoutCount = books.length - withCount;
+
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = q ? books.filter(b => b.title.toLowerCase().includes(q)) : books;
+    // Missing-link books surface first — that's the actionable queue, same
+    // as an admin console leading with items that need attention.
+    return [...filtered].sort((a, b) => {
+      const aMissing = !a.book_retailer_links?.length;
+      const bMissing = !b.book_retailer_links?.length;
+      if (aMissing !== bMissing) return aMissing ? -1 : 1;
+      return a.title.localeCompare(b.title);
+    });
+  }, [books, search]);
+
   return (
-    <>
+    <div className="buylinks-view">
       <header className="dash-header">
         <div>
           <h1 className="dash-title">Buy Links</h1>
@@ -598,117 +676,327 @@ function BuyLinksView({ books }) {
         </div>
       </header>
 
-      {books.length === 0 && (
+      {books.length === 0 ? (
         <div className="dash-empty">
           <div className="dash-empty-icon">··</div>
           <h2>No books published yet.</h2>
           <p>Once you publish a book, add your buy link so readers know where to get it.</p>
           <Link to="/upload" className="btn btn-primary">Publish your first book</Link>
         </div>
-      )}
-
-      {withLinks.length > 0 && (
+      ) : (
         <>
-          <div className="dash-section-title">Books with buy links</div>
-          <div className="dash-table-wrap">
-            <table className="dash-table">
-              <thead><tr><th>Book</th><th>Platform</th><th>URL</th><th /></tr></thead>
-              <tbody>
-                {withLinks.map(b => {
-                  const link = b.book_retailer_links[0];
-                  return (
-                    <tr key={b.id}>
-                      <td className="dash-table-book">{b.title}</td>
-                      <td>{link.retailers?.label || '—'}</td>
-                      <td className="dash-table-url">
-                        <a href={link.url} target="_blank" rel="noreferrer">{link.url}</a>
-                      </td>
-                      <td>
-                        <Link to={`/dashboard/edit/${b.slug}`} className="dash-table-edit-link">Edit →</Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="dash-stats-row dash-stats-row--sales">
+            <div className="dash-stat-card dash-stat-card--icon">
+              <span className="dash-stat-icon"><IconBooks /></span>
+              <span className="dash-stat-val">{books.length}</span>
+              <span className="dash-stat-lbl">Total books</span>
+            </div>
+            <div className="dash-stat-card dash-stat-card--icon dash-stat-card--selected">
+              <span className="dash-stat-icon"><IconLink /></span>
+              <span className="dash-stat-val">{withCount}</span>
+              <span className="dash-stat-lbl">With buy links</span>
+            </div>
+            <div className="dash-stat-card dash-stat-card--icon">
+              <span className="dash-stat-icon"><IconAlertTriangle /></span>
+              <span className="dash-stat-val">{withoutCount}</span>
+              <span className="dash-stat-lbl">Missing a link</span>
+            </div>
           </div>
-        </>
-      )}
 
-      {withoutLinks.length > 0 && (
-        <>
-          <div className="dash-section-title" style={{ marginTop: withLinks.length ? 32 : 0 }}>
-            Missing a buy link
-          </div>
-          <div className="dash-table-wrap">
-            <table className="dash-table">
-              <thead><tr><th>Book</th><th>Status</th><th /></tr></thead>
-              <tbody>
-                {withoutLinks.map(b => (
-                  <tr key={b.id}>
-                    <td className="dash-table-book">{b.title}</td>
-                    <td className="dash-table-missing">No buy link set</td>
-                    <td>
-                      <Link to={`/dashboard/edit/${b.slug}`} className="dash-table-edit-link">Add link →</Link>
-                    </td>
+          <section className="dash-card dash-buylinks-table-card">
+            <div className="dash-console-table-head">
+              <h2 className="dash-section-title">All books</h2>
+              <label className="dash-console-search">
+                <IconSearch />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search books…"
+                />
+              </label>
+            </div>
+            <div className="dash-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th>Book</th>
+                    <th>Retailers</th>
+                    <th>Status</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.length === 0
+                    ? <tr><td colSpan={4} className="dash-table-empty">No books match "{search}".</td></tr>
+                    : rows.map(b => {
+                        const links = b.book_retailer_links || [];
+                        const isLive = links.length > 0;
+                        return (
+                          <tr key={b.id}>
+                            <td className="dash-table-book">
+                              <span className="dash-sales-book-cell">
+                                <span className="dash-sales-book-thumb">
+                                  {b.cover_url ? <img src={b.cover_url} alt="" /> : null}
+                                </span>
+                                {b.title}
+                              </span>
+                            </td>
+                            <td>
+                              {isLive ? (
+                                <span className="dash-buylinks-badges">
+                                  {links.map((link, i) => (
+                                    <DistributorBadge key={i} name={link.retailers?.label} />
+                                  ))}
+                                </span>
+                              ) : (
+                                <span className="dash-table-missing">No retailer linked</span>
+                              )}
+                            </td>
+                            <td>
+                              <span className={`dash-status ${isLive ? 'dash-status--pub' : 'dash-status--missing'}`}>
+                                {isLive ? 'Live' : 'Missing'}
+                              </span>
+                            </td>
+                            <td>
+                              <Link to={`/dashboard/edit/${b.slug}`} className="dash-table-edit-link">
+                                {isLive ? 'Edit' : 'Add link'} →
+                              </Link>
+                            </td>
+                          </tr>
+                        );
+                      })
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
         </>
       )}
-    </>
+    </div>
   );
 }
 
 /* ── Reports view ────────────────────────────────────────────── */
-function ReportsView({ books, saveCounts }) {
-  const totalViews = books.reduce((s, b) => s + (b.view_count || 0), 0);
-  const totalSaves = Object.values(saveCounts).reduce((s, c) => s + c, 0);
+function exportReportsCsv(rows) {
+  const header = ['Book', 'Views', 'Saves', 'Save rate'];
+  const escape = v => `"${String(v).replace(/"/g, '""')}"`;
+  const lines = rows.map(r => [
+    r.title,
+    r.views,
+    r.saves,
+    r.views ? `${((r.saves / r.views) * 100).toFixed(1)}%` : '—',
+  ].map(escape).join(','));
+  const csv = [header.map(escape).join(','), ...lines].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `reports-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ReportsView({ user, books, saveCounts }) {
+  const [saves, setSaves]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [rangeKey, setRangeKey] = useState('30d');
+  const [granularity, setGranularity] = useState('weekly');
+  const [showAllBooks, setShowAllBooks] = useState(false);
+
+  const range = SALES_RANGES.find(r => r.key === rangeKey);
+  const bookIds = useMemo(() => books.map(b => b.id), [books]);
+
+  // Views only ever come through as one running total per book (no per-day
+  // rows exist to re-bucket), so the range selector and trend chart apply to
+  // saves only — the one reader-activity table that actually has timestamps.
+  useEffect(() => {
+    if (!bookIds.length) { setSaves([]); setLoading(false); return; }
+    setLoading(true);
+    supabase.from('reader_saves')
+      .select('id, book_id, created_at, books(title, slug, cover_url)')
+      .in('book_id', bookIds)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { setSaves(data ?? []); setLoading(false); });
+  }, [bookIds]);
+
+  const { currentSaves, previousSaves, periodStart, prevStart, totalDays } = useMemo(() => {
+    if (!range.days) {
+      const earliest = saves.length ? new Date(saves[0].created_at) : new Date();
+      const days = Math.max(1, Math.ceil((Date.now() - earliest) / 86400000));
+      return { currentSaves: saves, previousSaves: [], periodStart: earliest, prevStart: null, totalDays: days };
+    }
+    const now = Date.now();
+    const start = new Date(now - range.days * 86400000);
+    const prev  = new Date(start.getTime() - range.days * 86400000);
+    return {
+      currentSaves:  saves.filter(s => new Date(s.created_at) >= start),
+      previousSaves: saves.filter(s => new Date(s.created_at) >= prev && new Date(s.created_at) < start),
+      periodStart: start,
+      prevStart: prev,
+      totalDays: range.days,
+    };
+  }, [saves, rangeKey]);
+
+  const totalViews  = useMemo(() => books.reduce((s, b) => s + (b.view_count || 0), 0), [books]);
+  const totalSavesAllTime = useMemo(() => Object.values(saveCounts).reduce((s, c) => s + c, 0), [saveCounts]);
+  const saveRate = totalViews ? (totalSavesAllTime / totalViews) * 100 : 0;
+
+  const baseBucketDays = SALES_GRANULARITIES.find(g => g.key === granularity).bucketDays;
+  const bucketDays = Math.max(baseBucketDays, Math.ceil(totalDays / 60));
+  const bucketCount = Math.max(1, Math.ceil(totalDays / bucketDays));
+  const currentBuckets  = useMemo(() => bucketByDate(currentSaves, periodStart, bucketCount, bucketDays, 'created_at'), [currentSaves, periodStart, bucketCount, bucketDays]);
+  const previousBuckets = useMemo(() => prevStart ? bucketByDate(previousSaves, prevStart, bucketCount, bucketDays, 'created_at') : null, [previousSaves, prevStart, bucketCount, bucketDays]);
+  const bucketLabels = useMemo(() => Array.from({ length: bucketCount }, (_, i) =>
+    new Date(periodStart.getTime() + i * bucketDays * 86400000)
+      .toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  ), [periodStart, bucketCount, bucketDays]);
+
+  const mostViewed = useMemo(() =>
+    [...books].sort((a, b) => (b.view_count || 0) - (a.view_count || 0)).slice(0, 5),
+  [books]);
+
+  const perBookRows = useMemo(() =>
+    books.map(b => ({ id: b.id, title: b.title, cover: b.cover_url, views: b.view_count || 0, saves: saveCounts[b.id] || 0 }))
+      .sort((a, b) => b.views - a.views),
+  [books, saveCounts]);
+  const visibleBookRows = showAllBooks ? perBookRows : perBookRows.slice(0, 8);
+
   return (
-    <>
+    <div className="reports-view">
       <header className="dash-header">
         <div>
           <h1 className="dash-title">Reports</h1>
           <p className="dash-subtitle">How readers are discovering and saving your books.</p>
         </div>
+        <div className="dash-sales-header-actions">
+          <select className="dash-sales-range-select" value={rangeKey} onChange={e => setRangeKey(e.target.value)}>
+            {SALES_RANGES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+          <button type="button" className="btn dash-publish-btn" onClick={() => exportReportsCsv(perBookRows)} disabled={!perBookRows.length}>
+            <IconDownload /> Export report
+          </button>
+        </div>
       </header>
 
-      <div className="dash-stats-row">
-        <StatCard value={totalViews} label="Page views" highlight />
-        <StatCard value={totalSaves} label="Saves" />
-        <StatCard value="—"          label="Buy clicks" />
-        <StatCard value="—"          label="Manuscript previews" />
+      <div className="dash-stats-row dash-stats-row--sales">
+        <div className="dash-stat-card dash-stat-card--icon">
+          <span className="dash-stat-icon"><IconEye /></span>
+          <span className="dash-stat-val">{totalViews}</span>
+          <span className="dash-stat-lbl">Page views (all-time)</span>
+        </div>
+        <div className="dash-stat-card dash-stat-card--icon dash-stat-card--selected">
+          <span className="dash-stat-icon"><IconBookmark /></span>
+          <span className="dash-stat-val">{currentSaves.length}</span>
+          <span className="dash-stat-lbl">Saves ({range.label.toLowerCase()})</span>
+          <DeltaBadge value={pctDelta(currentSaves.length, previousSaves.length)} />
+        </div>
+        <div className="dash-stat-card dash-stat-card--icon">
+          <span className="dash-stat-icon"><IconTrendUp /></span>
+          <span className="dash-stat-val">{saveRate.toFixed(1)}%</span>
+          <span className="dash-stat-lbl">Save rate (all-time)</span>
+        </div>
+        <div className="dash-stat-card dash-stat-card--icon">
+          <span className="dash-stat-icon"><IconBooks /></span>
+          <span className="dash-stat-val">{books.length}</span>
+          <span className="dash-stat-lbl">Books published</span>
+        </div>
       </div>
 
-      <div className="dash-section-title">Per-book breakdown</div>
-      <div className="dash-table-wrap">
-        <table className="dash-table">
-          <thead>
-            <tr>
-              <th>Book</th>
-              <th>Views</th>
-              <th>Saves</th>
-              <th>Buy clicks</th>
-            </tr>
-          </thead>
-          <tbody>
-            {books.length === 0
-              ? <tr><td colSpan={4} className="dash-table-empty">No books published yet.</td></tr>
-              : books.map(b => (
-                  <tr key={b.id}>
-                    <td className="dash-table-book">{b.title}</td>
-                    <td>{b.view_count || 0}</td>
-                    <td>{saveCounts[b.id] || 0}</td>
-                    <td>—</td>
-                  </tr>
-                ))
+      <div className="dash-sales-grid">
+        <div className="dash-sales-main">
+          <section className="dash-card">
+            <div className="dash-sales-chart-head">
+              <h2 className="dash-section-title">Saves trend</h2>
+              <div className="dash-sales-granularity">
+                {SALES_GRANULARITIES.map(g => (
+                  <button
+                    key={g.key}
+                    type="button"
+                    className={granularity === g.key ? 'is-active' : ''}
+                    onClick={() => setGranularity(g.key)}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="dash-sales-chart-legend">
+              <span><i className="dash-sales-legend-swatch dash-sales-legend-swatch--current" />Saves</span>
+              {previousBuckets && <span><i className="dash-sales-legend-swatch dash-sales-legend-swatch--prev" />Previous period</span>}
+            </div>
+            {loading
+              ? <p className="dash-loading-msg">Loading…</p>
+              : <SalesTrendChart current={currentBuckets} previous={previousBuckets} labels={bucketLabels} />
             }
-          </tbody>
-        </table>
+          </section>
+        </div>
+
+        <div className="dash-sales-side">
+          <section className="dash-card">
+            <h2 className="dash-section-title">Most viewed books</h2>
+            {mostViewed.length === 0 ? (
+              <p className="dash-drawer-dim">No books published yet.</p>
+            ) : (
+              <ul className="dash-sales-top-books">
+                {mostViewed.map(b => (
+                  <li key={b.id}>
+                    <span className="dash-sales-book-thumb dash-sales-book-thumb--sm">
+                      {b.cover_url ? <img src={b.cover_url} alt="" /> : null}
+                    </span>
+                    <span className="dash-sales-top-book-info">
+                      <span className="dash-sales-top-book-title">{b.title}</span>
+                      <span className="dash-sales-top-book-net">{b.view_count || 0} views</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
-    </>
+
+      <section className="dash-card dash-sales-recent-full">
+        <h2 className="dash-section-title">Per-book breakdown</h2>
+        <div className="dash-table-wrap">
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>Book</th>
+                <th>Views</th>
+                <th>Saves</th>
+                <th>Save rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleBookRows.length === 0
+                ? <tr><td colSpan={4} className="dash-table-empty">No books published yet.</td></tr>
+                : visibleBookRows.map(b => (
+                    <tr key={b.id}>
+                      <td className="dash-table-book">
+                        <span className="dash-sales-book-cell">
+                          <span className="dash-sales-book-thumb">
+                            {b.cover ? <img src={b.cover} alt="" /> : null}
+                          </span>
+                          {b.title}
+                        </span>
+                      </td>
+                      <td>{b.views}</td>
+                      <td>{b.saves}</td>
+                      <td>{b.views ? `${((b.saves / b.views) * 100).toFixed(1)}%` : '—'}</td>
+                    </tr>
+                  ))
+              }
+            </tbody>
+          </table>
+        </div>
+        {!showAllBooks && perBookRows.length > 8 && (
+          <button type="button" className="dash-sales-view-all" onClick={() => setShowAllBooks(true)}>
+            View all books →
+          </button>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -759,6 +1047,16 @@ function bucketSales(list, start, bucketCount, bucketDays) {
     sums[idx] += Number(s.net_amount_to_author) || 0;
   });
   return sums;
+}
+
+function bucketByDate(list, start, bucketCount, bucketDays, dateKey) {
+  const counts = Array(bucketCount).fill(0);
+  list.forEach(row => {
+    const offsetDays = (new Date(row[dateKey]) - start) / 86400000;
+    const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(offsetDays / bucketDays)));
+    counts[idx] += 1;
+  });
+  return counts;
 }
 
 const DISTRIBUTOR_COLORS = ['#f59e0b', '#34c759', '#4f8cff', '#a855f7', '#ef4444', '#14b8a6'];

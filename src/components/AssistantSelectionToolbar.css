@@ -1,0 +1,7 @@
+.assistant-selection-toolbar { position: fixed; z-index: 130; display: flex; max-width: min(330px, calc(100vw - 16px)); align-items: center; gap: 5px; box-sizing: border-box; padding: 5px 6px 5px 8px; border: 1px solid rgba(75,31,194,.22); border-radius: 999px; background: rgba(255,255,255,.98); box-shadow: 0 10px 28px rgba(31,24,54,.18); color: #4d4261; transform: translateX(-50%); }
+.assistant-selection-toolbar > span { min-width: 0; max-width: 126px; overflow: hidden; font-size: .67rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-selection-toolbar button { display: inline-flex; align-items: center; gap: 4px; padding: 6px 9px; border: 0; border-radius: 999px; background: #4b1fc2; color: white; font: inherit; font-size: .66rem; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.assistant-selection-toolbar button:hover { background: #3d18a4; }
+.assistant-selection-toolbar .assistant-selection-toolbar-close { width: 24px; height: 24px; justify-content: center; padding: 0; background: transparent; color: #746b82; font-size: 1rem; font-weight: 500; }
+.assistant-selection-toolbar .assistant-selection-toolbar-close:hover { background: #f2effa; color: #4b1fc2; }
+@media (max-width: 640px) { .assistant-selection-toolbar { max-width: calc(100vw - 24px); } .assistant-selection-toolbar > span { max-width: 92px; } }

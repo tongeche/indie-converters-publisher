@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPublishingFactLedger, inspectPublishingReadiness, proposePublishingFieldUpdate } from './publishingAgent.js';
+import {
+  buildGroundedNextPublishingGuidance,
+  createPublishingFactLedger,
+  inspectPublishingReadiness,
+  isBarePublishingContinuation,
+  proposePublishingFieldUpdate,
+} from './publishingAgent.js';
 
 const workflow = {
   activeField: { id: 'description', label: 'Description', maxLength: 200 },
@@ -27,4 +33,45 @@ test('field proposals require approval and are restricted to the active field', 
   const proposal = proposePublishingFieldUpdate(workflow, 'description', 'A careful draft.');
   assert.equal(proposal.allowed, true);
   assert.equal(proposal.requiresAuthorApproval, true);
+});
+
+test('bare continuation requests are grounded in the authoritative next action', () => {
+  const guidance = buildGroundedNextPublishingGuidance({
+    ...workflow,
+    stepNumber: 5,
+    nextAction: {
+      kind: 'fix',
+      id: 'headings',
+      label: 'Fix chapter headings',
+      message: 'Apply Heading 1 to every chapter title.',
+      status: 'blocker',
+      step: 5,
+    },
+    conversionDiagnostics: {
+      findings: [{ id: 'headings', label: 'Headings', severity: 'critical', message: 'No chapter headings found.' }],
+    },
+  });
+
+  assert.equal(isBarePublishingContinuation('next'), true);
+  assert.equal(isBarePublishingContinuation('What should I do next?'), true);
+  assert.equal(isBarePublishingContinuation('What price should I set next?'), false);
+  assert.match(guidance.text, /Heading 1/i);
+  assert.deepEqual(guidance.actions, [{ label: 'Open Headings details', type: 'health_detail', value: 'headings' }]);
+  assert.deepEqual(guidance.fieldSuggestions, []);
+});
+
+test('continuation guidance falls back to readiness without proposing field copy', () => {
+  const guidance = buildGroundedNextPublishingGuidance({
+    ...workflow,
+    stepNumber: 2,
+    nextAction: null,
+    readiness: {
+      items: [{ id: 'description', label: 'Book description', status: 'missing', message: 'Add reader-facing copy.', step: 2, field: 'description' }],
+    },
+    wizardNavigation: [{ field: 'description', step: 2, label: 'About' }],
+  });
+
+  assert.match(guidance.text, /Book description/i);
+  assert.deepEqual(guidance.actions, [{ label: 'Go to About', type: 'wizard', value: 'description' }]);
+  assert.deepEqual(guidance.fieldSuggestions, []);
 });

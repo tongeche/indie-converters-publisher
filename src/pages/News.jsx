@@ -5,6 +5,14 @@ import SEO from '../components/SEO';
 import blogHero from '../assets/blog-page-hero.webp';
 import './News.css';
 
+const PILLAR_COLORS = ['#441CB2', '#8266E0', '#B3592B', '#1A7A35', '#0D5FA6', '#A6234A'];
+function pillarColor(pillar) {
+  const label = pillar || 'General';
+  let h = 0;
+  for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
+  return PILLAR_COLORS[h % PILLAR_COLORS.length];
+}
+
 function formatDate(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -16,6 +24,11 @@ function readingTime(excerpt) {
   return Math.max(3, Math.round(words / 200));
 }
 
+function PillarTag({ pillar }) {
+  if (!pillar) return null;
+  return <span className="blist-pillar-tag" style={{ background: pillarColor(pillar) }}>{pillar}</span>;
+}
+
 function PostCardLarge({ post }) {
   return (
     <Link to={`/blog/${post.slug}`} className="blist-card blist-card--large">
@@ -24,7 +37,7 @@ function PostCardLarge({ post }) {
           ? <img src={post.hero_image_url} alt={post.title} className="blist-card-img" />
           : <div className="blist-card-img-ph" />
         }
-        <span className="blist-card-pillar">{post.pillar}</span>
+        <PillarTag pillar={post.pillar} />
       </div>
       <div className="blist-card-body">
         <h2 className="blist-card-title">{post.title}</h2>
@@ -40,40 +53,70 @@ function PostCardLarge({ post }) {
   );
 }
 
-function PostCardSmall({ post }) {
+function PostListRow({ post }) {
   return (
-    <Link to={`/blog/${post.slug}`} className="blist-card blist-card--small">
-      <div className="blist-card-img-wrap">
-        {post.hero_image_url
-          ? <img src={post.hero_image_url} alt={post.title} className="blist-card-img" />
-          : <div className="blist-card-img-ph" />
-        }
-        <span className="blist-card-pillar">{post.pillar}</span>
+    <Link to={`/blog/${post.slug}`} className="blist-list-row">
+      <div className="blist-list-meta">
+        <PillarTag pillar={post.pillar} />
+        <span className="blist-list-date">{formatDate(post.published_at)}</span>
       </div>
-      <div className="blist-card-body">
-        <h3 className="blist-card-title">{post.title}</h3>
-        <div className="blist-card-meta">
-          <span className="blist-card-date">{formatDate(post.published_at)}</span>
-        </div>
+      <h3 className="blist-list-title">{post.title}</h3>
+      {post.excerpt && <p className="blist-list-excerpt">{post.excerpt}</p>}
+      <span className="blist-list-more">Read more <span aria-hidden="true">&rarr;</span></span>
+    </Link>
+  );
+}
+
+function MostReadRow({ post }) {
+  return (
+    <Link to={`/blog/${post.slug}`} className="blist-mostread-row">
+      <div className="blist-mostread-thumb">
+        {post.hero_image_url
+          ? <img src={post.hero_image_url} alt="" />
+          : <div className="blist-mostread-thumb-ph" style={{ background: pillarColor(post.pillar) }} />
+        }
+      </div>
+      <div className="blist-mostread-info">
+        <span className="blist-mostread-date">{formatDate(post.published_at)}</span>
+        <h3 className="blist-mostread-title">{post.title}</h3>
+        {post.excerpt && <p className="blist-mostread-excerpt">{post.excerpt}</p>}
       </div>
     </Link>
   );
 }
 
-function SidebarPost({ post }) {
+function RecentRow({ post }) {
   return (
-    <Link to={`/blog/${post.slug}`} className="blist-side-post">
-      <div className="blist-side-thumb">
+    <Link to={`/blog/${post.slug}`} className="blist-recent-row">
+      <div className="blist-recent-thumb">
         {post.hero_image_url
-          ? <img src={post.hero_image_url} alt={post.title} />
-          : <div className="blist-side-thumb-ph" />
+          ? <img src={post.hero_image_url} alt="" />
+          : <div className="blist-recent-thumb-ph" />
         }
       </div>
-      <div className="blist-side-info">
-        <span className="blist-side-date">{formatDate(post.published_at)}</span>
-        <p className="blist-side-title">{post.title}</p>
+      <div className="blist-recent-info">
+        <PillarTag pillar={post.pillar} />
+        <p className="blist-recent-title">{post.title}</p>
+        <span className="blist-recent-date">{formatDate(post.published_at)}</span>
       </div>
     </Link>
+  );
+}
+
+function TopicTile({ topic }) {
+  return (
+    <div className="blist-topic-tile">
+      <div className="blist-topic-img-wrap">
+        {topic.image
+          ? <img src={topic.image} alt="" className="blist-topic-img" />
+          : <div className="blist-topic-img-ph" style={{ background: pillarColor(topic.pillar) }} />
+        }
+      </div>
+      <div className="blist-topic-caption">
+        <span className="blist-topic-name">{topic.pillar}</span>
+        <span className="blist-topic-count">{topic.count} {topic.count === 1 ? 'article' : 'articles'}</span>
+      </div>
+    </div>
   );
 }
 
@@ -83,7 +126,7 @@ export default function Blog() {
   const [query, setQuery]     = useState('');
 
   useEffect(() => {
-    fetchBlogs({ limit: 20 }).then(data => { setPosts(data); setLoading(false); });
+    fetchBlogs({ limit: 40 }).then(data => { setPosts(data); setLoading(false); });
   }, []);
 
   const filtered = useMemo(() => {
@@ -97,9 +140,26 @@ export default function Blog() {
     );
   }, [posts, query]);
 
-  const [featured, ...rest] = filtered;
-  const sidebar = posts.slice(0, 3);
-  const latest  = posts.slice(0, 4);
+  const featured    = filtered[0] || null;
+  const recent      = filtered.slice(1, 4);
+  const gridPosts    = filtered.slice(4);
+  const sidebarRecent = filtered.slice(0, 5);
+
+  const mostRead = useMemo(() => {
+    return [...filtered]
+      .sort((a, b) => (b.view_count || 0) - (a.view_count || 0) || new Date(b.published_at) - new Date(a.published_at))
+      .slice(0, 4);
+  }, [filtered]);
+
+  const topics = useMemo(() => {
+    const byPillar = new Map();
+    filtered.forEach(p => {
+      const key = p.pillar || 'General';
+      if (!byPillar.has(key)) byPillar.set(key, { pillar: key, count: 0, image: p.hero_image_url });
+      byPillar.get(key).count += 1;
+    });
+    return [...byPillar.values()].sort((a, b) => b.count - a.count);
+  }, [filtered]);
 
   return (
     <div className="blist-page">
@@ -139,69 +199,126 @@ export default function Blog() {
         </div>
       </section>
 
-      {/* ── Content ── */}
-      <div className="container blist-layout">
-
-        {/* Main feed */}
-        <main className="blist-main">
-          {loading ? (
-            <div className="blist-skeletons">
-              <div className="blist-skeleton blist-skeleton--lg" />
-              <div className="blist-skeleton-row">
-                <div className="blist-skeleton" />
-                <div className="blist-skeleton" />
-              </div>
+      <div className="container">
+        {loading ? (
+          <div className="blist-skeletons">
+            <div className="blist-skeleton blist-skeleton--lg" />
+            <div className="blist-skeleton-row">
+              <div className="blist-skeleton" />
+              <div className="blist-skeleton" />
+              <div className="blist-skeleton" />
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="blist-empty">
-              <p>No posts match "<strong>{query}</strong>".</p>
-              <button className="btn btn-primary" onClick={() => setQuery('')}>Clear search</button>
-            </div>
-          ) : (
-            <>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="blist-empty">
+            <p>No posts match "<strong>{query}</strong>".</p>
+            <button className="btn btn-primary" onClick={() => setQuery('')}>Clear search</button>
+          </div>
+        ) : (
+          <>
+            {/* ── Featured + recent ── */}
+            <section className="blist-top-section">
               {featured && <PostCardLarge post={featured} />}
-              {rest.length > 0 && (
-                <div className="blist-grid">
-                  {rest.map(p => <PostCardSmall key={p.id} post={p} />)}
+              {recent.length > 0 && (
+                <div className="blist-recent-col">
+                  {recent.map(p => <RecentRow key={p.id} post={p} />)}
                 </div>
               )}
-            </>
-          )}
-        </main>
+            </section>
 
-        {/* Sidebar */}
-        <aside className="blist-sidebar">
-          {sidebar.length > 0 && (
-            <div className="blist-side-section">
-              <p className="blist-side-label">Featured</p>
-              <div className="blist-side-list">
-                {sidebar.map(p => <SidebarPost key={p.id} post={p} />)}
-              </div>
-            </div>
-          )}
+            {/* ── Most read ── */}
+            {mostRead.length > 0 && (
+              <section className="blist-mostread-section">
+                <div className="blist-section-head">
+                  <div>
+                    <h2 className="blist-section-title">Most read</h2>
+                    <p className="blist-section-sub">The posts readers keep coming back to.</p>
+                  </div>
+                </div>
+                <div className="blist-mostread-list">
+                  {mostRead.map(p => <MostReadRow key={p.id} post={p} />)}
+                </div>
+              </section>
+            )}
 
-          {latest.length > 0 && (
-            <div className="blist-side-section">
-              <p className="blist-side-label">Latest</p>
-              <div className="blist-side-list">
-                {latest.map(p => (
-                  <Link key={p.id} to={`/blog/${p.slug}`} className="blist-latest-row">
-                    <span className="blist-latest-date">{formatDate(p.published_at)}</span>
-                    <span className="blist-latest-title">{p.title}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+            {/* ── Browse by topic ── */}
+            {topics.length > 1 && (
+              <section className="blist-topics-section">
+                <div className="blist-topics-head">
+                  <h2 className="blist-topics-title">Explore the blog<strong>by topic.</strong></h2>
+                  <p className="blist-topics-sub">
+                    Publishing craft, indie career advice, and platform news —
+                    sorted by what's actually on your mind.
+                  </p>
+                </div>
+                <div className="blist-topics-row">
+                  {topics.map(t => (
+                    <TopicTile key={t.pillar} topic={t} />
+                  ))}
+                </div>
+                <div className="blist-topics-hint">
+                  <span>Scroll to view gallery</span>
+                  <span aria-hidden="true">↓</span>
+                </div>
+              </section>
+            )}
 
-          <div className="blist-side-section blist-subscribe-box">
-            <p className="blist-side-label">Newsletter</p>
-            <p className="blist-subscribe-text">Get new posts in your inbox — no noise, just good reading.</p>
-            <SubscribeForm />
-          </div>
-        </aside>
+            {/* ── Latest articles ── */}
+            {gridPosts.length > 0 && (
+              <section className="blist-articles-section">
+                <div className="blist-section-head">
+                  <div>
+                    <h2 className="blist-section-title">Latest articles</h2>
+                    <p className="blist-section-sub">Publishing craft, indie career advice, and platform news.</p>
+                  </div>
+                </div>
+                <div className="blist-articles-layout">
+                  <div className="blist-articles-list">
+                    {gridPosts.map(p => <PostListRow key={p.id} post={p} />)}
+                  </div>
+                  <aside className="blist-sidebar">
+                    <div className="blist-sidebar-block">
+                      <span className="blist-sidebar-label">Search</span>
+                      <div className="blist-search-wrap blist-search-wrap--sidebar">
+                        <svg className="blist-search-icon" viewBox="0 0 20 20" fill="none">
+                          <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.6"/>
+                          <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                        </svg>
+                        <input
+                          type="text"
+                          className="blist-search-input"
+                          placeholder="Search posts…"
+                          value={query}
+                          onChange={e => setQuery(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    {sidebarRecent.length > 0 && (
+                      <div className="blist-sidebar-block">
+                        <span className="blist-sidebar-label">Recent posts</span>
+                        <div className="blist-sidebar-recent-list">
+                          {sidebarRecent.map(p => <RecentRow key={p.id} post={p} />)}
+                        </div>
+                      </div>
+                    )}
+                  </aside>
+                </div>
+              </section>
+            )}
+          </>
+        )}
       </div>
 
+      {/* ── Newsletter ── */}
+      <section className="blist-subscribe-band">
+        <div className="container blist-subscribe-inner">
+          <div>
+            <h2 className="blist-subscribe-title">Get new posts in your inbox</h2>
+            <p className="blist-subscribe-text">No noise, just good reading — publishing craft and platform updates.</p>
+          </div>
+          <SubscribeForm />
+        </div>
+      </section>
     </div>
   );
 }

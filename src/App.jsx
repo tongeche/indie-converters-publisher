@@ -48,6 +48,14 @@ function PageRails() {
   return <div className="page-rails" aria-hidden="true" />;
 }
 
+// The dashboard is a self-contained app shell (own sidebar/nav) — the
+// marketing footer underneath it doesn't serve a purpose there.
+function FooterGate() {
+  const location = useLocation();
+  if (location.pathname.startsWith('/dashboard')) return null;
+  return <Footer />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -117,7 +125,7 @@ export default function App() {
           <Route path="/terms"               element={<TermsOfService />} />
           <Route path="*"                    element={<Browse />}      />
         </Routes>
-        <Footer />
+        <FooterGate />
       </AuthProvider>
     </BrowserRouter>
   );

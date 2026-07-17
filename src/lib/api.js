@@ -64,6 +64,41 @@ export async function submitAssistantHandoff(request) {
   return payload;
 }
 
+async function assistantActionRequest(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return null;
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+      ...(options.headers || {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'Could not update Alex action');
+  return payload;
+}
+
+export function loadAssistantActions(draftKey) {
+  return assistantActionRequest(`/api/assistant-actions?draftKey=${encodeURIComponent(draftKey || 'new')}`);
+}
+
+export function reportAssistantAction({ approvalId, outcome, appliedValue, previousValue, error }) {
+  if (!approvalId) return Promise.resolve(null);
+  return assistantActionRequest('/api/assistant-actions', {
+    method: 'POST',
+    body: JSON.stringify({ approvalId, outcome, appliedValue, previousValue, error }),
+  });
+}
+
+export function saveAssistantPlan({ draftKey, plan }) {
+  return assistantActionRequest('/api/assistant-actions', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'save_plan', draftKey, plan }),
+  });
+}
+
 /* ── Landing: dynamic quote cards ── */
 export async function fetchLandingQuotes() {
   try {
@@ -737,7 +772,7 @@ export async function fetchOrder(orderId) {
 export async function fetchBlogs({ limit = 12, type = null } = {}) {
   let q = supabase
     .from('blogs')
-    .select('id, content_id, type, slug, title, pillar, excerpt, hero_image_url, published_at, primary_keyword, secondary_keywords')
+    .select('id, content_id, type, slug, title, pillar, excerpt, hero_image_url, published_at, primary_keyword, secondary_keywords, view_count')
     .eq('status', 'published')
     .order('published_at', { ascending: false })
     .limit(limit);

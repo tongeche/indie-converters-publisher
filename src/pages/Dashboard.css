@@ -23,6 +23,12 @@
   overflow-y: auto;
 }
 
+.dash-sidebar-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .dash-logo {
   display: flex;
   align-items: center;
@@ -34,6 +40,22 @@
   padding: 4px 8px;
 }
 .dash-logo-dot { color: var(--ochre); font-size: 0.7rem; letter-spacing: 3px; }
+
+/* Hidden on desktop — the sidebar is always fully visible there. Only
+   shown (and only functional) below the .dashboard single-column breakpoint. */
+.dash-mobile-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.06);
+  border: none;
+  border-radius: 0;
+  color: var(--cream);
+  cursor: pointer;
+}
 
 .dash-nav {
   display: flex;
@@ -223,7 +245,6 @@
   padding: 12px 16px;
   background: none;
   border: none;
-  border-bottom: 1px solid rgba(0,0,0,0.05);
   cursor: pointer;
   width: 100%;
   text-align: left;
@@ -269,6 +290,16 @@
 .dash-col-status { width: 90px; flex-shrink: 0; }
 .dash-col-price  { width: 70px; flex-shrink: 0; font-size: 0.82rem; color: #3a3a3c; }
 .dash-col-earn   { width: 70px; flex-shrink: 0; font-size: 0.82rem; color: #3a3a3c; }
+
+/* Mobile-only summary line — the fixed-width status/price/earned columns
+   get hidden below the row-list breakpoint, this replaces them inline. */
+.dash-row-mobile-meta {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #6b6880;
+}
 
 .dash-status {
   display: inline-flex;
@@ -793,10 +824,15 @@
 }
 
 /* ═══ WORKSTATION VIEW ═════════════════════════════════════════ */
+/* Sharp corners throughout, matching the console styling used in the
+   other dashboard tabs — small circular elements (the step-number bubble,
+   the radial progress ring) are the deliberate exception, same as
+   everywhere else in the app. */
+.workstation-view { max-width: 1120px; }
 .ws-card {
   background: #fff;
   border: 1px solid rgba(0,0,0,0.07);
-  border-radius: 14px;
+  border-radius: 0;
   padding: 22px 24px;
 }
 .ws-card-head { margin-bottom: 18px; }
@@ -818,7 +854,7 @@
 .ws-project-body { display: flex; gap: 18px; }
 .ws-project-cover {
   width: 80px; height: 118px;
-  border-radius: 8px;
+  border-radius: 0;
   overflow: hidden;
   flex-shrink: 0;
   background: var(--sand);
@@ -879,7 +915,7 @@
   gap: 4px;
   padding: 12px 14px;
   border: 1px solid rgba(0,0,0,0.06);
-  border-radius: 10px;
+  border-radius: 0;
   background: #faf9ff;
 }
 .ws-stat-tile svg { color: var(--clay); margin-bottom: 2px; }
@@ -890,8 +926,8 @@
 .ws-bar-list-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #9e9caa; }
 .ws-bar-row { display: flex; align-items: center; gap: 10px; }
 .ws-bar-row-title { font-size: 0.78rem; color: var(--ink); width: 30%; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ws-bar-track { flex: 1; height: 6px; border-radius: 999px; background: rgba(0,0,0,0.06); overflow: hidden; }
-.ws-bar-fill { height: 100%; border-radius: 999px; background: var(--clay); }
+.ws-bar-track { flex: 1; height: 6px; border-radius: 0; background: rgba(0,0,0,0.06); overflow: hidden; }
+.ws-bar-fill { height: 100%; border-radius: 0; background: var(--clay); }
 .ws-bar-row-val { font-size: 0.76rem; color: #6b6880; width: 32px; text-align: right; flex-shrink: 0; }
 
 /* Mid row: steps / manuscript / recent */
@@ -915,7 +951,7 @@
 .ws-step-label { flex: 1; font-size: 0.84rem; color: var(--ink); }
 .ws-step-status {
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-  padding: 3px 9px; border-radius: 100px;
+  padding: 3px 9px; border-radius: 0;
 }
 .ws-step-status.is-done { background: rgba(52,199,89,0.12); color: #1a7a35; }
 .ws-step-status.is-pending { background: rgba(0,0,0,0.06); color: #8e8c9a; }
@@ -925,7 +961,7 @@
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 12px 14px;
   border: 1px solid rgba(0,0,0,0.06);
-  border-radius: 10px;
+  border-radius: 0;
   background: #faf9ff;
 }
 .ws-manuscript-name { display: block; font-size: 0.84rem; font-weight: 600; color: var(--ink); word-break: break-all; }
@@ -951,7 +987,7 @@
   padding: 14px 16px;
   background: #fff;
   border: 1px solid rgba(0,0,0,0.07);
-  border-radius: 12px;
+  border-radius: 0;
   font-size: 0.86rem;
   font-weight: 600;
   color: var(--ink);
@@ -962,10 +998,12 @@
 .ws-tool-icon {
   display: flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--parchment-dim);
   color: var(--clay);
 }
+
+.workstation-view .dash-status { border-radius: 0; }
 
 @media (max-width: 1100px) {
   .ws-top-grid { grid-template-columns: 1fr; }
@@ -979,18 +1017,42 @@
   .ws-mid-grid { grid-template-columns: 1fr; }
   .ws-tools-grid { grid-template-columns: 1fr; }
   .ws-stat-tiles { grid-template-columns: 1fr; }
+
+  /* Books row-list: drop the fixed-width status/price/earned columns and
+     the column-label header (nothing left for it to label), replacing
+     them with the compact inline summary line under the title. */
+  .dash-book-list-head { display: none; }
+  .dash-col-status, .dash-col-price, .dash-col-earn { display: none; }
+  .dash-row-mobile-meta { display: flex; }
+
+  .dash-console-table-head { flex-direction: column; align-items: stretch; }
+  .dash-console-search { width: 100%; }
+
+  .dash-table-wrap { overflow-x: auto; }
 }
 
-/* ═══ SALES VIEW ═══════════════════════════════════════════════ */
-/* Scoped to .sales-view: sharp corners and a sans typeface, kept within
-   the site's 1120px design width instead of stretching edge to edge. */
-.sales-view { max-width: 1120px; }
+/* ═══ SALES / REPORTS / BUY LINKS / BOOKS VIEWS ═══════════════════ */
+/* Scoped to .sales-view/.reports-view/.buylinks-view/.books-view: sharp
+   corners and a sans typeface, kept within the site's 1120px design width
+   instead of stretching edge to edge — one consistent console-style
+   language across every dashboard tab. */
+.sales-view, .reports-view, .buylinks-view, .books-view { max-width: 1120px; }
 
 .sales-view .dash-title,
 .sales-view .dash-section-title,
 .sales-view .dash-stat-val,
 .sales-view .dash-sales-top-book-title,
-.sales-view .dash-sales-payout-row strong {
+.sales-view .dash-sales-payout-row strong,
+.reports-view .dash-title,
+.reports-view .dash-section-title,
+.reports-view .dash-stat-val,
+.reports-view .dash-sales-top-book-title,
+.buylinks-view .dash-title,
+.buylinks-view .dash-section-title,
+.buylinks-view .dash-stat-val,
+.books-view .dash-title,
+.books-view .dash-section-title,
+.books-view .dash-stat-val {
   font-family: 'Inter', sans-serif;
 }
 
@@ -1008,7 +1070,10 @@
   cursor: pointer;
 }
 
-.sales-view .dash-card {
+.sales-view .dash-card,
+.reports-view .dash-card,
+.buylinks-view .dash-card,
+.books-view .dash-card {
   background: #fff;
   border: 1px solid rgba(0,0,0,0.07);
   border-radius: 0;
@@ -1017,8 +1082,51 @@
   min-width: 0;
 }
 
-.sales-view .dash-publish-btn { border-radius: 0; }
-.sales-view .dash-status { border-radius: 0; }
+.sales-view .dash-publish-btn,
+.reports-view .dash-publish-btn,
+.buylinks-view .dash-publish-btn,
+.books-view .dash-publish-btn { border-radius: 0; }
+.sales-view .dash-status,
+.reports-view .dash-status,
+.buylinks-view .dash-status,
+.books-view .dash-status { border-radius: 0; }
+.buylinks-view .dash-table-wrap,
+.books-view .dash-table-wrap { border-radius: 0; }
+.buylinks-view .dash-empty,
+.books-view .dash-empty { border-radius: 0; }
+.books-view .dash-book-list { border-radius: 0; }
+.books-view .dash-row-cover { border-radius: 0; }
+.books-view .dash-books-table-card { padding-bottom: 8px; }
+
+.dash-status--missing { background: rgba(220,53,53,0.1); color: #b3261e; }
+
+.dash-console-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.dash-console-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(0,0,0,0.12);
+  color: #8e8c9a;
+  min-width: 220px;
+}
+.dash-console-search input {
+  border: none;
+  outline: none;
+  font: inherit;
+  font-size: 0.84rem;
+  color: var(--ink);
+  width: 100%;
+  background: none;
+}
+.dash-buylinks-badges { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .dash-stats-row--sales { grid-template-columns: repeat(4, 1fr); }
 .dash-stats-row--sales .dash-stat-card { border-radius: 0; }
@@ -1157,19 +1265,22 @@
 @media (max-width: 860px) {
   .dashboard { grid-template-columns: 1fr; padding-top: 64px; }
 
+  /* Collapsed to a slim logo+toggle bar by default — the full nav (every
+     link, the user footer) only renders when explicitly opened, instead
+     of the sidebar's full desktop height sitting above the page content
+     that the author actually came here to see. */
   .dash-sidebar {
     position: static;
     height: auto;
     top: auto;
-    flex-direction: row;
-    align-items: center;
     padding: 12px 16px;
     gap: 12px;
-    flex-wrap: wrap;
   }
-  .dash-nav { flex-direction: row; flex: unset; flex-wrap: wrap; }
-  .dash-nav-label, .dash-nav-divider { display: none; }
-  .dash-sidebar-footer { margin-top: 0; border-top: none; border-left: 1px solid rgba(255,255,255,0.07); padding-left: 14px; }
+  .dash-mobile-nav-toggle { display: flex; }
+  .dash-nav, .dash-sidebar-footer { display: none; }
+  .dash-sidebar--open .dash-nav { display: flex; }
+  .dash-sidebar--open .dash-sidebar-footer { display: flex; }
+  .dash-sidebar-footer { margin-top: 0; border-top: 1px solid rgba(255,255,255,0.07); padding-top: 14px; }
 
   .dash-content { padding: 28px 20px; }
   .dash-drawer { width: 100%; position: static; height: auto; border-left: none; border-top: 1px solid rgba(0,0,0,0.08); }

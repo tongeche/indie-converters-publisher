@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import mammoth from 'mammoth/mammoth.browser';
 import DOMPurify from 'dompurify';
+import { TextareaSelectionBounds } from 'textarea-selection-bounds';
 import { validateManuscript, analyseHtml, analyseTxt, analyseImages, countManualPageBreaks } from '../lib/manuscriptValidator';
 import { calculateRoyaltyEstimates, formatRoyaltyMoney } from '../lib/royaltyCalculator';
 import { calculatePrintCover, formatInches as formatCoverInches, TRIM_SIZE_OPTIONS, COVER_SAFE_MARGIN_IN, COVER_BLEED_IN } from '../lib/printCoverCalculator';
@@ -9,7 +10,9 @@ import { useAuth } from '../context/AuthContext';
 import SEO from '../components/SEO';
 import RetailerLinksEditor, { RETAILER_OPTIONS } from '../components/RetailerLinksEditor';
 import PublishingAssistant from '../components/PublishingAssistant';
+import AssistantSelectionToolbar from '../components/AssistantSelectionToolbar';
 import { supabase } from '../lib/supabase';
+import { createAssistantTextSelection, replaceAssistantTextSelection } from '../lib/selectionReplacement';
 import sampleCover1 from '../assets/dammie-covers/dammie-01.webp';
 import sampleCover2 from '../assets/dammie-covers/dammie-02.webp';
 import sampleCover3 from '../assets/dammie-covers/dammie-03.webp';
@@ -73,6 +76,10 @@ const ASSISTANT_FIELD_DEFINITIONS = {
   trimSize: { label: 'Trim size', purpose: 'The physical page dimensions for print editions.' },
   price: { label: 'List price', purpose: 'The public list price before retailer-specific tax or delivery adjustments.' },
 };
+
+// Text only: selection proposals intentionally exclude dates, prices,
+// identifiers and dropdown values. Those remain field-aware in normal chat.
+const ASSISTANT_SELECTION_FIELDS = new Set(['title', 'subtitle', 'edition', 'series', 'description', 'publisher']);
 
 const FM_ITEMS = [
   { key: 'copyright',
@@ -1179,6 +1186,7 @@ function KeywordInput({ keywords, onChange }) {
         ))}
         {keywords.length < 7 && (
           <input
+            data-assistant-field="keywords"
             className="kw-input"
             type="text"
             value={input}
@@ -1199,6 +1207,8 @@ export default function UploadWizard() {
   const { user } = useAuth();
   const [step,         setStep]         = useState(0);
   const [assistantActiveField, setAssistantActiveField] = useState(null);
+  const [assistantSelection, setAssistantSelection] = useState(null);
+  const [assistantSelectionRequest, setAssistantSelectionRequest] = useState(null);
   const [genres,       setGenres]       = useState([]);
   const [stepError,    setStepError]    = useState('');
   const [uploading,    setUploading]    = useState(false);
@@ -1245,6 +1255,10 @@ export default function UploadWizard() {
   const bsTouchStartXRef = useRef(null);
   const styleTouchedRef = useRef(false);
   const styleDropdownRef = useRef(null);
+
+  useEffect(() => {
+    setAssistantSelection(null);
+  }, [step]);
 
   // Restore saved progress from localStorage on first load
   const [savedProgress, setSavedProgress] = useState(() => {
@@ -1479,26 +1493,120 @@ export default function UploadWizard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fd.genre]);
 
-  function up(key, val) { setFd(p => ({ ...p, [key]: val })); setStepError(''); }
+  function up(key, val) {
+    setFd(p => ({ ...p, [key]: val }));
+    setAssistantSelection(current => current?.field === key ? null : current);
+    setStepError('');
+  }
 
-  function captureAssistantField(event) {
-    const target = event.target;
-    if (!target?.matches?.('input:not([type="file"]):not([type="password"]), textarea, select')) return;
+  function getAssistantFieldFromControl(target) {
+    if (!target?.matches?.('input:not([type="file"]):not([type="password"]), textarea, select')) return null;
+    const explicitFieldId = target.dataset?.assistantField;
     const fieldContainer = target.closest('.wz-field');
     const label = fieldContainer?.querySelector(':scope > label');
     const labelText = label?.childNodes?.[0]?.textContent?.trim() || label?.textContent?.trim() || '';
-    const fieldId = Object.entries(ASSISTANT_FIELD_DEFINITIONS)
-      .find(([, definition]) => labelText.toLowerCase().startsWith(definition.label.toLowerCase()))?.[0];
-    if (!fieldId || fieldId === 'isbn') return;
+    const fieldId = ASSISTANT_FIELD_DEFINITIONS[explicitFieldId]
+      ? explicitFieldId
+      : Object.entries(ASSISTANT_FIELD_DEFINITIONS)
+        .find(([, definition]) => labelText.toLowerCase().startsWith(definition.label.toLowerCase()))?.[0];
+    if (!fieldId) return null;
     const definition = ASSISTANT_FIELD_DEFINITIONS[fieldId];
     const currentValue = fieldId === 'keywords' ? fd.keywords : target.value;
-    setAssistantActiveField({
+    return {
       id: fieldId,
       ...definition,
       value: currentValue,
       maxLength: definition.maxLength || (target.maxLength > 0 ? target.maxLength : null),
       validation: target.getAttribute('aria-invalid') === 'true' ? stepError : '',
+    };
+  }
+
+  function captureAssistantField(event) {
+    const field = getAssistantFieldFromControl(event.target);
+    if (!field) return;
+    setAssistantActiveField(field);
+    setAssistantSelection(current => current?.field === field.id ? current : null);
+  }
+
+  function selectionBoundsForControl(target, start, end) {
+    try {
+      const calculator = new TextareaSelectionBounds(target);
+      const bounds = calculator.getBounds({ from: start, to: end });
+      calculator.dispose();
+      return bounds;
+    } catch {
+      const rect = target.getBoundingClientRect();
+      return { top: rect.top, left: rect.left, width: rect.width, height: Math.min(rect.height, 24) };
+    }
+  }
+
+  function captureAssistantSelection(event) {
+    const target = event.target;
+    const field = getAssistantFieldFromControl(target);
+    if (!field || !ASSISTANT_SELECTION_FIELDS.has(field.id) || Array.isArray(field.value) || !['INPUT', 'TEXTAREA'].includes(target?.tagName)) return;
+    let start;
+    let end;
+    try {
+      start = target.selectionStart;
+      end = target.selectionEnd;
+    } catch {
+      return;
+    }
+    if (!Number.isInteger(start) || !Number.isInteger(end)) return;
+    const sourceValue = String(target.value || '');
+    const selection = createAssistantTextSelection({
+      field: field.id,
+      label: field.label,
+      purpose: field.purpose,
+      maxLength: field.maxLength,
+      value: sourceValue,
+      start,
+      end,
+      bounds: selectionBoundsForControl(target, start, end),
     });
+    setAssistantActiveField({ ...field, value: sourceValue });
+    setAssistantSelection(selection);
+  }
+
+  // A selection is context, not an instruction. Opening Alex should let the
+  // author decide whether they want feedback, an explanation, or a rewrite.
+  function openAssistantForSelection(selection) {
+    if (!selection) return;
+    setAssistantSelectionRequest({ ...selection, id: crypto.randomUUID() });
+    clearAssistantSelection();
+  }
+
+  function clearAssistantSelection() {
+    const control = document.activeElement;
+    try {
+      if (control?.matches?.('input, textarea') && Number.isInteger(control.selectionEnd)) {
+        control.setSelectionRange(control.selectionEnd, control.selectionEnd);
+      }
+    } catch {
+      // Some native form controls do not expose a text selection range.
+    }
+    setAssistantSelection(null);
+  }
+
+  function replaceAssistantSelection(replacement) {
+    const definition = ASSISTANT_FIELD_DEFINITIONS[replacement?.field];
+    if (!definition || !ASSISTANT_SELECTION_FIELDS.has(replacement.field)) return { applied: false, error: 'Alex can only replace text in supported publishing fields.' };
+    const result = replaceAssistantTextSelection({
+      currentValue: String(fd[replacement.field] || ''),
+      selection: replacement.selection,
+      replacement: replacement.replacement,
+    });
+    if (!result.applied) return result;
+
+    const previousValue = String(fd[replacement.field] || '');
+    up(replacement.field, result.value);
+    setAssistantActiveField({ id: replacement.field, ...definition, value: result.value, maxLength: definition.maxLength || null });
+    window.setTimeout(() => {
+      const control = document.querySelector(`[data-assistant-field="${replacement.field}"]`);
+      control?.focus({ preventScroll: true });
+      control?.setSelectionRange?.(result.selectionStart, result.selectionEnd);
+    }, 0);
+    return { ...result, previousValue, appliedValue: result.value, label: definition.label };
   }
 
   function insertAssistantSuggestion(suggestion) {
@@ -1508,11 +1616,18 @@ export default function UploadWizard() {
       const keywords = suggestion.value.split(/[,\n]/).map(value => value.trim()).filter(Boolean).slice(0, 7);
       up('keywords', keywords);
       setAssistantActiveField({ id: 'keywords', ...definition, value: keywords });
+      window.setTimeout(() => document.querySelector('[data-assistant-field="keywords"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
       return true;
     }
     const value = suggestion.value.slice(0, definition.maxLength || 4000);
     up(suggestion.field, value);
     setAssistantActiveField({ id: suggestion.field, ...definition, value });
+    window.setTimeout(() => {
+      const control = document.querySelector(`[data-assistant-field="${suggestion.field}"]`);
+      const field = control?.closest('.wz-field');
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      control?.focus({ preventScroll: true });
+    }, 80);
     return true;
   }
 
@@ -2513,10 +2628,7 @@ export default function UploadWizard() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (item.field) {
       window.setTimeout(() => {
-        const definition = ASSISTANT_FIELD_DEFINITIONS[item.field];
-        const field = Array.from(document.querySelectorAll('.wz-field'))
-          .find(container => container.querySelector(':scope > label')?.textContent?.trim().toLowerCase().startsWith(definition?.label.toLowerCase()));
-        field?.querySelector('input, textarea, select')?.focus();
+        document.querySelector(`[data-assistant-field="${item.field}"]`)?.focus();
       }, 350);
     }
     return true;
@@ -2542,6 +2654,27 @@ export default function UploadWizard() {
     stepGuidance: WIZARD_STEPS[step]?.blurb || '',
     stepTips: WIZARD_STEPS[step]?.tips || [],
     readiness: publishingReadiness,
+    conversionDiagnostics: {
+      score: readinessScore,
+      summary: {
+        good: readinessGoodCount,
+        attention: readinessAttentionCount,
+        critical: readinessCriticalCount,
+      },
+      manuscript: msStructure ? {
+        wordCount: msStructure.wordCount || 0,
+        estimatedPages: estimatedTrimPages || null,
+        readingTime: readingTimeLabel,
+        headingCount: msStructure.headings?.length || 0,
+        imageCount: imageCheck.count || 0,
+      } : null,
+      findings: readinessRows.filter(row => row.severity !== 'good').map(row => ({
+        id: row.key,
+        label: row.label,
+        severity: row.severity === 'error' ? 'critical' : 'attention',
+        message: row.issue?.message || row.goodNote,
+      })),
+    },
     nextAction: assistantNextAction,
     metadataOptions: {
       genres: genres.slice(0, 80).map(item => ({ value: item.slug, label: item.label })),
@@ -2552,6 +2685,11 @@ export default function UploadWizard() {
       ['description', 1], ['audience', 1], ['genre', 1], ['genreSecondary', 1], ['keywords', 1],
       ['pubYear', 2], ['publisher', 2], ['pageCount', 2], ['trimSize', 3], ['price', 7],
     ].map(([field, targetStep]) => ({ field, step: targetStep, label: ASSISTANT_FIELD_DEFINITIONS[field].label })),
+    wizardSteps: WIZARD_STEPS.map((item, targetStep) => ({
+      step: targetStep,
+      label: item.label,
+      group: item.group,
+    })),
     pricingContext: {
       formats: fd.formats,
       pageCount: resolvedSelectedPages || null,
@@ -2572,6 +2710,7 @@ export default function UploadWizard() {
       value: assistantActiveField.id === 'keywords'
         ? fd.keywords
         : fd[assistantActiveField.id] ?? assistantActiveField.value,
+      selection: assistantSelection?.field === assistantActiveField.id ? assistantSelection : null,
     } : null,
     bookDetails: {
       title: fd.title.slice(0, 160),
@@ -2588,7 +2727,7 @@ export default function UploadWizard() {
       isFree: fd.isFree,
       publisher: fd.publisher.slice(0, 160),
     },
-  }), [step, draftId, assistantActiveField, assistantNextAction, authorName, authorProfileBio, fd, genres, publishingReadiness, resolvedSelectedPages]);
+  }), [step, draftId, assistantActiveField, assistantSelection, assistantNextAction, authorName, authorProfileBio, fd, genres, publishingReadiness, resolvedSelectedPages, readinessRows, readinessScore, readinessGoodCount, readinessAttentionCount, readinessCriticalCount, estimatedTrimPages, readingTimeLabel, imageCheck.count, msStructure]);
 
   // ─────────────────── SUCCESS / DRAFT SCREEN ──────────────────
   if (step === 12) {
@@ -2695,7 +2834,7 @@ export default function UploadWizard() {
       </aside>
 
       {/* ── Main ── */}
-      <div className="wz-main" onFocusCapture={captureAssistantField}>
+      <div className="wz-main" onFocusCapture={captureAssistantField} onSelectCapture={captureAssistantSelection}>
         <div className="wz-topbar">
           <div className="wz-topbar-side wz-topbar-side--prev">
             {step > 0 && (
@@ -2764,32 +2903,32 @@ export default function UploadWizard() {
               <div className="wz-fields">
                 <div className="wz-field wz-field--lg">
                   <label>Title <span className="req">*</span></label>
-                  <input type="text" value={fd.title} onChange={e => up('title', e.target.value)} placeholder="The full title of your book" autoFocus />
+                  <input data-assistant-field="title" type="text" value={fd.title} onChange={e => up('title', e.target.value)} placeholder="The full title of your book" autoFocus />
                 </div>
                 <div className="wz-field wz-field--lg">
                   <label>Subtitle <span className="opt">optional</span></label>
-                  <input type="text" value={fd.subtitle} onChange={e => up('subtitle', e.target.value)} placeholder="A secondary title or tagline" />
+                  <input data-assistant-field="subtitle" type="text" value={fd.subtitle} onChange={e => up('subtitle', e.target.value)} placeholder="A secondary title or tagline" />
                 </div>
                 <div className="wz-row">
                   <div className="wz-field">
                     <label>Language <span className="req">*</span></label>
-                    <select value={fd.language} onChange={e => up('language', e.target.value)}>
+                    <select data-assistant-field="language" value={fd.language} onChange={e => up('language', e.target.value)}>
                       {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
                     </select>
                   </div>
                   <div className="wz-field">
                     <label>Edition <span className="opt">optional</span></label>
-                    <input type="text" value={fd.edition} onChange={e => up('edition', e.target.value)} placeholder="e.g. First Edition" />
+                    <input data-assistant-field="edition" type="text" value={fd.edition} onChange={e => up('edition', e.target.value)} placeholder="e.g. First Edition" />
                   </div>
                 </div>
                 <div className="wz-row">
                   <div className="wz-field">
                     <label>Series name <span className="opt">optional</span></label>
-                    <input type="text" value={fd.series} onChange={e => up('series', e.target.value)} placeholder="e.g. The Marsh Chronicles" />
+                    <input data-assistant-field="series" type="text" value={fd.series} onChange={e => up('series', e.target.value)} placeholder="e.g. The Marsh Chronicles" />
                   </div>
                   <div className="wz-field">
                     <label>Volume / Part <span className="opt">optional</span></label>
-                    <input type="number" min="1" value={fd.seriesVolume} onChange={e => up('seriesVolume', e.target.value)} placeholder="1" disabled={!fd.series} />
+                    <input data-assistant-field="seriesVolume" type="number" min="1" value={fd.seriesVolume} onChange={e => up('seriesVolume', e.target.value)} placeholder="1" disabled={!fd.series} />
                   </div>
                 </div>
               </div>
@@ -2839,7 +2978,7 @@ export default function UploadWizard() {
                     Description <span className="req">*</span>
                     <span className="wz-char">{fd.description.length.toLocaleString()} / 4,000</span>
                   </label>
-                  <textarea rows={10} value={fd.description}
+                  <textarea data-assistant-field="description" rows={10} value={fd.description}
                     onChange={e => { if (e.target.value.length <= 4000) up('description', e.target.value); }}
                     placeholder="Write your back-cover description here. Use line breaks to separate paragraphs." />
                 </div>
@@ -2886,14 +3025,14 @@ export default function UploadWizard() {
                 <div className="wz-row">
                   <div className="wz-field">
                     <label>Primary genre <span className="req">*</span></label>
-                    <select value={fd.genre} onChange={e => up('genre', e.target.value)}>
+                    <select data-assistant-field="genre" value={fd.genre} onChange={e => up('genre', e.target.value)}>
                       <option value="">Select a genre</option>
                       {genres.map(g => <option key={g.slug} value={g.slug}>{g.label}</option>)}
                     </select>
                   </div>
                   <div className="wz-field">
                     <label>Secondary genre <span className="opt">optional</span></label>
-                    <select value={fd.genreSecondary} onChange={e => up('genreSecondary', e.target.value)}>
+                    <select data-assistant-field="genreSecondary" value={fd.genreSecondary} onChange={e => up('genreSecondary', e.target.value)}>
                       <option value="">None</option>
                       {genres.filter(g => g.slug !== fd.genre).map(g => <option key={g.slug} value={g.slug}>{g.label}</option>)}
                     </select>
@@ -2933,11 +3072,11 @@ export default function UploadWizard() {
                 <div className="wz-row">
                   <div className="wz-field">
                     <label>Publication year <span className="req">*</span></label>
-                    <input type="number" min="1900" max={new Date().getFullYear() + 2} value={fd.pubYear} onChange={e => up('pubYear', e.target.value)} placeholder={String(new Date().getFullYear())} />
+                    <input data-assistant-field="pubYear" type="number" min="1900" max={new Date().getFullYear() + 2} value={fd.pubYear} onChange={e => up('pubYear', e.target.value)} placeholder={String(new Date().getFullYear())} />
                   </div>
                   <div className="wz-field">
                     <label>Publisher name <span className="opt">optional</span></label>
-                    <input type="text" value={fd.publisher} onChange={e => up('publisher', e.target.value)} placeholder="Self-published" />
+                    <input data-assistant-field="publisher" type="text" value={fd.publisher} onChange={e => up('publisher', e.target.value)} placeholder="Self-published" />
                   </div>
                 </div>
                 <div className="wz-format-card wz-format-card--estimate">
@@ -3272,6 +3411,7 @@ export default function UploadWizard() {
                           <input
                             type="number"
                             min="1"
+                            data-assistant-field="pageCount"
                             value={fd.pageCount}
                             onChange={e => up('pageCount', e.target.value)}
                             placeholder={estimatedTrimPages ? String(estimatedTrimPages) : 'e.g. 280'}
@@ -4360,7 +4500,7 @@ export default function UploadWizard() {
                     <label>List price (USD) <span className="opt">optional</span></label>
                     <div className="wz-price-row">
                       <span className="wz-price-sym">$</span>
-                      <input type="number" min="0" step="0.01" value={fd.price} onChange={e => up('price', e.target.value)} placeholder="9.99" />
+                      <input data-assistant-field="price" type="number" min="0" step="0.01" value={fd.price} onChange={e => up('price', e.target.value)} placeholder="9.99" />
                     </div>
                     <div className="wz-price-presets" aria-label="Quick price presets">
                       {PRICE_PRESETS.map(preset => (
@@ -5160,14 +5300,24 @@ export default function UploadWizard() {
           </div>
         </div>
       </div>
+      <AssistantSelectionToolbar
+        selection={assistantSelection}
+        onAskAlex={openAssistantForSelection}
+        onClear={clearAssistantSelection}
+      />
       <PublishingAssistant
         workflowContext={publishingAssistantContext}
+        selectionRequest={assistantSelectionRequest}
+        onSelectionRequestHandled={() => setAssistantSelectionRequest(null)}
         onInsertSuggestion={insertAssistantSuggestion}
+        onReplaceSelection={replaceAssistantSelection}
+        onClearSelection={clearAssistantSelection}
         onNavigateReadiness={navigateToReadinessItem}
         onInsertMatterDraft={insertAssistantMatterDraft}
         onApplyDistributionStrategy={applyAssistantDistributionStrategy}
         onRememberBookFacts={rememberAssistantBookFacts}
         onContinue={goNext}
+        onOpenHealthDetail={openRowDetail}
         supportContact={{ userId: user?.id || '', name: authorName, email: user?.email || '', photoUrl: authorProfile?.photo_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '' }}
       />
     </div>

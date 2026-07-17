@@ -3,8 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ChatAvatar from './ChatAvatar';
 import { getAssistantActionMessage, isHumanSupportIntent, requestAssistantReply } from '../lib/assistant';
-import { createAssistantSession, submitAssistantHandoff } from '../lib/api';
+import { createAssistantSession, loadAssistantActions, reportAssistantAction, saveAssistantPlan, submitAssistantHandoff } from '../lib/api';
 import { buildPricingCoachScenarios, formatRoyaltyMoney } from '../lib/royaltyCalculator';
+import { actionPlanProgress, updatePublishingActionPlan } from '../lib/publishingPlan';
 import './PublishingAssistant.css';
 
 function newMessage(role, text, extra = {}) {
@@ -54,6 +55,26 @@ function readSessionMessages(storageKey) {
   } catch {
     return null;
   }
+}
+
+function readSessionPlan(storageKey) {
+  if (typeof window === 'undefined') return null;
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(`${storageKey}_action_plan`));
+    return saved?.id && Array.isArray(saved.steps) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function isActionPlanRequest(value) {
+  const text = String(value || '').toLowerCase();
+  return /^(?:plan|roadmap)$/i.test(text.trim())
+    || /\b(?:make|create|build|give me)\s+(?:a\s+)?(?:publishing\s+)?plan\b/.test(text)
+    || /\b(?:publishing|launch|book)\s+(?:plan|roadmap)\b/.test(text)
+    || /\b(?:plan|roadmap)\b.*\b(?:publish|publishing|launch|book|ready|finish|complete)\b/.test(text)
+    || /\b(?:help me|help us)\b.*\b(?:get|prepare|finish|launch)\b.*\b(?:book|publishing)\b/.test(text)
+    || /\bstep[- ]by[- ]step\b.*\b(?:publish|publishing|launch|book|ready)\b/.test(text);
 }
 
 function TypewriterText({ text, animate, onComplete }) {
@@ -115,7 +136,54 @@ function PricingScenarios({ scenarios }) {
   return <div className="publishing-assistant-pricing-scenarios">{scenarios.map(scenario => <details key={scenario.id} open={scenario.id === 'balanced'}><summary className="publishing-assistant-pricing-scenario-head"><strong>{scenario.label}</strong><small>Estimated per sale</small></summary>{scenario.comparisons.map((item, index) => <div key={`${item.channel}-${item.format}-${index}`}><span><strong>{item.format} · {item.channel}</strong><small>{formatRoyaltyMoney(item.listPrice)} list{item.platformFees == null ? ` · ${item.note}` : ` · ${formatRoyaltyMoney(item.platformFees)} fees${item.printCost ? ` · ${formatRoyaltyMoney(item.printCost)} print` : ''}`}</small></span><em>{item.estimatedRoyalty == null ? 'Not available' : formatRoyaltyMoney(item.estimatedRoyalty)}</em></div>)}</details>)}</div>;
 }
 
-export default function PublishingAssistant({ workflowContext, onInsertSuggestion, onNavigateReadiness, onInsertMatterDraft, onApplyDistributionStrategy, onRememberBookFacts, onContinue, supportContact = {} }) {
+function SelectionReplacement({ proposal, applied, dismissed, onApply, onRedo, onReject }) {
+  if (!proposal || dismissed) return null;
+  return <section className="publishing-assistant-selection-replacement" aria-label={`Alex’s proposed replacement for ${proposal.label || proposal.field}`}>
+    <small>Selected text · {proposal.label || proposal.field}</small>
+    <div><span>Current</span><del>{proposal.original}</del></div>
+    <div><span>Alex’s edit</span><strong>{proposal.replacement}</strong></div>
+    {proposal.reason && <p>{proposal.reason}</p>}
+    <footer>
+      <button type="button" onClick={() => onApply(proposal)} disabled={applied}>{applied ? 'Applied' : 'Use it'}</button>
+      <button type="button" onClick={() => onRedo(proposal)} disabled={applied}>Redo</button>
+      <button type="button" onClick={() => onReject(proposal)} disabled={applied}>Keep mine</button>
+    </footer>
+  </section>;
+}
+
+function PublishingActionPlan({ plan, onOpen, onAsk, onComplete }) {
+  const progress = actionPlanProgress(plan);
+  const activeStep = plan.steps.find(step => step.status === 'current' || step.status === 'in_progress');
+  return <section className="publishing-assistant-action-plan" aria-label="Your publishing plan">
+    <header>
+      <span aria-hidden="true">✦</span>
+      <div><strong>{plan.status === 'completed' ? 'Publishing plan complete' : plan.title}</strong><small>{progress.complete} of {progress.total} tasks complete</small></div>
+      <b>{progress.percent}%</b>
+    </header>
+    <div className="publishing-assistant-action-plan-progress" aria-hidden="true"><i style={{ width: `${progress.percent}%` }} /></div>
+    {plan.status === 'completed' ? <p>You completed every task in this plan. Alex can help with your final review whenever you are ready.</p> : <>
+      <ol>
+        {plan.steps.map((step, index) => <li key={step.id} className={`is-${step.status}`}>
+          <span>{step.status === 'completed' ? '✓' : index + 1}</span>
+          <div><strong>{step.title}</strong><small>{step.status === 'completed' ? 'Complete' : step.detail}</small></div>
+        </li>)}
+      </ol>
+      {activeStep && <div className="publishing-assistant-action-plan-current">
+        <small>Current task</small>
+        <strong>{activeStep.title}</strong>
+        <p>{activeStep.detail}</p>
+        <div>
+          <button type="button" onClick={() => onOpen(activeStep)}>{activeStep.field || activeStep.step ? 'Open task' : 'Work here'}</button>
+          <button type="button" onClick={() => onAsk(activeStep)}>Ask Alex</button>
+          <button type="button" onClick={() => onComplete(activeStep)}>Mark complete</button>
+        </div>
+        <em>{activeStep.completionHint}</em>
+      </div>}
+    </>}
+  </section>;
+}
+
+export default function PublishingAssistant({ workflowContext, selectionRequest, onSelectionRequestHandled, onInsertSuggestion, onReplaceSelection, onClearSelection, onNavigateReadiness, onInsertMatterDraft, onApplyDistributionStrategy, onRememberBookFacts, onContinue, onOpenHealthDetail, supportContact = {} }) {
   const storageKey = `ic_publishing_assistant_${workflowContext.draftKey || 'new'}`;
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -123,15 +191,24 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
   const [darkMode, setDarkMode] = useState(() => (
     typeof window !== 'undefined' && window.localStorage.getItem('ic_alex_theme') === 'dark'
   ));
+  const [aiWorkMode, setAiWorkMode] = useState(() => (
+    typeof window !== 'undefined' && window.localStorage.getItem('ic_alex_work_mode') === 'on'
+  ));
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
   const [messages, setMessages] = useState(() => readSessionMessages(storageKey) || [
     newMessage('assistant', 'Hi, I’m Alex. I can help with each publishing step. Select a field or ask me what to do next.'),
   ]);
-  const [insertedSuggestion, setInsertedSuggestion] = useState('');
+  const [insertedSuggestions, setInsertedSuggestions] = useState(new Set());
+  const [dismissedSuggestions, setDismissedSuggestions] = useState(new Set());
+  const [appliedSelectionReplacements, setAppliedSelectionReplacements] = useState(new Set());
+  const [dismissedSelectionReplacements, setDismissedSelectionReplacements] = useState(new Set());
+  const [lastAppliedChange, setLastAppliedChange] = useState(null);
+  const [actionPlan, setActionPlan] = useState(() => readSessionPlan(storageKey));
   const [typingMessageId, setTypingMessageId] = useState('');
   const [humanFlow, setHumanFlow] = useState(null);
   const [showReadiness, setShowReadiness] = useState(false);
+  const [selectedTextContext, setSelectedTextContext] = useState(null);
   const agentSessionIdRef = useRef(null);
   const agentSessionPromiseRef = useRef(null);
   const agentSessionNeedsCreateRef = useRef(false);
@@ -147,6 +224,9 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
   useEffect(() => {
     window.localStorage.setItem('ic_alex_theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
+  useEffect(() => {
+    window.localStorage.setItem('ic_alex_work_mode', aiWorkMode ? 'on' : 'off');
+  }, [aiWorkMode]);
   const [showDescriptionBuilder, setShowDescriptionBuilder] = useState(false);
   const [descriptionBrief, setDescriptionBrief] = useState(EMPTY_DESCRIPTION_BRIEF);
   const [descriptionBuilderStep, setDescriptionBuilderStep] = useState(0);
@@ -164,6 +244,10 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
   const dragStartRef = useRef(null);
   const proactiveReviewedRef = useRef(new Set());
   const proactiveRequestRef = useRef(0);
+  const restoredActionsKeyRef = useRef('');
+  const handledSelectionRequestRef = useRef('');
+  const composerInputRef = useRef(null);
+  const activeTextSelection = selectedTextContext || workflowContext.activeField?.selection || null;
 
   const ensureAgentSession = useCallback(async () => {
     if (!agentSessionNeedsCreateRef.current) return agentSessionIdRef.current;
@@ -189,6 +273,41 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
   useEffect(() => { ensureAgentSession(); }, [ensureAgentSession]);
 
   useEffect(() => {
+    const draftKey = workflowContext.draftKey || 'new';
+    const restoreKey = `${supportContact.userId || 'anonymous'}:${draftKey}:${workflowContext.activeField?.id || ''}`;
+    if (!supportContact.userId || restoredActionsKeyRef.current === restoreKey) return;
+    restoredActionsKeyRef.current = restoreKey;
+    loadAssistantActions(draftKey).then(result => {
+      if (!result) return;
+      if (result.lastUndoable) {
+        setLastAppliedChange({
+          field: result.lastUndoable.field,
+          label: result.lastUndoable.label || result.lastUndoable.field,
+          previousValue: Array.isArray(result.lastUndoable.previousValue) ? result.lastUndoable.previousValue.join('\n') : String(result.lastUndoable.previousValue || ''),
+          appliedValue: result.lastUndoable.appliedValue || result.lastUndoable.value,
+          approvalId: result.lastUndoable.approvalId,
+        });
+      }
+      if (result.actionPlan) {
+        setActionPlan(result.actionPlan);
+        setMessages(current => current.some(message => message.actionPlan?.id === result.actionPlan.id)
+          ? current
+          : [...current, newMessage('assistant', 'Your publishing plan is ready to resume. We’ll continue with one task at a time.', {
+              kind: 'restored-action-plan', actionPlan: result.actionPlan,
+            })]);
+      }
+      const pending = (result.pending || []).find(action => action.field === workflowContext.activeField?.id && action.value);
+      if (!pending) return;
+      setMessages(current => current.some(message => message.fieldSuggestions?.some(suggestion => suggestion.approvalId === pending.approvalId))
+        ? current
+        : [...current, newMessage('assistant', `You still have an unfinished proposal for **${workflowContext.activeField?.label || pending.field}**.`, {
+            kind: 'restored-proposal',
+            fieldSuggestions: [{ field: pending.field, label: pending.label || `Use this ${pending.field}`, value: pending.value, approved: pending.status === 'approved', approvalId: pending.approvalId }],
+          })]);
+    }).catch(error => console.error('[publishing assistant] could not restore actions:', error?.message || error));
+  }, [supportContact.userId, workflowContext.activeField?.id, workflowContext.activeField?.label, workflowContext.draftKey]);
+
+  useEffect(() => {
     if (!open || !messageListRef.current) return;
     messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
   }, [messages, open, pending]);
@@ -197,6 +316,13 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     if (typeof window === 'undefined') return;
     window.sessionStorage.setItem(storageKey, JSON.stringify(messages.slice(-40)));
   }, [messages, storageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const planKey = `${storageKey}_action_plan`;
+    if (actionPlan) window.sessionStorage.setItem(planKey, JSON.stringify(actionPlan));
+    else window.sessionStorage.removeItem(planKey);
+  }, [actionPlan, storageKey]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -265,6 +391,21 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     };
   }, [open, collapsed]);
 
+  useEffect(() => {
+    if (!selectionRequest?.id || handledSelectionRequestRef.current === selectionRequest.id) return;
+    handledSelectionRequestRef.current = selectionRequest.id;
+    // Highlighting text only gives Alex context. The author chooses the task in
+    // the composer; we never manufacture an “improve this” message for them.
+    setSelectedTextContext(selectionRequest);
+    setInput('');
+    setOpen(true);
+    setCollapsed(false);
+    setShowReadiness(false);
+    setShowMetadataIntelligence(false);
+    onSelectionRequestHandled?.();
+    window.requestAnimationFrame(() => composerInputRef.current?.focus());
+  }, [onSelectionRequestHandled, selectionRequest?.id]);
+
   async function sendMessage(value) {
     const text = value.trim();
     if (!text || pending) return;
@@ -287,10 +428,24 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       setShowDistributionAdvisor(false);
       return;
     }
+    if (activeTextSelection?.field && activeTextSelection?.original) {
+      await sendSelectionTask(text, userMessage, activeTextSelection);
+      return;
+    }
+    if (isActionPlanRequest(text)) {
+      setInput('');
+      await buildActionPlan(userMessage);
+      return;
+    }
     if (!showDescriptionBuilder && /\b(?:help|build|write|create|improve|draft)\b.*\b(?:description|blurb)\b/i.test(text)) {
       setInput('');
       setMessages(current => [...current, userMessage]);
       startDescriptionBuilder();
+      return;
+    }
+    if (/\b(?:improve|review|optimise|optimize|fix|build)\b.*\b(?:metadata|discoverability|book details)\b/i.test(text)) {
+      setInput('');
+      await buildMetadataPlan(userMessage);
       return;
     }
     if (!showPricingCoach && /\b(?:price|pricing|royalt|earnings)\b/i.test(text) && /\b(?:help|coach|compare|choose|recommend|scenario)\b/i.test(text)) {
@@ -383,20 +538,130 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
         label: 'Publishing upload wizard',
         hint: `The author is completing the ${workflowContext.stepLabel} step.`,
       },
-      workflowContext,
+      workflowContext: { ...workflowContext, aiWorkMode },
     });
     agentSessionResetRef.current = false;
 
-    const assistantMessage = newMessage('assistant', reply.text, reply);
+    const approvedSuggestions = aiWorkMode
+      ? (reply.fieldSuggestions || []).filter(suggestion => suggestion.approved)
+      : [];
+    const appliedSuggestions = approvedSuggestions.filter(suggestion => applyFieldSuggestion(suggestion));
+    const appliedLabel = appliedSuggestions[0]
+      ? workflowContext.activeField?.label || appliedSuggestions[0].field
+      : '';
+    const navigationApproval = aiWorkMode && /^(?:yes|yes please|proceed|continue|go ahead|take me there|do it)[.!]?$/i.test(text);
+    const navigationAction = navigationApproval
+      ? (reply.actions || []).find(action => action.type === 'wizard_step' || action.type === 'wizard_next')
+      : null;
+    if (navigationAction?.type === 'wizard_step') followWizardStep(navigationAction.value);
+    if (navigationAction?.type === 'wizard_next') onContinue?.();
+    const confirmations = [
+      appliedLabel ? `✓ Applied to **${appliedLabel}**.` : '',
+      navigationAction ? `✓ Opened **${navigationAction.label.replace(/^Go to |^Continue to /, '')}**.` : '',
+    ].filter(Boolean);
+    const assistantText = confirmations.length ? `${reply.text}\n\n${confirmations.join('\n')}` : reply.text;
+    const assistantMessage = newMessage('assistant', assistantText, { ...reply, text: assistantText });
     setTypingMessageId(assistantMessage.id);
     setMessages(current => [...current, assistantMessage]);
     setPending(false);
   }
 
+  async function sendSelectionRewrite(selection) {
+    if (!selection?.field || !selection?.original || pending) return;
+    const selectedField = {
+      ...workflowContext.activeField,
+      id: selection.field,
+      label: selection.label,
+      purpose: selection.purpose || workflowContext.activeField?.purpose || '',
+      value: selection.sourceValue,
+      maxLength: selection.maxLength || (workflowContext.activeField?.id === selection.field ? workflowContext.activeField.maxLength : null),
+      selection,
+    };
+    const text = `Improve the selected text in my ${selection.label}.`;
+    const userMessage = newMessage('user', text, { kind: 'selection-request', selection: { field: selection.field, label: selection.label, text: selection.text } });
+    const history = [...messages, userMessage];
+    setInput('');
+    setPending(true);
+    setMessages(current => [...current, userMessage]);
+
+    await ensureAgentSession();
+    const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
+      message: text,
+      history,
+      pageUrl: typeof window !== 'undefined' ? window.location.href : '/upload',
+      pageContext: {
+        section: 'publishing',
+        label: 'Publishing upload wizard',
+        hint: `The author selected wording in ${selection.label} and asked Alex to improve only that passage.`,
+      },
+      workflowContext: { ...workflowContext, aiWorkMode, activeField: selectedField },
+      requestType: 'selection_rewrite',
+    });
+    agentSessionResetRef.current = false;
+    const selectionReplacement = reply.selectionReplacement
+      ? { ...reply.selectionReplacement, label: selection.label, selection }
+      : null;
+    const assistantMessage = newMessage('assistant', reply.text, { ...reply, selectionReplacement });
+    setTypingMessageId(assistantMessage.id);
+    setMessages(current => [...current, assistantMessage]);
+    setPending(false);
+  }
+
+  async function sendSelectionTask(text, userMessage, selection) {
+    if (!selection?.field || !selection?.original || pending) return;
+    const selectedField = {
+      ...workflowContext.activeField,
+      id: selection.field,
+      label: selection.label,
+      purpose: selection.purpose || workflowContext.activeField?.purpose || '',
+      value: selection.sourceValue,
+      maxLength: selection.maxLength || (workflowContext.activeField?.id === selection.field ? workflowContext.activeField.maxLength : null),
+      selection,
+    };
+    const history = [...messages, userMessage];
+    setInput('');
+    setPending(true);
+    setMessages(current => [...current, userMessage]);
+
+    await ensureAgentSession();
+    const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
+      message: text,
+      history,
+      pageUrl: typeof window !== 'undefined' ? window.location.href : '/upload',
+      pageContext: {
+        section: 'publishing',
+        label: 'Publishing upload wizard',
+        hint: `The author selected wording in ${selection.label}. Answer the author’s stated task about that passage; do not assume they want a rewrite.`,
+      },
+      workflowContext: { ...workflowContext, aiWorkMode, activeField: selectedField },
+      requestType: 'selection_task',
+    });
+    agentSessionResetRef.current = false;
+    const selectionReplacement = reply.selectionReplacement
+      ? { ...reply.selectionReplacement, label: selection.label, selection }
+      : null;
+    const assistantMessage = newMessage('assistant', reply.text, { ...reply, selectionReplacement });
+    setTypingMessageId(assistantMessage.id);
+    setMessages(current => [...current, assistantMessage]);
+    setPending(false);
+  }
+
+  function clearSelectedTextContext() {
+    setSelectedTextContext(null);
+    onClearSelection?.();
+  }
+
   function clearMessages() {
     setMessages([]);
     setInput('');
-    setInsertedSuggestion('');
+    setInsertedSuggestions(new Set());
+    setDismissedSuggestions(new Set());
+    setAppliedSelectionReplacements(new Set());
+    setDismissedSelectionReplacements(new Set());
     setTypingMessageId('');
     setHumanFlow(null);
     setShowReadiness(false);
@@ -411,6 +676,11 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     setMatterType('');
     setInsertedMatter('');
     setShowDistributionAdvisor(false);
+    setLastAppliedChange(null);
+    setActionPlan(null);
+    clearSelectedTextContext();
+    saveAssistantPlan({ draftKey: workflowContext.draftKey || 'new', plan: null })
+      .catch(error => console.error('[publishing assistant] plan reset failed:', error?.message || error));
     proactiveRequestRef.current += 1;
     proactiveReviewedRef.current = new Set();
     if (typeof window !== 'undefined') {
@@ -422,6 +692,7 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
       window.sessionStorage.setItem(`${storageKey}_agent_session`, nextSessionId);
       window.sessionStorage.removeItem(storageKey);
       window.sessionStorage.removeItem(`${storageKey}_reviewed`);
+      window.sessionStorage.removeItem(`${storageKey}_action_plan`);
     }
   }
 
@@ -464,8 +735,134 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
   }
 
   function insertSuggestion(suggestion) {
-    if (!onInsertSuggestion?.(suggestion)) return;
-    setInsertedSuggestion(`${suggestion.field}:${suggestion.value}`);
+    applyFieldSuggestion(suggestion);
+  }
+
+  function selectionReplacementKey(proposal) {
+    return `${proposal.field}:${proposal.start}:${proposal.end}:${proposal.original}:${proposal.replacement}`;
+  }
+
+  function applySelectionReplacement(proposal) {
+    const result = onReplaceSelection?.(proposal);
+    if (!result?.applied) {
+      const notice = newMessage('assistant', result?.error || 'I could not apply that selected-text edit. Please select the passage again and try once more.', { kind: 'selection-apply-error' });
+      setTypingMessageId(notice.id);
+      setMessages(current => [...current, notice]);
+      return;
+    }
+    const key = selectionReplacementKey(proposal);
+    setAppliedSelectionReplacements(current => new Set([...current, key]));
+    setSelectedTextContext(current => current?.field === proposal.field ? null : current);
+    setLastAppliedChange({
+      field: proposal.field,
+      label: `selected text in ${result.label || proposal.label || proposal.field}`,
+      previousValue: result.previousValue,
+      appliedValue: result.appliedValue,
+      approvalId: null,
+    });
+    const confirmation = newMessage('assistant', `✓ Updated the selected text in **${result.label || proposal.label || proposal.field}**.`, { kind: 'selection-applied' });
+    setTypingMessageId(confirmation.id);
+    setMessages(current => [...current, confirmation]);
+  }
+
+  function redoSelectionReplacement(proposal) {
+    setDismissedSelectionReplacements(current => new Set([...current, selectionReplacementKey(proposal)]));
+    sendSelectionRewrite(proposal.selection);
+  }
+
+  function rejectSelectionReplacement(proposal) {
+    setDismissedSelectionReplacements(current => new Set([...current, selectionReplacementKey(proposal)]));
+  }
+
+  function rejectSuggestion(suggestionKey, suggestion = null) {
+    setDismissedSuggestions(current => new Set([...current, suggestionKey]));
+    reportAssistantAction({ approvalId: suggestion?.approvalId, outcome: 'rejected' })
+      .catch(error => console.error('[publishing assistant] rejection receipt failed:', error?.message || error));
+  }
+
+  function redoSuggestion(suggestion, suggestionKey) {
+    rejectSuggestion(suggestionKey, suggestion);
+    sendMessage(`Give me another version for the ${workflowContext.activeField?.label || suggestion.field}. Keep the established book facts, but make the wording meaningfully different.`);
+  }
+
+  function applyFieldSuggestion(suggestion) {
+    const active = workflowContext.activeField;
+    const destination = workflowContext.wizardNavigation?.find(item => item.field === suggestion?.field);
+    if (!suggestion?.field || (!destination && suggestion.field !== active?.id)) return false;
+    const detailKey = suggestion.field === 'genreSecondary' ? 'secondaryGenre' : suggestion.field;
+    const rawPreviousValue = suggestion.field === active?.id ? active.value : workflowContext.bookDetails?.[detailKey];
+    const previousValue = Array.isArray(rawPreviousValue) ? rawPreviousValue.join('\n') : String(rawPreviousValue || '');
+    if (!onInsertSuggestion?.(suggestion)) return false;
+    setInsertedSuggestions(current => new Set([...current, `${suggestion.field}:${suggestion.value}`]));
+    setLastAppliedChange({
+      field: suggestion.field,
+      label: suggestion.label?.replace(/^Use\s+/i, '') || destination?.label || active?.label || suggestion.field,
+      previousValue,
+      appliedValue: suggestion.value,
+      approvalId: suggestion.approvalId || null,
+    });
+    reportAssistantAction({ approvalId: suggestion.approvalId, outcome: 'applied', appliedValue: suggestion.value, previousValue })
+      .catch(error => console.error('[publishing assistant] action receipt failed:', error?.message || error));
+    return true;
+  }
+
+  function undoLastChange() {
+    if (!lastAppliedChange) return;
+    if (!onInsertSuggestion?.({
+      field: lastAppliedChange.field,
+      value: lastAppliedChange.previousValue,
+      label: `Restore ${lastAppliedChange.label}`,
+    })) return;
+    reportAssistantAction({
+      approvalId: lastAppliedChange.approvalId,
+      outcome: 'undone',
+      appliedValue: lastAppliedChange.appliedValue,
+      previousValue: lastAppliedChange.previousValue,
+    }).catch(error => console.error('[publishing assistant] undo receipt failed:', error?.message || error));
+    const confirmation = newMessage('assistant', `Undone. **${lastAppliedChange.label}** has been restored to its previous value.`, { kind: 'action-confirmation' });
+    setInsertedSuggestions(new Set());
+    reopenPlanStepForField(lastAppliedChange.field);
+    setLastAppliedChange(null);
+    setTypingMessageId(confirmation.id);
+    setMessages(current => [...current, confirmation]);
+  }
+
+  function saveActionPlan(plan) {
+    setActionPlan(plan);
+    saveAssistantPlan({ draftKey: workflowContext.draftKey || 'new', plan })
+      .catch(error => console.error('[publishing assistant] plan save failed:', error?.message || error));
+  }
+
+  function openActionPlanStep(step) {
+    if (!actionPlan) return;
+    const updated = updatePublishingActionPlan(actionPlan, step.id, 'in_progress');
+    if (updated) saveActionPlan(updated);
+    if (step.field) followWizardAction(step.field);
+    else if (step.step) followWizardStep(step.step);
+  }
+
+  function askAboutActionPlanStep(step) {
+    sendMessage(`I’m working through my publishing plan. Help me complete ${step.title}. ${step.detail}`);
+  }
+
+  function completeActionPlanStep(step) {
+    if (!actionPlan) return;
+    const updated = updatePublishingActionPlan(actionPlan, step.id, 'completed');
+    if (!updated) return;
+    saveActionPlan(updated);
+    const next = updated.steps.find(item => item.status === 'current' || item.status === 'in_progress');
+    const confirmation = newMessage('assistant', next
+      ? `✓ **${step.title}** marked complete. Next: **${next.title}**.`
+      : '✓ Your publishing plan is complete. You’re ready for a final review of the remaining publishing details.', { kind: 'action-plan-progress', actionPlan: updated });
+    setTypingMessageId(confirmation.id);
+    setMessages(current => [...current, confirmation]);
+  }
+
+  function reopenPlanStepForField(field) {
+    const completed = actionPlan?.steps.find(step => step.field === field && step.status === 'completed');
+    if (!completed) return;
+    const updated = updatePublishingActionPlan(actionPlan, completed.id, 'current');
+    if (updated) saveActionPlan(updated);
   }
 
   function startDrag(event) {
@@ -495,6 +892,12 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
 
   function followWizardAction(field) {
     const destination = workflowContext.wizardNavigation?.find(item => item.field === field);
+    if (!destination) return;
+    goToReadinessItem(destination);
+  }
+
+  function followWizardStep(stepValue) {
+    const destination = workflowContext.wizardSteps?.find(item => String(item.step) === String(stepValue));
     if (!destination) return;
     goToReadinessItem(destination);
   }
@@ -585,6 +988,63 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
     setMetadataAnalysis(reply.metadataAnalysis);
     if (!reply.metadataAnalysis) setMetadataError('I could not produce reliable suggestions from the available facts. Add more detail to the description and try again.');
     setPending(false);
+  }
+
+  async function buildMetadataPlan(userMessage) {
+    setMessages(current => [...current, userMessage]);
+    if (!workflowContext.bookDetails?.title?.trim() || (workflowContext.bookDetails?.description || '').trim().length < 80) {
+      const missing = newMessage('assistant', 'Before I build a metadata plan, add a title and a meaningful description. Those facts keep the recommendations specific and prevent me from inventing details.');
+      setTypingMessageId(missing.id);
+      setMessages(current => [...current, missing]);
+      return;
+    }
+    setPending(true);
+    await ensureAgentSession();
+    const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
+      message: 'Build a grounded multi-field metadata improvement plan for my approval.',
+      requestType: 'metadata_plan',
+      history: [...messages, userMessage],
+      pageUrl: typeof window !== 'undefined' ? window.location.href : '/upload',
+      pageContext: { section: 'publishing', label: 'Metadata action plan', hint: 'Prepare separate safe changes for author review.' },
+      workflowContext: { ...workflowContext, aiWorkMode },
+    });
+    agentSessionResetRef.current = false;
+    const plan = newMessage('assistant', reply.fieldSuggestions?.length
+      ? `I prepared ${reply.fieldSuggestions.length} grounded metadata changes. Review them individually or apply all safe changes.`
+      : reply.text, { ...reply, kind: 'metadata-plan' });
+    setTypingMessageId(plan.id);
+    setMessages(current => [...current, plan]);
+    setPending(false);
+  }
+
+  async function buildActionPlan(userMessage) {
+    setMessages(current => [...current, userMessage]);
+    setPending(true);
+    await ensureAgentSession();
+    const reply = await requestAssistantReply({
+      sessionId: agentSessionIdRef.current,
+      resetSession: agentSessionResetRef.current,
+      message: userMessage.text,
+      requestType: 'action_plan',
+      history: [...messages, userMessage],
+      pageUrl: typeof window !== 'undefined' ? window.location.href : '/upload',
+      pageContext: { section: 'publishing', label: 'Publishing action plan', hint: 'Build a concise, approval-first plan from the author’s actual readiness state.' },
+      workflowContext: { ...workflowContext, aiWorkMode },
+    });
+    agentSessionResetRef.current = false;
+    if (reply.actionPlan) setActionPlan(reply.actionPlan);
+    const response = newMessage('assistant', reply.text, { ...reply, kind: 'action-plan', actionPlan: reply.actionPlan });
+    setTypingMessageId(response.id);
+    setMessages(current => [...current, response]);
+    setPending(false);
+  }
+
+  function applyAllSuggestions(suggestions) {
+    suggestions
+      .filter(suggestion => !dismissedSuggestions.has(`${suggestion.field}:${suggestion.value}`))
+      .forEach(suggestion => applyFieldSuggestion(suggestion));
   }
 
   function startPricingCoach() {
@@ -752,12 +1212,16 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
                 <div role="menu">
                   <button type="button" role="menuitem" onClick={clearMessages}><span aria-hidden="true">＋</span>New conversation</button>
                   <button type="button" role="menuitem" onClick={() => setDarkMode(value => !value)}><span aria-hidden="true">◐</span>{darkMode ? 'Light mode' : 'Dark mode'}</button>
+                  <button type="button" role="menuitem" onClick={() => setAiWorkMode(value => !value)}><span aria-hidden="true">✦</span>{aiWorkMode ? 'Turn off AI work mode' : 'Turn on AI work mode'}</button>
+                  {lastAppliedChange && <button type="button" role="menuitem" onClick={undoLastChange}><span aria-hidden="true">↶</span>Undo last change</button>}
                   <button type="button" role="menuitem" onClick={() => { setCollapsed(false); setMaximized(value => !value); }}><span aria-hidden="true">↗</span>{maximized ? 'Restore window' : 'Expand window'}</button>
                 </div>
               </details>
               <button type="button" onClick={() => { setOpen(false); setCollapsed(false); setMaximized(false); }} aria-label="Close assistant">×</button>
             </nav>
           </header>
+
+          {aiWorkMode && <div className="publishing-assistant-conversation-mode"><span aria-hidden="true">✦</span><span><strong>AI work mode</strong><small>Alex can apply changes after you approve them.</small></span>{lastAppliedChange && <button type="button" onClick={undoLastChange}>Undo</button>}</div>}
 
           {showMetadataIntelligence ? (
             <section className="publishing-assistant-metadata">
@@ -801,27 +1265,59 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
                     <button type="button" onClick={() => insertMatterDraft(message.matterDraft)} disabled={insertedMatter === `${message.matterDraft.section}:${message.matterDraft.key}`}>{insertedMatter === `${message.matterDraft.section}:${message.matterDraft.key}` ? 'Inserted ✓' : `Insert into ${message.matterDraft.label}`}</button>
                   </div>
                 )}
+                {typingMessageId !== message.id && message.actionPlan && (
+                  <PublishingActionPlan
+                    plan={actionPlan?.id === message.actionPlan.id ? actionPlan : message.actionPlan}
+                    onOpen={openActionPlanStep}
+                    onAsk={askAboutActionPlanStep}
+                    onComplete={completeActionPlanStep}
+                  />
+                )}
+                {typingMessageId !== message.id && message.selectionReplacement && (
+                  <SelectionReplacement
+                    proposal={message.selectionReplacement}
+                    applied={appliedSelectionReplacements.has(selectionReplacementKey(message.selectionReplacement))}
+                    dismissed={dismissedSelectionReplacements.has(selectionReplacementKey(message.selectionReplacement))}
+                    onApply={applySelectionReplacement}
+                    onRedo={redoSelectionReplacement}
+                    onReject={rejectSelectionReplacement}
+                  />
+                )}
                 {typingMessageId !== message.id && message.fieldSuggestions?.length > 0 && (
                   <div className="publishing-assistant-field-suggestions">
+                    {message.fieldSuggestions.length > 1 && <div className="publishing-assistant-plan-summary">
+                      <span><strong>{message.fieldSuggestions.length} proposed changes</strong><small>Each change remains undoable and is recorded separately.</small></span>
+                      <button type="button" onClick={() => applyAllSuggestions(message.fieldSuggestions)} disabled={message.fieldSuggestions.every(suggestion => insertedSuggestions.has(`${suggestion.field}:${suggestion.value}`))}>Use all safe changes</button>
+                    </div>}
                     {message.fieldSuggestions.map(suggestion => {
                       const suggestionKey = `${suggestion.field}:${suggestion.value}`;
-                      const inserted = insertedSuggestion === suggestionKey;
+                      if (dismissedSuggestions.has(suggestionKey)) return null;
+                      const inserted = insertedSuggestions.has(suggestionKey);
                       return (
                         <div key={suggestionKey}>
+                          <small>Alex’s proposed {suggestion.label?.replace(/^Use\s+/i, '') || suggestion.field}</small>
                           <span>{suggestion.value}</span>
-                          <button type="button" onClick={() => insertSuggestion(suggestion)} disabled={inserted}>
-                            {inserted ? 'Inserted ✓' : suggestion.label || `Insert into ${workflowContext.activeField?.label || 'field'}`}
-                          </button>
+                          <div className="publishing-assistant-proposal-actions" aria-label="Review Alex’s proposal">
+                            <button type="button" className="is-approve" onClick={() => insertSuggestion(suggestion)} disabled={inserted} title="Use this wording">
+                              <span aria-hidden="true">✓</span>{inserted ? 'Applied' : 'Use it'}
+                            </button>
+                            <button type="button" className="is-redo" onClick={() => redoSuggestion(suggestion, suggestionKey)} disabled={inserted || pending} title="Ask for another version">
+                              <span aria-hidden="true">↻</span>Redo
+                            </button>
+                            <button type="button" className="is-reject" onClick={() => rejectSuggestion(suggestionKey, suggestion)} disabled={inserted} title="Reject this wording" aria-label="Reject this wording">
+                              <span aria-hidden="true">×</span>Reject
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
-                {typingMessageId !== message.id && message.actions?.filter(action => ['wizard', 'wizard_next', 'ask', 'pricing_objective', 'matter_type', 'distribution_priority', 'distribution_strategy'].includes(action.type) && !isHumanSupportIntent(action.value)).length > 0 && (
+                {typingMessageId !== message.id && message.actions?.filter(action => ['wizard', 'wizard_step', 'wizard_next', 'health_detail', 'ask', 'pricing_objective', 'matter_type', 'distribution_priority', 'distribution_strategy'].includes(action.type) && !isHumanSupportIntent(action.value)).length > 0 && (
                   <div className="publishing-assistant-suggestions">
-                    {message.actions.filter(action => ['wizard', 'wizard_next', 'ask', 'pricing_objective', 'matter_type', 'distribution_priority', 'distribution_strategy'].includes(action.type) && !isHumanSupportIntent(action.value)).map(action => (
-                      <button key={`${action.type}:${action.value}`} className={action.type === 'wizard' || action.type === 'wizard_next' || action.type === 'distribution_strategy' ? 'is-wizard-link' : undefined} type="button" onClick={() => action.type === 'wizard' ? followWizardAction(action.value) : action.type === 'wizard_next' ? onContinue?.() : action.type === 'pricing_objective' ? choosePricingObjective(action.value) : action.type === 'matter_type' ? chooseMatterType(action.value) : action.type === 'distribution_priority' ? chooseDistributionPriority(action.value) : action.type === 'distribution_strategy' ? applyDistributionStrategy(action.value) : sendMessage(getAssistantActionMessage(action))}>
-                        {(action.type === 'wizard' || action.type === 'wizard_next') && <span aria-hidden="true">↗</span>}{action.label}
+                    {message.actions.filter(action => ['wizard', 'wizard_step', 'wizard_next', 'health_detail', 'ask', 'pricing_objective', 'matter_type', 'distribution_priority', 'distribution_strategy'].includes(action.type) && !isHumanSupportIntent(action.value)).map(action => (
+                      <button key={`${action.type}:${action.value}`} className={action.type === 'wizard' || action.type === 'wizard_step' || action.type === 'wizard_next' || action.type === 'health_detail' || action.type === 'distribution_strategy' ? 'is-wizard-link' : undefined} type="button" onClick={() => action.type === 'wizard' ? followWizardAction(action.value) : action.type === 'wizard_step' ? followWizardStep(action.value) : action.type === 'wizard_next' ? onContinue?.() : action.type === 'health_detail' ? onOpenHealthDetail?.(action.value) : action.type === 'pricing_objective' ? choosePricingObjective(action.value) : action.type === 'matter_type' ? chooseMatterType(action.value) : action.type === 'distribution_priority' ? chooseDistributionPriority(action.value) : action.type === 'distribution_strategy' ? applyDistributionStrategy(action.value) : sendMessage(getAssistantActionMessage(action))}>
+                        {(action.type === 'wizard' || action.type === 'wizard_step' || action.type === 'wizard_next' || action.type === 'health_detail') && <span aria-hidden="true">↗</span>}{action.label}
                       </button>
                     ))}
                   </div>
@@ -873,11 +1369,21 @@ export default function PublishingAssistant({ workflowContext, onInsertSuggestio
             )}
           </div>}
 
+          {!humanFlow && !showReadiness && !showMetadataIntelligence && activeTextSelection && (
+            <div className="publishing-assistant-selection-context">
+              <span>
+                <b>Selected in {activeTextSelection.label}</b>
+                <small>“{String(activeTextSelection.text || '').replace(/\s+/g, ' ').trim().slice(0, 72)}{String(activeTextSelection.text || '').trim().length > 72 ? '…' : ''}” · Tell Alex what you want to do with it.</small>
+              </span>
+              <button type="button" onClick={clearSelectedTextContext} aria-label="Remove selected text context">×</button>
+            </div>
+          )}
           {!humanFlow && !showReadiness && !showMetadataIntelligence && <form className="publishing-assistant-composer" onSubmit={event => { event.preventDefault(); sendMessage(input); }}>
             <input
+              ref={composerInputRef}
               value={input}
               onChange={event => setInput(event.target.value)}
-              placeholder={showDescriptionBuilder || (showMatterGenerator && matterType) ? 'Type your answer…' : showPricingCoach ? 'Choose an objective or type it…' : showDistributionAdvisor ? 'Choose a priority or type it…' : showMatterGenerator ? 'Choose a section or type it…' : `Ask about ${workflowContext.stepLabel.toLowerCase()}…`}
+              placeholder={activeTextSelection ? 'What would you like Alex to do with this text?' : showDescriptionBuilder || (showMatterGenerator && matterType) ? 'Type your answer…' : showPricingCoach ? 'Choose an objective or type it…' : showDistributionAdvisor ? 'Choose a priority or type it…' : showMatterGenerator ? 'Choose a section or type it…' : `Ask about ${workflowContext.stepLabel.toLowerCase()}…`}
               aria-label="Ask the publishing assistant"
               maxLength={600}
               disabled={pending}

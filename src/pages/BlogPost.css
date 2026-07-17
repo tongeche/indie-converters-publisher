@@ -7,69 +7,21 @@
   background: var(--cream);
 }
 
-/* ── Header: split hero ── */
+/* ── Header: centered masthead ── */
 .bpost-header {
-  display: grid;
-  grid-template-columns: 55fr 45fr;
-  min-height: calc(100vh - 64px);
-  margin-top: 64px;    /* sit below fixed nav */
-  background: #fff;   /* background behind the image card padding */
+  margin-top: 64px; /* sit below fixed nav */
+  padding: 48px 0 20px;
+  background: var(--cream);
 }
 
-/* Left — image panel (floating card inside white panel) */
-.bpost-header-img {
-  position: relative;
-  background: #fff;
-  padding: 40px 16px 40px 40px; /* image sits as a card within the panel */
-  display: flex;
-  align-items: stretch;
-}
-
-.bpost-header-img-el {
-  width: 100%;
-  object-fit: cover;
-  display: block;
-  border-radius: 16px;
-  min-height: 420px;
-}
-
-.bpost-header-img-ph {
-  flex: 1;
-  min-height: 420px;
-  background: linear-gradient(135deg, var(--sand) 0%, #d4c8f5 100%);
-  border-radius: 16px;
+.bpost-header-inner {
+  max-width: 760px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 48px;
-}
-
-.bpost-hero-img-icon {
-  font-size: 3rem;
-  opacity: 0.18;
-  color: var(--clay);
-}
-
-.bpost-hero-img-brief {
-  font-size: 0.82rem;
-  color: var(--ink-soft, #5a5270);
-  opacity: 0.5;
-  font-style: italic;
-  max-width: 320px;
   text-align: center;
-  line-height: 1.6;
-}
-
-/* Right — content panel: light indigo background */
-.bpost-header-content {
-  background: var(--sand);  /* #E3DBFA — light indigo */
-  padding: 64px 56px 64px 64px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 20px;
+  gap: 16px;
 }
 
 .bpost-back {
@@ -83,16 +35,9 @@
   text-decoration: none;
   opacity: 0.55;
   transition: opacity 180ms;
-  align-self: flex-start;
-  margin-bottom: 8px;
+  align-self: center;
 }
 .bpost-back:hover { opacity: 1; }
-
-.bpost-header-meta {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
 
 .bpost-pillar {
   font-size: 0.66rem;
@@ -102,107 +47,201 @@
   color: var(--clay);
 }
 
-.bpost-readtime {
-  font-size: 0.7rem;
-  color: var(--ink-soft, #5a5270);
-  opacity: 0.5;
+/* Pinned below the fixed nav so the title stays put while the subtitle
+   (a normal-flow sibling, not sticky) scrolls up and away underneath it. */
+.bpost-sticky-title-bar {
+  position: sticky;
+  top: 64px;
+  z-index: 5;
+  background: var(--cream);
+  padding: 10px 0;
+}
+.bpost-sticky-title-bar .container {
+  max-width: 760px;
+  text-align: center;
 }
 
 .bpost-title {
-  font-family: 'Fraunces', serif;
-  font-size: clamp(2rem, 3.2vw, 3rem);
-  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(2.1rem, 4.4vw, 3.4rem);
+  font-weight: 800;
   line-height: 1.12;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
   color: var(--ink);
   margin: 0;
 }
 
-.bpost-date {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.bpost-subtitle {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.2rem;
+  line-height: 1.6;
   color: var(--ink-soft, #5a5270);
-  opacity: 0.45;
+  max-width: 620px;
+  margin: 0;
 }
 
-/* Share buttons */
+.bpost-date {
+  font-size: 0.82rem;
+  color: var(--ink-soft, #5a5270);
+  opacity: 0.7;
+}
+
+/* Date + share bar, divided from the title block above by a rule */
+.bpost-header-bar {
+  max-width: 900px;
+  margin: 24px auto 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--sand);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+/* Share links — flat text links, not pill buttons */
 .bpost-share {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(68, 28, 178, 0.14);
+  gap: 22px;
 }
 
 .bpost-share-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 18px;
-  border: 1.5px solid rgba(255, 255, 255, 0.7);
-  border-radius: 999px;
-  font-size: 0.8rem;
+  gap: 6px;
+  font-size: 0.84rem;
   font-weight: 600;
-  color: var(--ink);
-  background: #fff;
+  color: var(--ink-soft, #5a5270);
+  background: none;
+  border: none;
   text-decoration: none;
   cursor: pointer;
-  transition: border-color 180ms, color 180ms, box-shadow 180ms;
+  transition: color 160ms;
   font-family: inherit;
+  padding: 0;
 }
-.bpost-share-btn:hover {
-  border-color: var(--clay);
-  color: var(--clay);
-  box-shadow: 0 2px 8px rgba(68, 28, 178, 0.12);
+.bpost-share-btn:hover { color: var(--clay); }
+
+/* ── Hero banner (full-width, below the masthead) ── */
+.bpost-hero-banner-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 28px 0 0;
+}
+.bpost-hero-banner {
+  width: 100%;
+  height: auto;
+  max-height: 480px;
+  object-fit: cover;
+  display: block;
 }
 
-/* ── Main layout ── */
+/* ── Main layout: sticky TOC + article ── */
 .bpost-main {
-  padding: 80px 0 112px;
+  padding: 48px 0 96px;
 }
 
 .bpost-layout {
-  max-width: 760px;
+  max-width: 1000px;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 56px;
+  align-items: start;
+}
+
+/* Real table of contents, built from the post's own ## headings */
+.bpost-toc {
+  position: sticky;
+  top: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bpost-toc-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft, #5a5270);
+  opacity: 0.6;
+}
+
+.bpost-toc-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bpost-toc-link {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink-soft, #5a5270);
+  text-decoration: none;
+  transition: color 160ms;
+}
+.bpost-toc-link:hover { color: var(--ink); }
+.bpost-toc-link.active {
+  color: var(--ink);
+  font-weight: 700;
 }
 
 /* ── Article body / markdown ── */
 .bpost-body {
   min-width: 0;
-  font-family: 'Lora', Georgia, serif;
-  font-size: 1.125rem;
-  line-height: 1.85;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.2rem;
+  line-height: 1.75;
   color: #3d3550;
 }
 
 .bpost-body h2,
 .bpost-body h3 {
-  font-family: 'Lora', Georgia, serif;
-  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
   color: var(--clay);        /* indigo — same as the logo */
-  letter-spacing: -0.015em;
-  margin-top: 2.4em;
-  margin-bottom: 0.55em;
+  letter-spacing: -0.02em;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
   line-height: 1.2;
+  text-align: left;
 }
 
-.bpost-body h2 { font-size: 1.65rem; }
-.bpost-body h3 { font-size: 1.25rem; font-weight: 600; }
+.bpost-body h2 { font-size: 1.6rem; }
+.bpost-body h3 { font-size: 1.2rem; font-weight: 700; }
 
 .bpost-body p {
-  margin-bottom: 1.6em;
+  margin-bottom: 1.3em;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .bpost-body ul,
 .bpost-body ol {
-  padding-left: 1.6em;
-  margin-bottom: 1.6em;
+  padding-left: 1.5em;
+  margin-bottom: 1.3em;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .bpost-body li {
-  margin-bottom: 0.6em;
+  margin-bottom: 0;
+  padding-left: 4px;
+  line-height: 1.7;
+}
+
+.bpost-body li::marker {
+  color: var(--clay);
+  font-weight: 700;
+}
+
+.bpost-body li > ul,
+.bpost-body li > ol {
+  margin-top: 10px;
+  margin-bottom: 0;
 }
 
 /* Bold keywords use indigo so they pull the eye without shouting */
@@ -221,18 +260,18 @@
 .bpost-body blockquote {
   border-left: 3px solid var(--clay);
   padding: 6px 0 6px 24px;
-  margin: 2.4em 0;
+  margin: 1.8em 0;
   color: var(--clay);
   font-style: italic;
-  font-family: 'Lora', Georgia, serif;
-  font-size: 1.2rem;
-  line-height: 1.65;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.28rem;
+  line-height: 1.6;
 }
 
 .bpost-body hr {
   border: none;
   border-top: 1px solid var(--sand);
-  margin: 3em 0;
+  margin: 2.2em 0;
 }
 
 .bpost-body code {
@@ -243,12 +282,44 @@
   color: var(--clay-dark);
 }
 
+/* ── Comparison tables ── */
+.bpost-table-wrap {
+  overflow-x: auto;
+  margin: 1.8em 0;
+  border: 1px solid var(--sand);
+}
+.bpost-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.96rem;
+}
+.bpost-body th,
+.bpost-body td {
+  padding: 12px 18px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--sand);
+}
+.bpost-body thead th {
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--parchment-dim);
+  white-space: nowrap;
+}
+.bpost-body tbody tr:last-child td { border-bottom: none; }
+.bpost-body tbody tr:nth-child(even) { background: var(--cream); }
+.bpost-body td a { text-decoration-thickness: 1px; }
+
 /* ── Inline images & placeholders ── */
 .bpost-fig,
 .bpost-fig-placeholder {
   width: 100%;
-  margin: 2.4em 0;
-  border-radius: 14px;
+  margin: 1.8em 0;
+  border-radius: 0;
   overflow: hidden;
   padding: 0;
 }
@@ -259,7 +330,7 @@
   max-height: 480px;
   object-fit: cover;
   display: block;
-  border-radius: 14px;
+  border-radius: 0;
 }
 
 .bpost-fig-caption {
@@ -277,7 +348,7 @@
   min-height: 320px;
   background: var(--sand);
   border: 2px dashed rgba(130, 102, 224, 0.28);
-  border-radius: 14px;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -311,7 +382,7 @@
   padding: 48px;
   background: #fff;
   border: 1px solid var(--sand);
-  border-radius: 16px;
+  border-radius: 0;
   color: var(--ink-soft, #5a5270);
 }
 
@@ -339,9 +410,9 @@
 }
 
 .bpost-guide-title {
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
   font-size: clamp(1.8rem, 3.4vw, 2.6rem);
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.15;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -371,7 +442,8 @@
 
 .bpost-guide-body h2,
 .bpost-guide-body h3 {
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
   color: var(--ink);
 }
 
@@ -389,69 +461,6 @@
 @media (max-width: 600px) {
   .bpost-guide-header { padding: 40px 0 28px; }
   .bpost-guide-main { padding: 40px 0 64px; }
-}
-
-/* ── Sidebar ── */
-.bpost-sidebar {
-  position: sticky;
-  top: 100px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.bpost-sidebar-card {
-  background: #fff;
-  border: 1px solid var(--sand);
-  border-radius: 16px;
-  padding: 28px;
-}
-
-.bpost-sidebar-label {
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ink-soft, #5a5270);
-  opacity: 0.6;
-  margin-bottom: 14px;
-}
-
-.bpost-cta-card {
-  background: var(--ink);
-  border-color: transparent;
-}
-
-.bpost-cta-card .bpost-sidebar-label {
-  color: rgba(240, 235, 255, 0.4);
-  opacity: 1;
-}
-
-.bpost-cta-text {
-  font-size: 0.92rem;
-  color: rgba(240, 235, 255, 0.8);
-  line-height: 1.6;
-  margin-bottom: 20px;
-}
-
-.bpost-cta-btn {
-  width: 100%;
-  text-align: center;
-  border-radius: 999px;
-  padding: 12px 20px;
-  font-size: 0.88rem;
-}
-
-.bpost-sidebar-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.bpost-sidebar .bpost-tag {
-  color: var(--ink-soft, #5a5270);
-  background: var(--cream);
-  border-color: var(--sand);
 }
 
 /* ── More posts ── */
@@ -484,7 +493,7 @@
   padding: 32px;
   background: var(--cream);
   border: 1px solid var(--sand);
-  border-radius: 16px;
+  border-radius: 0;
   text-decoration: none;
   transition: transform 200ms cubic-bezier(0.2,0,0.2,1), box-shadow 200ms, border-color 200ms;
 }
@@ -495,9 +504,9 @@
 }
 
 .bpost-more-title {
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--ink);
   line-height: 1.3;
   margin: 0;
@@ -537,30 +546,31 @@
     grid-template-columns: 1fr;
     gap: 48px;
   }
-  .bpost-sidebar { position: static; }
+  /* On-page nav needs room either side to breathe as a sticky rail —
+     below that it collapses rather than squeezing above the article. */
+  .bpost-toc { display: none; }
   .bpost-more-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 860px) {
-  .bpost-header {
-    grid-template-columns: 1fr;
-    min-height: auto;
-  }
-  .bpost-header-img {
-    padding: 24px 24px 0; /* image card, no bottom pad — content panel follows */
-  }
-  .bpost-header-img-el { min-height: 320px; border-radius: 12px; }
-  .bpost-header-content {
-    padding: 40px 28px 56px;
-    justify-content: flex-start;
-  }
+  .bpost-header { padding: 48px 0 24px; }
+  .bpost-header-bar { margin-top: 24px; }
 }
 
 @media (max-width: 600px) {
-  .bpost-header-img { padding: 16px 16px 0; }
-  .bpost-header-img-el { min-height: 240px; border-radius: 10px; }
-  .bpost-header-content { padding: 32px 20px 48px; gap: 14px; }
-  .bpost-title { font-size: clamp(1.7rem, 6vw, 2.4rem); }
+  .bpost-header { padding: 40px 0 20px; }
+  .bpost-header-inner { gap: 14px; }
+  .bpost-title { font-size: clamp(1.7rem, 7vw, 2.4rem); }
+  .bpost-subtitle { font-size: 0.98rem; }
+  .bpost-header-bar { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .bpost-hero-banner-wrap { padding-top: 28px; }
   .bpost-body { font-size: 0.97rem; }
+  /* Justified text needs a wide column to avoid ugly gaps between words —
+     narrow phone columns read better ragged-right. */
+  .bpost-body p { text-align: left; }
   .bpost-main { padding: 48px 0 64px; }
+  .bpost-body th, .bpost-body td { padding: 10px 14px; font-size: 0.84rem; }
+  /* Letting the header text wrap (instead of forcing one line) keeps the
+     table inside the viewport instead of pushing it wider than the screen. */
+  .bpost-body thead th { white-space: normal; }
 }

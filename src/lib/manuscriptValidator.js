@@ -187,6 +187,7 @@ export function analyseHtml(html, fileSize, options = {}) {
     fileSize,
     estimatedPages,
     readability: computeReadability(doc.body.textContent),
+    readingMinutes: Math.max(1, Math.round(wordCount / 200)),
     issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize, wordsPerPage }),
   };
 }
@@ -235,6 +236,7 @@ export function analyseTxt(text, fileSize, options = {}) {
     fileSize,
     estimatedPages,
     readability: computeReadability(text),
+    readingMinutes: Math.max(1, Math.round(wordCount / 200)),
     issues: validateManuscript({ headings, wordCount, paragraphCount, maxBlankRun, fileSize, wordsPerPage }),
   };
 }
@@ -244,7 +246,11 @@ export async function analyseFile(file) {
   if (ext === 'docx') {
     const buf = await file.arrayBuffer();
     const { value: html } = await mammoth.convertToHtml({ arrayBuffer: buf });
-    return analyseHtml(html, file.size);
+    const [result, manualPageBreaks] = await Promise.all([
+      Promise.resolve(analyseHtml(html, file.size)),
+      countManualPageBreaks(buf),
+    ]);
+    return { ...result, manualPageBreaks };
   }
   const text = await file.text();
   return analyseTxt(text, file.size);

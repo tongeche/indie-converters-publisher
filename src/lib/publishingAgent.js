@@ -5,6 +5,9 @@ const LABELS = {
   publisher: 'Publisher', pageCount: 'Page count', trimSize: 'Trim size', price: 'Price',
 };
 
+const CONTINUATION_REQUEST = /^(?:next|continue|what(?:'s| is)? next|what should i do (?:now|next))\??$/i;
+const READINESS_PRIORITY = { blocker: 0, missing: 1, recommended: 2 };
+
 function hasValue(value) {
   return Array.isArray(value) ? value.some(Boolean) : value !== null && value !== undefined && String(value).trim() !== '';
 }
@@ -63,6 +66,78 @@ export function inspectPublishingReadiness(workflowContext = {}) {
 
 export function inspectNextPublishingAction(workflowContext = {}) {
   return workflowContext.nextAction || { kind: 'review', label: 'Final review' };
+}
+
+// Short continuation messages should not be left to a model to infer. The
+// wizard already calculated the authoritative next action from its readiness
+// state, so use that state directly and keep any navigation tightly scoped.
+export function isBarePublishingContinuation(message) {
+  return CONTINUATION_REQUEST.test(String(message || '').trim());
+}
+
+function fallbackNextAction(workflowContext = {}) {
+  const items = Array.isArray(workflowContext.readiness?.items) ? workflowContext.readiness.items : [];
+  const currentStep = Number(workflowContext.stepNumber) || 0;
+  const issue = items
+    .filter(item => item?.status && item.status !== 'complete')
+    .sort((left, right) => {
+      const leftCurrent = Number(left.step) === currentStep ? 0 : 1;
+      const rightCurrent = Number(right.step) === currentStep ? 0 : 1;
+      return leftCurrent - rightCurrent
+        || (READINESS_PRIORITY[left.status] ?? 9) - (READINESS_PRIORITY[right.status] ?? 9);
+    })[0];
+  if (issue) return { kind: 'fix', ...issue };
+  return { kind: 'review', label: 'Final review', step: currentStep };
+}
+
+export function buildGroundedNextPublishingGuidance(workflowContext = {}) {
+  const supplied = workflowContext.nextAction;
+  const next = supplied && ['fix', 'continue', 'review'].includes(supplied.kind)
+    ? supplied
+    : fallbackNextAction(workflowContext);
+  const label = String(next.label || workflowContext.stepLabel || 'the next publishing step').trim();
+  const wizardNavigation = Array.isArray(workflowContext.wizardNavigation) ? workflowContext.wizardNavigation : [];
+  const wizardSteps = Array.isArray(workflowContext.wizardSteps) ? workflowContext.wizardSteps : [];
+  const diagnostics = Array.isArray(workflowContext.conversionDiagnostics?.findings)
+    ? workflowContext.conversionDiagnostics.findings
+    : [];
+  const actions = [];
+
+  if (next.kind === 'fix') {
+    const finding = diagnostics.find(item => item?.id === next.id);
+    const destination = next.field && wizardNavigation.find(item => item?.field === next.field);
+    const stepDestination = wizardSteps.find(item => Number(item?.step) === Number(next.step));
+    if (finding?.id) {
+      actions.push({ label: `Open ${finding.label} details`, type: 'health_detail', value: finding.id });
+    } else if (destination?.field) {
+      actions.push({ label: `Go to ${destination.label}`, type: 'wizard', value: destination.field });
+    } else if (stepDestination) {
+      actions.push({ label: `Go to ${stepDestination.label}`, type: 'wizard_step', value: String(stepDestination.step) });
+    }
+    return {
+      text: `Next, **${label}**: ${String(next.message || 'Complete this issue before you continue.').trim()}`,
+      actions,
+      fieldSuggestions: [],
+    };
+  }
+
+  if (next.kind === 'continue') {
+    return {
+      text: `This step is ready. Continue to **${label}**.`,
+      actions: [{ label: `Continue to ${label}`, type: 'wizard_next', value: 'continue' }],
+      fieldSuggestions: [],
+    };
+  }
+
+  const reviewDestination = wizardSteps.find(item => Number(item?.step) === Number(next.step));
+  if (reviewDestination) {
+    actions.push({ label: `Go to ${reviewDestination.label}`, type: 'wizard_step', value: String(reviewDestination.step) });
+  }
+  return {
+    text: `You’re ready for **${label}**. Review the publishing details, then confirm your release plan.`,
+    actions,
+    fieldSuggestions: [],
+  };
 }
 
 export function proposePublishingFieldUpdate(workflowContext = {}, field, value, reason = '') {

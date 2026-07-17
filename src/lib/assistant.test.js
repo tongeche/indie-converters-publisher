@@ -184,3 +184,41 @@ test('publishing workflow forwards field context and keeps a longer session hist
     globalThis.fetch = originalFetch;
   }
 });
+
+test('returns a server-approved selection replacement contract unchanged for review', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      text: 'I prepared a focused edit for the selected text.',
+      selectionReplacement: {
+        field: 'description',
+        start: 8,
+        end: 15,
+        original: 'embarks',
+        replacement: 'sets out',
+        reason: 'Uses a more active verb.',
+      },
+    }),
+  });
+
+  try {
+    const reply = await requestAssistantReply({
+      message: 'Improve the selected text.',
+      requestType: 'selection_rewrite',
+      workflowContext: {
+        mode: 'publishing_upload',
+        activeField: {
+          id: 'description',
+          label: 'Description',
+          value: 'Yollena embarks on a journey to Tuscany.',
+          selection: { start: 8, end: 15, text: 'embarks' },
+        },
+      },
+    });
+
+    assert.equal(reply.selectionReplacement?.replacement, 'sets out');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

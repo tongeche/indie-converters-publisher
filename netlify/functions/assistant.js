@@ -4,7 +4,13 @@ import { buildAssistantReply, buildPublishingSocialReply, getAssistantActionMess
 import { formatDisplayMoney } from '../../src/lib/currency.js';
 import { buildPricingCoachScenarios } from '../../src/lib/royaltyCalculator.js';
 import { runAlexAgent } from './_alex-agent.js';
-import { createPublishingFactLedger } from '../../src/lib/publishingAgent.js';
+import {
+  buildGroundedNextPublishingGuidance,
+  createPublishingFactLedger,
+  isBarePublishingContinuation,
+} from '../../src/lib/publishingAgent.js';
+import { actionPlanProgress, createPublishingActionPlan } from '../../src/lib/publishingPlan.js';
+import { extractSelectionProposalFromText, isExplicitSelectionTransformationRequest } from '../../src/lib/selectionTask.js';
 
 const BOOK_SELECT = `
   id, slug, title, description, cover_url, formats, keywords, pub_year, price, language,
@@ -20,6 +26,10 @@ const PUBLISHING_ASSISTANT_FIELDS = new Set([
   'audience', 'genre', 'genreSecondary', 'keywords', 'pubYear', 'publisher', 'pageCount',
   'trimSize', 'price',
 ]);
+// Native text selections are deliberately limited to free-text publishing
+// fields. Alex should never try to edit identifiers, prices, dates, or select
+// values through a selected-text proposal.
+const SELECTION_REWRITE_FIELDS = new Set(['title', 'subtitle', 'edition', 'series', 'description', 'publisher']);
 const MATTER_TYPES = {
   copyright: { section: 'frontMatter', key: 'copyright', label: 'Copyright Page', legalTemplate: true },
   dedication: { section: 'frontMatter', key: 'dedication', label: 'Dedication', legalTemplate: false },
@@ -36,10 +46,20 @@ function cleanWorkflowText(value, maxLength = 500) {
     : '';
 }
 
+function cleanSelectionText(value, maxLength = 800) {
+  return typeof value === 'string'
+    ? value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ').slice(0, maxLength)
+    : '';
+}
+
 function sanitizePublishingWorkflow(value) {
   if (!value || value.mode !== 'publishing_upload') return null;
   const details = value.bookDetails && typeof value.bookDetails === 'object' ? value.bookDetails : {};
   const rawActive = value.activeField;
+  const rawActiveValue = typeof rawActive?.value === 'string' ? rawActive.value : '';
+  // Preserve the exact character positions of a native text selection. Unlike
+  // normal workflow copy, this must not trim leading/trailing whitespace.
+  const activeTextValue = cleanSelectionText(rawActiveValue, 4000);
   const activeField = rawActive && PUBLISHING_ASSISTANT_FIELDS.has(rawActive.id)
     ? {
         id: rawActive.id,
@@ -47,12 +67,32 @@ function sanitizePublishingWorkflow(value) {
         purpose: cleanWorkflowText(rawActive.purpose, 240),
         value: Array.isArray(rawActive.value)
           ? rawActive.value.slice(0, 12).map(item => cleanWorkflowText(item, 80))
-          : cleanWorkflowText(rawActive.value, 4000),
+          : activeTextValue,
         required: Boolean(rawActive.required),
         maxLength: Math.min(Math.max(Number(rawActive.maxLength) || 0, 0), 4000) || null,
         validation: cleanWorkflowText(rawActive.validation, 240),
       }
     : null;
+  const rawSelection = rawActive?.selection;
+  const selectionStart = Number(rawSelection?.start);
+  const selectionEnd = Number(rawSelection?.end);
+  if (activeField
+    && SELECTION_REWRITE_FIELDS.has(activeField.id)
+    && Number.isInteger(selectionStart)
+    && Number.isInteger(selectionEnd)
+    && selectionStart >= 0
+    && selectionEnd > selectionStart
+    && selectionEnd <= activeTextValue.length
+    && selectionEnd - selectionStart <= 800) {
+    const selectedText = cleanSelectionText(activeTextValue.slice(selectionStart, selectionEnd));
+    if (selectedText.trim()) {
+      activeField.selection = {
+        start: selectionStart,
+        end: selectionEnd,
+        text: selectedText,
+      };
+    }
+  }
   const readinessStatuses = new Set(['complete', 'recommended', 'missing', 'blocker']);
   const readinessItems = Array.isArray(value.readiness?.items)
     ? value.readiness.items.slice(0, 20).map(item => ({
@@ -87,6 +127,22 @@ function sanitizePublishingWorkflow(value) {
         label: cleanWorkflowText(item?.label, 80),
       })).filter(item => item.field && item.label)
     : [];
+  const wizardSteps = Array.isArray(value.wizardSteps)
+    ? value.wizardSteps.slice(0, 20).map(item => ({
+        step: Math.min(Math.max(Number(item?.step) || 0, 0), 19),
+        label: cleanWorkflowText(item?.label, 100),
+        group: cleanWorkflowText(item?.group, 80),
+      })).filter(item => item.label)
+    : [];
+  const diagnosticSeverity = new Set(['critical', 'attention']);
+  const conversionFindings = Array.isArray(value.conversionDiagnostics?.findings)
+    ? value.conversionDiagnostics.findings.slice(0, 12).map(item => ({
+        id: cleanWorkflowText(item?.id, 60),
+        label: cleanWorkflowText(item?.label, 100),
+        severity: diagnosticSeverity.has(item?.severity) ? item.severity : 'attention',
+        message: cleanWorkflowText(item?.message, 1000),
+      })).filter(item => item.id && item.label && item.message)
+    : [];
   const pricingContext = {
     formats: Array.isArray(value.pricingContext?.formats) ? value.pricingContext.formats.filter(format => ['eBook', 'Paperback', 'Hardcover', 'Audiobook'].includes(format)).slice(0, 4) : [],
     pageCount: Math.min(Math.max(Number(value.pricingContext?.pageCount) || 0, 0), 5000) || null,
@@ -111,6 +167,7 @@ function sanitizePublishingWorkflow(value) {
 
   return {
     mode: 'publishing_upload',
+    aiWorkMode: value.aiWorkMode === true,
     draftKey: cleanWorkflowText(value.draftKey, 160) || 'new',
     stepNumber: Math.min(Math.max(Number(value.stepNumber) || 1, 1), 20),
     totalSteps: Math.min(Math.max(Number(value.totalSteps) || 12, 1), 20),
@@ -136,6 +193,23 @@ function sanitizePublishingWorkflow(value) {
     } : null,
     metadataOptions: { genres: metadataGenres, audiences: metadataAudiences },
     wizardNavigation,
+    wizardSteps,
+    conversionDiagnostics: {
+      score: Math.min(Math.max(Number(value.conversionDiagnostics?.score) || 0, 0), 100),
+      summary: {
+        good: Math.min(Math.max(Number(value.conversionDiagnostics?.summary?.good) || 0, 0), 50),
+        attention: Math.min(Math.max(Number(value.conversionDiagnostics?.summary?.attention) || 0, 0), 50),
+        critical: Math.min(Math.max(Number(value.conversionDiagnostics?.summary?.critical) || 0, 0), 50),
+      },
+      manuscript: value.conversionDiagnostics?.manuscript ? {
+        wordCount: Math.min(Math.max(Number(value.conversionDiagnostics.manuscript.wordCount) || 0, 0), 10000000),
+        estimatedPages: Math.min(Math.max(Number(value.conversionDiagnostics.manuscript.estimatedPages) || 0, 0), 100000) || null,
+        readingTime: cleanWorkflowText(value.conversionDiagnostics.manuscript.readingTime, 40),
+        headingCount: Math.min(Math.max(Number(value.conversionDiagnostics.manuscript.headingCount) || 0, 0), 10000),
+        imageCount: Math.min(Math.max(Number(value.conversionDiagnostics.manuscript.imageCount) || 0, 0), 10000),
+      } : null,
+      findings: conversionFindings,
+    },
     pricingContext,
     pricingCoach: pricingObjective ? {
       objective: pricingObjective,
@@ -227,12 +301,21 @@ async function resolvePublishingAgentPersistence(req, sessionId, workflowContext
     .eq('session_id', historySessionId)
     .order('created_at', { ascending: false })
     .limit(16);
+  const { data: approvals } = state?.id ? await supabase
+    .from('publishing_agent_approvals')
+    .select('id, tool_arguments, status, run_state, requested_at')
+    .eq('agent_state_id', state.id)
+    .in('status', ['pending', 'approved', 'completed'])
+    .gt('expires_at', new Date().toISOString())
+    .order('requested_at', { ascending: false })
+    .limit(20) : { data: [] };
   return {
     supabase,
     userId,
     sessionId,
     state: resetSession ? null : state,
     history: resetSession ? [] : (storedMessages || []).reverse(),
+    approvals: resetSession ? [] : (approvals || []),
   };
 }
 
@@ -241,15 +324,20 @@ async function persistPublishingAgentTurn(persistence, workflowContext, message,
   const ledger = createPublishingFactLedger(workflowContext);
   const agentRun = reply.agentRun || {};
   const unresolvedQuestion = /\?\s*$/.test(reply.text || '') ? String(reply.text).slice(0, 600) : null;
+  const previousWorkingState = persistence.state?.working_state && typeof persistence.state.working_state === 'object'
+    ? persistence.state.working_state
+    : {};
   const workingState = {
+    ...previousWorkingState,
     currentStep: workflowContext.stepNumber,
     activeField: workflowContext.activeField?.id || null,
     currentTask: requestType,
     unresolvedQuestion,
     pendingProposal: Boolean(reply.fieldSuggestions?.length),
+    actionPlan: reply.actionPlan || previousWorkingState.actionPlan || null,
   };
   const now = new Date().toISOString();
-  const { error: stateError } = await persistence.supabase.from('publishing_agent_state').upsert({
+  const { data: savedState, error: stateError } = await persistence.supabase.from('publishing_agent_state').upsert({
     assistant_session_id: persistence.sessionId,
     user_id: persistence.userId,
     draft_key: workflowContext.draftKey,
@@ -261,8 +349,41 @@ async function persistPublishingAgentTurn(persistence, workflowContext, message,
     last_tools: agentRun.tools || [],
     expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
     updated_at: now,
-  }, { onConflict: 'user_id,draft_key' });
+  }, { onConflict: 'user_id,draft_key' }).select('id').single();
   if (stateError) console.error('[assistant function] agent state save failed:', stateError.code || stateError.message);
+
+  if (savedState?.id && reply.fieldSuggestions?.length) {
+    const existingSuggestions = reply.fieldSuggestions.filter(suggestion => suggestion.approvalId);
+    for (const suggestion of existingSuggestions) {
+      const { error: decisionError } = await persistence.supabase.from('publishing_agent_approvals').update({
+        status: suggestion.approved ? 'approved' : 'pending',
+        decided_at: suggestion.approved ? now : null,
+      }).eq('id', suggestion.approvalId).eq('user_id', persistence.userId);
+      if (decisionError) console.error('[assistant function] approval decision save failed:', decisionError.code || decisionError.message);
+    }
+    const newSuggestions = reply.fieldSuggestions.filter(suggestion => !suggestion.approvalId);
+    const approvals = newSuggestions.map(suggestion => ({
+      agent_state_id: savedState.id,
+      user_id: persistence.userId,
+      tool_name: 'update_publishing_field',
+      tool_arguments: {
+        field: suggestion.field,
+        label: suggestion.label,
+        proposedValue: suggestion.value,
+        previousValue: workflowContext.activeField?.id === suggestion.field ? workflowContext.activeField.value : null,
+      },
+      status: suggestion.approved ? 'approved' : 'pending',
+      decided_at: suggestion.approved ? now : null,
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    }));
+    const { data: savedApprovals, error: approvalError } = approvals.length
+      ? await persistence.supabase.from('publishing_agent_approvals').insert(approvals).select('id')
+      : { data: [], error: null };
+    if (approvalError) console.error('[assistant function] approval save failed:', approvalError.code || approvalError.message);
+    (savedApprovals || []).forEach((approval, index) => {
+      newSuggestions[index].approvalId = approval.id;
+    });
+  }
 
   const rows = [
     { session_id: persistence.sessionId, user_id: persistence.userId, role: 'user', content: String(message).slice(0, 1200), metadata: { requestType } },
@@ -270,6 +391,22 @@ async function persistPublishingAgentTurn(persistence, workflowContext, message,
   ];
   const { error: messageError } = await persistence.supabase.from('assistant_messages').insert(rows);
   if (messageError) console.error('[assistant function] agent messages save failed:', messageError.code || messageError.message);
+}
+
+function buildActionPlanReply(baseReply, message, workflowContext) {
+  const actionPlan = createPublishingActionPlan(workflowContext, message);
+  const progress = actionPlanProgress(actionPlan);
+  const first = actionPlan.steps[0];
+  return {
+    ...baseReply,
+    text: `I made a focused ${progress.total}-step plan. We’ll take one task at a time, and I’ll only change a field after you approve a proposal. Start with **${first.title}**.`,
+    actions: [],
+    fieldSuggestions: [],
+    metadataAnalysis: null,
+    matterDraft: null,
+    actionPlan,
+    sources: ['publishing_action_plan'],
+  };
 }
 
 function normaliseBook(row) {
@@ -440,6 +577,8 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
   const context = pageContext || {};
   const bookContext = books.slice(0, 5).map(summariseBook);
   const isUploadWorkflow = workflowContext?.mode === 'publishing_upload';
+  const selectionTaskRequestsTransformation = requestType === 'selection_task'
+    && isExplicitSelectionTransformationRequest(message);
   const recentHistory = sanitizeAssistantHistory(history, message, isUploadWorkflow ? 16 : undefined);
   const roleInstructions = isUploadWorkflow
     ? [
@@ -455,10 +594,12 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
         'Use inspect_publishing_context before answering when the request depends on the current field or established book facts. Treat its author_confirmed facts and decisions as authoritative. Never treat inferred suggestions as confirmed facts.',
         'Use check_publishing_readiness for readiness questions, get_next_publishing_action for short continuation requests, and inspect_pricing_and_distribution for price or distribution decisions. Do not claim you used a tool or expose tool names to the author.',
         'The propose_active_field_wording tool creates a reviewable proposal only. It never saves. Describe the proposal honestly and return the same wording in fieldSuggestions so the interface can ask the author to approve it.',
+        'When activeField.selection is supplied, it is exact text the author deliberately highlighted in that field. Treat it as the focus when they say “this”, “this sentence”, or “selected text”. Never imply that highlighted text has been changed until the author explicitly chooses a proposal.',
         'Treat publishing_workflow.readiness as the authoritative readiness checklist. Never invent or upgrade a readiness status. When asked whether the book is ready, mention blockers first, then missing essentials, then at most one recommendation.',
+        'On Conversion Readiness, publishing_workflow.conversionDiagnostics is the authoritative health-check result. When asked about issues, name the exact highest-severity finding, explain its publishing impact, and repeat its concrete repair instructions. Never answer with only counts or generic advice when findings are supplied.',
         'When pricingContext.distributionStrategy is present, remember it as the author’s chosen distribution strategy and use it consistently in pricing, distribution, and final-review answers. Do not silently replace it with another strategy.',
         'nextAction is the application’s authoritative answer to short messages such as “next”, “what next?”, “continue”, or “what should I do now?”. For kind fix, explain that single issue and use a wizard action when its field is mapped. For kind continue, say the current step is ready and return {"label":"Continue to [label]","type":"wizard_next","value":"continue"}. For kind review, guide the author to final review. Never recite completed fields or ask what they want to do next.',
-        'wizardNavigation is the authoritative map of fields to wizard steps. When the user asks how to find, set, edit, or change a mapped field on the current or an earlier step, include one wizard action with that exact field value, such as {"label":"Go to Title","type":"wizard","value":"title"}. Never create a wizard action for an unmapped field or a future locked step.',
+        'wizardNavigation maps fields to steps. wizardSteps maps complete publishing sections. When directing the author to a named section, include a wizard_step action using its numeric step value, such as {"label":"Go to Manuscript","type":"wizard_step","value":"3"}. Use wizard for a mapped field. Never name a destination without returning its clickable action.',
         'When you can provide ready-to-insert wording for activeField, include it in fieldSuggestions. Suggest only activeField.id and never another field. Do not suggest values for numeric, legal, identifier, file, price, or distribution fields.',
         ...(requestType === 'proactive_guidance' ? [
           'This is a proactive review, not a user question. Identify at most one concrete, actionable issue supported by the current step, active field, validation, or book details.',
@@ -471,12 +612,29 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
           'Use 2 or 3 short paragraphs and 100 to 170 words. Lead with a hook, establish the subject or central character and conflict, convey stakes or reader value, and end with a concise invitation suited to the supplied tone.',
           'Do not add names, events, claims, credentials, reviews, comparisons, or outcomes the author did not provide. Return exactly one fieldSuggestion for the description field, labelled “Use this description”.',
         ] : []),
-        ...(requestType === 'metadata_intelligence' ? [
+        ...(requestType === 'selection_rewrite' ? [
+          'The author explicitly asked to transform activeField.selection. Rewrite only that selected passage according to their requested change, preserving its meaning and using only author-confirmed facts. Do not rewrite the whole field, add new plot facts, or make claims not supported by the book details.',
+          'Return exactly one selectionReplacement with this shape: {"field":"the active field id","replacement":"replacement for the selected span only","reason":"brief explanation"}. Do not give multiple options in text. Return fieldSuggestions as an empty array and no actions. The interface will verify the original text and ask the author to press Use it before replacing anything.',
+          'Keep the replacement concise and compatible with the surrounding wording. If a safe improvement is not possible, return selectionReplacement as null and ask one focused question in text.',
+        ] : []),
+        ...(requestType === 'selection_task' ? [
+          'The author deliberately highlighted activeField.selection and then asked a task about it. The selection is context, not permission to improve, replace, or otherwise change it.',
+          'Answer the author’s specific task about only the selected passage, using the surrounding active-field wording and author-confirmed facts as context. Do not treat selecting text alone as a request for an edit.',
+          ...(selectionTaskRequestsTransformation ? [
+            'The task explicitly asks for a transformation. Return at most one reviewable selectionReplacement with exactly this shape: {"field":"the active field id","replacement":"replacement for the selected span only","reason":"brief explanation"}. Rewrite only the selected span, preserve its meaning and confirmed facts, and never apply it automatically.',
+            'Return fieldSuggestions as an empty array and no actions. If a safe replacement is not possible, set selectionReplacement to null and explain what you need in text.',
+          ] : [
+            'This task does not explicitly ask for a rewrite. Set selectionReplacement to null, return fieldSuggestions as an empty array, and do not offer a replacement as though it had been requested. Give the useful answer, analysis, explanation, or recommendation in text instead.',
+          ]),
+          'If no valid activeField.selection is supplied, explain briefly that the author should select the passage they want to discuss. Never invent selected text.',
+        ] : []),
+        ...(['metadata_intelligence', 'metadata_plan'].includes(requestType) ? [
           'Perform a metadata review using only author-confirmed bookDetails. The description must contain enough substance; otherwise ask for the missing facts and return metadataAnalysis as null.',
           'Clearly separate confirmedFacts from inferred recommendations. An inference is not a fact. Give a short evidence-based rationale and confidence of high, medium, or low for each inferred recommendation.',
           'Genre and audience values must use exact values from metadataOptions. Suggest 2 subtitle alternatives, one primary genre, up to 2 secondary genres, exactly 7 specific multi-word search phrases, one audience, 2 or 3 BISAC-style category labels, and 2 comparable positioning statements.',
           'Comparable positioning must describe likely readership or market adjacency without claiming sales, awards, equivalence, or knowledge of the manuscript. Do not invent plot details, author credentials, or named comparable titles.',
-          'Also return metadataAnalysis with this shape: {"confirmedFacts":[{"label":"...","value":"..."}],"subtitleAlternatives":[{"value":"...","rationale":"...","confidence":"high|medium|low"}],"primaryGenre":{"value":"allowed-slug","label":"...","rationale":"...","confidence":"..."},"secondaryGenres":[same genre shape],"searchPhrases":["..."],"audience":{"value":"allowed-value","label":"...","rationale":"...","confidence":"..."},"bisacCategories":[{"value":"...","rationale":"...","confidence":"..."}],"comparablePositioning":[{"value":"...","rationale":"...","confidence":"..."}]}.',
+          'Also return metadataAnalysis with this shape: {"confirmedFacts":[{"label":"...","value":"..."}],"descriptionRevision":{"value":"grounded improved description","rationale":"...","confidence":"high|medium|low"},"subtitleAlternatives":[{"value":"...","rationale":"...","confidence":"high|medium|low"}],"primaryGenre":{"value":"allowed-slug","label":"...","rationale":"...","confidence":"..."},"secondaryGenres":[same genre shape],"searchPhrases":["..."],"audience":{"value":"allowed-value","label":"...","rationale":"...","confidence":"..."},"bisacCategories":[{"value":"...","rationale":"...","confidence":"..."}],"comparablePositioning":[{"value":"...","rationale":"...","confidence":"..."}]}.',
+          'descriptionRevision must improve clarity and reader appeal using only facts already present in the author description. Do not add new plot events, places, character traits, outcomes, praise, or market claims.',
           'For this request, keep text to one short sentence and return no fieldSuggestions.',
         ] : []),
         ...(requestType === 'pricing_coach' ? [
@@ -516,7 +674,7 @@ function buildModelMessages({ message, baseReply, books, pageContext, articles, 
         'If a user asks for private account details and no account data is supplied, explain that account-aware support is coming and give the next best general step.',
         'If a user asks for a person, briefly say that you can connect them with the Indie Converters team.',
         'Do not ask for or repeat contact details in AI replies; the guided human-support steps in the chat collect those details outside OpenAI.',
-        'Return valid JSON only with this shape: {"text":"...", "actions":[{"label":"...","type":"ask|navigate|wizard|wizard_next","value":"..."}], "fieldSuggestions":[{"field":"...","label":"...","value":"..."}], "metadataAnalysis":null, "matterDraft":null, "sources":["..."]}. For metadata_intelligence or matter_generator, replace the corresponding null with the required structured result.',
+        'Return valid JSON only with this shape: {"text":"...", "actions":[{"label":"...","type":"ask|navigate|wizard|wizard_next","value":"..."}], "fieldSuggestions":[{"field":"...","label":"...","value":"..."}], "selectionReplacement":null, "metadataAnalysis":null, "matterDraft":null, "sources":["..."]}. For selection_rewrite, and only for an explicitly transformational selection_task, replace selectionReplacement with the required structured result. For metadata_intelligence or matter_generator, replace the corresponding null with the required structured result.',
         'Return at most 2 actions. Use ask for a useful suggested reply and navigate only for a supplied site path. Keep action labels under 28 characters.',
         'For every ask action, value must be the exact natural sentence the user would say next, written in the user’s voice (for example, “Show me the publishing steps”). Never put an assistant follow-up question or second-person wording such as “What are you working on?” in an ask value.',
       ].join('\n'),
@@ -583,6 +741,7 @@ function sanitizeMetadataAnalysis(value, workflowContext) {
 
   return {
     confirmedFacts,
+    descriptionRevision: recommendation(value.descriptionRevision, 4000),
     subtitleAlternatives: list(value.subtitleAlternatives, 2, 200),
     primaryGenre: genre(value.primaryGenre),
     secondaryGenres: (Array.isArray(value.secondaryGenres) ? value.secondaryGenres : []).map(genre).filter(Boolean).slice(0, 2),
@@ -593,19 +752,71 @@ function sanitizeMetadataAnalysis(value, workflowContext) {
   };
 }
 
+function sanitizeSelectionReplacement(value, workflowContext) {
+  const active = workflowContext?.activeField;
+  const selection = active?.selection;
+  if (!selection || !value || typeof value !== 'object') return null;
+  if (!SELECTION_REWRITE_FIELDS.has(active.id) || value.field !== active.id) return null;
+  const replacement = cleanWorkflowText(value.replacement, active.maxLength || 4000);
+  if (!replacement || replacement === selection.text) return null;
+  const selectedLeadingWhitespace = selection.text.match(/^\s*/)?.[0] || '';
+  const selectedTrailingWhitespace = selection.text.match(/\s*$/)?.[0] || '';
+  const resultingLength = String(active.value || '').length
+    - selection.text.length
+    + selectedLeadingWhitespace.length
+    + replacement.length
+    + selectedTrailingWhitespace.length;
+  if (active.maxLength && resultingLength > active.maxLength) return null;
+  return {
+    field: active.id,
+    start: selection.start,
+    end: selection.end,
+    original: selection.text,
+    replacement,
+    reason: cleanWorkflowText(value.reason, 240),
+  };
+}
+
 async function generateAssistantReply({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType, sessionId }) {
+  if (workflowContext && requestType === 'action_plan') {
+    return buildActionPlanReply(baseReply, message, workflowContext);
+  }
+  const selectionReplacementAllowed = requestType === 'selection_rewrite'
+    || (requestType === 'selection_task' && isExplicitSelectionTransformationRequest(message));
+  const deterministicNextGuidance = workflowContext && requestType === 'chat' && isBarePublishingContinuation(message)
+    ? buildGroundedNextPublishingGuidance(workflowContext)
+    : null;
   const openaiBaseUrl = getEnv('OPENAI_BASE_URL');
   const openaiApiKey = getEnv('OPENAI_API_KEY');
-  if (!openaiBaseUrl && !openaiApiKey) return baseReply;
+  if (!openaiBaseUrl && !openaiApiKey) {
+    return deterministicNextGuidance
+      ? {
+          ...baseReply,
+          ...deterministicNextGuidance,
+          actionPlan: null,
+          metadataAnalysis: null,
+          matterDraft: null,
+          selectionReplacement: null,
+          sources: Array.from(new Set([...(baseReply.sources || []), 'publishing_workflow'])),
+        }
+      : baseReply;
+  }
 
   try {
-    const modelMessages = buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType });
+    // An explicitly requested selected-text transformation uses the stricter
+    // rewrite contract. A selection question keeps the broader selection_task
+    // contract and can answer without proposing an edit.
+    const modelRequestType = requestType === 'selection_task' && selectionReplacementAllowed
+      ? 'selection_rewrite'
+      : requestType;
+    const modelMessages = buildModelMessages({ message, baseReply, books, pageContext, articles, history, workflowContext, requestType: modelRequestType });
     let content;
     let agentRun = null;
-    if (workflowContext) {
+    if (workflowContext && ['chat', 'proactive_guidance'].includes(requestType)) {
       try {
         agentRun = await runAlexAgent({
           messages: modelMessages,
+          userMessage: message,
           workflowContext,
           model: getAssistantModel(),
           baseURL: openaiBaseUrl,
@@ -617,6 +828,54 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
         console.error('[assistant function] Agents SDK run failed; using direct completion:', agentError?.message || agentError);
       }
     }
+    // “next” is a command to follow the wizard’s computed readiness state, not
+    // a request for new prose. Keep the specialist run for context/telemetry,
+    // then make the final response deterministic so model wording cannot drift
+    // into unrelated field suggestions.
+    if (deterministicNextGuidance) {
+      return {
+        ...baseReply,
+        ...deterministicNextGuidance,
+        actionPlan: null,
+        metadataAnalysis: null,
+        matterDraft: null,
+        selectionReplacement: null,
+        sources: Array.from(new Set([
+          ...(baseReply.sources || []),
+          'publishing_workflow',
+          ...(agentRun ? ['openai_agents_sdk'] : []),
+        ])),
+        agentRun: agentRun ? {
+          agent: agentRun.agent,
+          tools: agentRun.toolCalls,
+          responseId: agentRun.lastResponseId,
+        } : null,
+      };
+    }
+    let parsed = null;
+    if (content && agentRun) {
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        const jsonStart = content.indexOf('{"text"');
+        if (jsonStart >= 0) {
+          try {
+            parsed = JSON.parse(content.slice(jsonStart).replace(/```\s*$/, '').trim());
+          } catch {
+            parsed = null;
+          }
+        }
+        // The Agents SDK commonly returns a natural-language finalOutput. That is
+        // already the desired contract for ordinary chat; structured workflows
+        // still need the JSON completion below for suggestions and generated data.
+        if (!parsed && (requestType === 'chat' || requestType === 'proactive_guidance')) {
+          parsed = { text: content, actions: [], sources: ['openai_agents_sdk'] };
+        } else if (!parsed) {
+          content = null;
+          agentRun = null;
+        }
+      }
+    }
     if (!content) {
       const openai = new OpenAI({ apiKey: openaiApiKey || 'netlify-ai-gateway', baseURL: openaiBaseUrl || undefined });
       const completion = await openai.chat.completions.create({
@@ -624,14 +883,40 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
         messages: modelMessages,
         response_format: { type: 'json_object' },
         temperature: 0.35,
-        max_tokens: requestType === 'metadata_intelligence' ? 1100 : requestType === 'matter_generator' ? 1000 : requestType === 'description_builder' ? 500 : 220,
+        max_tokens: ['metadata_intelligence', 'metadata_plan'].includes(requestType) ? 1400 : requestType === 'matter_generator' ? 1000 : requestType === 'description_builder' ? 500 : ['selection_rewrite', 'selection_task'].includes(requestType) ? 420 : 220,
       });
       content = completion.choices?.[0]?.message?.content;
     }
     if (!content) return baseReply;
 
-    const parsed = JSON.parse(content);
-    if (requestType !== 'proactive_guidance' && !parsed?.text) return baseReply;
+    if (!parsed) parsed = JSON.parse(content);
+    if (['metadata_intelligence', 'metadata_plan'].includes(requestType) && !parsed.metadataAnalysis) {
+      const openai = new OpenAI({ apiKey: openaiApiKey || 'netlify-ai-gateway', baseURL: openaiBaseUrl || undefined });
+      const metadataCompletion = await openai.chat.completions.create({
+        model: getAssistantModel(),
+        messages: [
+          {
+            role: 'system',
+            content: 'Return JSON only. Build grounded book metadata using only supplied facts. Do not add plot facts. Use exact allowed genre and audience values. Shape: {"descriptionRevision":{"value":"...","rationale":"...","confidence":"high|medium|low"},"subtitleAlternatives":[{"value":"...","rationale":"...","confidence":"..."}],"primaryGenre":{"value":"allowed value","rationale":"...","confidence":"..."},"secondaryGenres":[same],"searchPhrases":[exactly 7 multi-word phrases],"audience":{"value":"allowed value","rationale":"...","confidence":"..."},"bisacCategories":[{"value":"...","rationale":"...","confidence":"..."}],"comparablePositioning":[{"value":"...","rationale":"...","confidence":"..."}]}. Keep descriptionRevision grounded and 80-170 words.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              bookFacts: workflowContext.bookDetails,
+              allowedGenres: workflowContext.metadataOptions?.genres,
+              allowedAudiences: workflowContext.metadataOptions?.audiences,
+            }),
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.25,
+        max_tokens: 1200,
+      });
+      const compactAnalysis = JSON.parse(metadataCompletion.choices?.[0]?.message?.content || '{}');
+      parsed.metadataAnalysis = compactAnalysis.metadataAnalysis || compactAnalysis;
+      parsed.text = 'I prepared a grounded metadata plan for your review.';
+    }
+    if (requestType !== 'proactive_guidance' && !parsed?.text && !(selectionReplacementAllowed && parsed?.selectionReplacement)) return baseReply;
     if (requestType === 'proactive_guidance' && !String(parsed?.text || '').trim()) {
       return { ...baseReply, text: '', actions: [], fieldSuggestions: [], sources: ['openai', 'proactive_review'] };
     }
@@ -646,12 +931,48 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
         .filter(item => item.step <= workflowContext.stepNumber - 1)
         .map(item => item.field),
     );
+    const allowedWizardSteps = new Map(
+      (workflowContext?.wizardSteps || []).map(item => [String(item.step), item]),
+    );
+    if (agentRun && (!Array.isArray(parsed.actions) || parsed.actions.length === 0)) {
+      const replyText = String(parsed.text || '').toLowerCase();
+      const namedStep = [...allowedWizardSteps.values()]
+        .map(item => {
+          const label = item.label.toLowerCase();
+          const boldPosition = replyText.lastIndexOf(`**${label}**`);
+          const explicitPositions = [
+            replyText.lastIndexOf(`${label} step`),
+            replyText.lastIndexOf(`${label} section`),
+          ];
+          return {
+            ...item,
+            priority: boldPosition >= 0 ? 2 : Math.max(...explicitPositions) >= 0 ? 1 : 0,
+            position: boldPosition >= 0 ? boldPosition : Math.max(...explicitPositions),
+          };
+        })
+        .filter(item => item.position >= 0)
+        .sort((a, b) => b.priority - a.priority || b.position - a.position)[0];
+      if (namedStep) {
+        parsed.actions = [{
+          label: `Go to ${namedStep.label}`,
+          type: 'wizard_step',
+          value: String(namedStep.step),
+        }];
+      }
+    }
+    const diagnosticFindings = workflowContext?.conversionDiagnostics?.findings || [];
+    if (/\b(?:issue|issues|problem|problems|fix|wrong|attention|critical)\b/i.test(message) && diagnosticFindings.length) {
+      const topFinding = [...diagnosticFindings].sort((a, b) => (a.severity === 'critical' ? -1 : 1) - (b.severity === 'critical' ? -1 : 1))[0];
+      parsed.actions = [{ label: `Open ${topFinding.label} details`, type: 'health_detail', value: topFinding.id }];
+    }
     const safeActions = (Array.isArray(parsed.actions) ? parsed.actions : baseReply.actions || [])
       .filter(action => (
         action && typeof action.label === 'string' && typeof action.value === 'string'
-        && ['ask', 'navigate', 'wizard', 'wizard_next'].includes(action.type)
+        && ['ask', 'navigate', 'wizard', 'wizard_step', 'wizard_next', 'health_detail'].includes(action.type)
         && (action.type !== 'navigate' || allowedNavigatePaths.has(action.value))
         && (action.type !== 'wizard' || allowedWizardFields.has(action.value))
+        && (action.type !== 'wizard_step' || allowedWizardSteps.has(action.value))
+        && (action.type !== 'health_detail' || diagnosticFindings.some(item => item.id === action.value))
         && (action.type !== 'wizard_next' || (workflowContext?.nextAction?.kind === 'continue' && action.value === 'continue'))
       ))
       .slice(0, 2)
@@ -661,10 +982,66 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
         value: action.value.trim().slice(0, 240),
       }))
       .map(action => action.type === 'ask' ? { ...action, value: getAssistantActionMessage(action).slice(0, 240) } : action);
+    const selectionTaskActions = ['selection_rewrite', 'selection_task'].includes(requestType) ? [] : safeActions;
     const activeFieldId = requestType === 'description_builder' ? 'description' : workflowContext?.activeField?.id;
     const maxFieldLength = requestType === 'description_builder' ? 4000 : workflowContext?.activeField?.maxLength || 4000;
-    const safeFieldSuggestions = activeFieldId
-      ? (Array.isArray(parsed.fieldSuggestions) ? parsed.fieldSuggestions : [])
+    const approvalIntent = /^(?:yes[, ]+)?(?:i\s+)?(?:approve|accept)(?:\s+(?:it|that|this|the\s+(?:revision|version|wording|description|text)))?[.!]?$/i.test(message.trim())
+      || /^(?:please\s+)?(?:apply|insert|use)(?:\s+(?:it|that|this|the\s+(?:revision|version|wording|description|text)))(?:\s+(?:now|for me))?[.!]?$/i.test(message.trim())
+      || /^(?:yes[, ]+)?(?:go ahead|looks good)(?:\s+with\s+(?:it|that|this))?[.!]?$/i.test(message.trim());
+    function extractProposedValue(source) {
+      const quoted = [...String(source || '').matchAll(/[“"]([\s\S]{20,}?)[”"]/g)]
+        .map(match => match[1].trim())
+        .sort((a, b) => b.length - a.length)[0];
+      const bold = [...String(source || '').matchAll(/\*\*([\s\S]{20,}?)\*\*/g)]
+        .map(match => match[1].trim())
+        .sort((a, b) => b.length - a.length)[0];
+      const labelled = String(source || '').match(/(?:revised wording|description|title|subtitle|biography|keywords?):\s*([\s\S]{20,}?)(?=(?:\s+(?:would you|shall i|let me know)\b|$))/i)?.[1]
+        ?.replace(/^\*+|\*+$/g, '').trim();
+      return quoted || bold || labelled || '';
+    }
+    let inferredApprovedSuggestion = null;
+    if (approvalIntent && activeFieldId && agentRun) {
+      const pendingAction = workflowContext?.rememberedAgentState?.pendingActions
+        ?.find(action => action.field === activeFieldId && action.proposedValue);
+      const proposalSources = [
+        pendingAction?.proposedValue ? `"${pendingAction.proposedValue}"` : '',
+        ...[...history].reverse().filter(entry => entry.role === 'assistant').map(entry => entry.content),
+        String(parsed.text || ''),
+      ];
+      let proposedValue = '';
+      for (const source of proposalSources) {
+        proposedValue = extractProposedValue(source);
+        if (proposedValue) break;
+      }
+      if (proposedValue) {
+        inferredApprovedSuggestion = {
+          field: activeFieldId,
+          label: `Apply to ${workflowContext.activeField?.label || 'field'}`,
+          value: proposedValue.slice(0, maxFieldLength),
+          approved: true,
+          approvalId: pendingAction?.id || null,
+        };
+        parsed.text = `I’ve prepared the approved revision for **${workflowContext.activeField?.label || activeFieldId}**.`;
+      }
+    }
+    const proposedSuggestions = Array.isArray(parsed.fieldSuggestions) ? parsed.fieldSuggestions : [];
+    if (inferredApprovedSuggestion && proposedSuggestions.length === 0) {
+      proposedSuggestions.push(inferredApprovedSuggestion);
+    }
+    if (!approvalIntent && activeFieldId && agentRun && proposedSuggestions.length === 0
+      && /\b(?:drafted|revised|proposed|suggested|approve this|use this)\b/i.test(String(parsed.text || ''))) {
+      const proposedValue = extractProposedValue(parsed.text);
+      if (proposedValue) {
+        proposedSuggestions.push({
+          field: activeFieldId,
+          label: `Use this ${workflowContext.activeField?.label || 'wording'}`,
+          value: proposedValue.slice(0, maxFieldLength),
+          approved: false,
+        });
+      }
+    }
+    let safeFieldSuggestions = activeFieldId
+      ? proposedSuggestions
           .filter(suggestion => (
             suggestion && suggestion.field === activeFieldId
             && typeof suggestion.label === 'string' && typeof suggestion.value === 'string'
@@ -674,11 +1051,39 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
             field: activeFieldId,
             label: suggestion.label.trim().slice(0, 36),
             value: suggestion.value.trim().slice(0, maxFieldLength),
+            approved: suggestion.approved === true,
+            approvalId: UUID_PATTERN.test(String(suggestion.approvalId || '')) ? suggestion.approvalId : null,
           }))
       : [];
-    const safeMetadataAnalysis = requestType === 'metadata_intelligence'
+    const recoveredSelectionProposal = selectionReplacementAllowed && !parsed.selectionReplacement
+      ? extractSelectionProposalFromText(parsed.text)
+      : '';
+    const safeSelectionReplacement = selectionReplacementAllowed
+      ? sanitizeSelectionReplacement(
+          parsed.selectionReplacement || (recoveredSelectionProposal
+            ? {
+                field: workflowContext?.activeField?.id,
+                replacement: recoveredSelectionProposal,
+                reason: 'Alex suggested this focused revision.',
+              }
+            : null),
+          workflowContext,
+        )
+      : null;
+    if (['selection_rewrite', 'selection_task'].includes(requestType)) safeFieldSuggestions = [];
+    const safeMetadataAnalysis = ['metadata_intelligence', 'metadata_plan'].includes(requestType)
       ? sanitizeMetadataAnalysis(parsed.metadataAnalysis, workflowContext)
       : null;
+    if (requestType === 'metadata_plan' && safeMetadataAnalysis) {
+      safeFieldSuggestions = [
+        safeMetadataAnalysis.descriptionRevision && { field: 'description', label: 'Use description', value: safeMetadataAnalysis.descriptionRevision.value },
+        safeMetadataAnalysis.subtitleAlternatives?.[0] && { field: 'subtitle', label: 'Use subtitle', value: safeMetadataAnalysis.subtitleAlternatives[0].value },
+        safeMetadataAnalysis.primaryGenre && { field: 'genre', label: 'Use primary genre', value: safeMetadataAnalysis.primaryGenre.value },
+        safeMetadataAnalysis.secondaryGenres?.[0] && { field: 'genreSecondary', label: 'Use secondary genre', value: safeMetadataAnalysis.secondaryGenres[0].value },
+        safeMetadataAnalysis.audience && { field: 'audience', label: 'Use audience', value: safeMetadataAnalysis.audience.value },
+        safeMetadataAnalysis.searchPhrases?.length && { field: 'keywords', label: 'Use search phrases', value: safeMetadataAnalysis.searchPhrases.join('\n') },
+      ].filter(Boolean).map(suggestion => ({ ...suggestion, approved: false, approvalId: null }));
+    }
     const requestedMatter = MATTER_TYPES[workflowContext?.matterRequest?.type];
     let safeMatterDraft = null;
     if (requestType === 'matter_generator' && requestedMatter && parsed.matterDraft?.type === workflowContext.matterRequest.type
@@ -694,11 +1099,15 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
       ...baseReply,
       text: requestType === 'description_builder' && safeFieldSuggestions.length
         ? 'I drafted a description from your answers. Review it below, then insert it or adjust your brief.'
-        : String(parsed.text).trim().slice(0, 600),
-      actions: safeActions,
+        : selectionReplacementAllowed && safeSelectionReplacement
+          ? 'I prepared a focused edit for the selected text. Review it below before using it.'
+          : String(parsed.text || '').trim().slice(0, 600),
+      actions: selectionTaskActions,
       fieldSuggestions: safeFieldSuggestions,
+      selectionReplacement: safeSelectionReplacement,
       metadataAnalysis: safeMetadataAnalysis,
       matterDraft: safeMatterDraft,
+      actionPlan: null,
       sources: Array.from(new Set([
         ...(baseReply.sources || []),
         ...(Array.isArray(parsed.sources) ? parsed.sources : []),
@@ -713,7 +1122,17 @@ async function generateAssistantReply({ message, baseReply, books, pageContext, 
     };
   } catch (error) {
     console.error('[assistant function] OpenAI reply failed:', error?.message || error);
-    return baseReply;
+    return deterministicNextGuidance
+      ? {
+          ...baseReply,
+          ...deterministicNextGuidance,
+          actionPlan: null,
+          metadataAnalysis: null,
+          matterDraft: null,
+          selectionReplacement: null,
+          sources: Array.from(new Set([...(baseReply.sources || []), 'publishing_workflow'])),
+        }
+      : baseReply;
   }
 }
 
@@ -740,20 +1159,23 @@ export default async (req) => {
   ]);
   const pageContext = payload?.pageContext || null;
   let workflowContext = sanitizePublishingWorkflow(payload?.workflowContext);
-  const requestType = workflowContext && ['proactive_guidance', 'description_builder', 'metadata_intelligence', 'pricing_coach', 'matter_generator'].includes(payload?.requestType)
+  const requestType = workflowContext && ['proactive_guidance', 'description_builder', 'metadata_intelligence', 'metadata_plan', 'pricing_coach', 'matter_generator', 'action_plan', 'selection_rewrite', 'selection_task'].includes(payload?.requestType)
     ? payload.requestType
     : 'chat';
   const persistence = await resolvePublishingAgentPersistence(req, payload?.sessionId, workflowContext, payload?.resetSession === true).catch(error => {
     console.error('[assistant function] durable memory lookup failed:', error?.message || error);
     return null;
   });
-  if (workflowContext && persistence?.state) {
+    if (workflowContext && persistence?.state) {
     workflowContext = {
       ...workflowContext,
       rememberedAgentState: {
         confirmedFacts: persistence.state.confirmed_facts || [],
         authorDecisions: persistence.state.author_decisions || [],
         workingState: persistence.state.working_state || {},
+        pendingActions: (persistence.approvals || [])
+          .filter(item => item.status === 'pending' || item.status === 'approved')
+          .map(item => ({ id: item.id, status: item.status, ...item.tool_arguments })),
       },
     };
   }

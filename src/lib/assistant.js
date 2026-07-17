@@ -565,8 +565,10 @@ export async function requestAssistantReply({ message, books = [], sessionId, re
       books: data.books || [],
       actions: data.actions || [],
       fieldSuggestions: data.fieldSuggestions || [],
+      selectionReplacement: data.selectionReplacement || null,
       metadataAnalysis: data.metadataAnalysis || null,
       matterDraft: data.matterDraft || null,
+      actionPlan: data.actionPlan || null,
       context: data.context || context.section,
       sources: data.sources || ['assistant_endpoint'],
     };
