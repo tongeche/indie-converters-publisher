@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { sanitizeRedirect, withSessionFragment } from '../lib/ssoRedirect';
 import logoIndie from '../assets/logo-indie.png';
 import SEO from '../components/SEO';
 import './Auth.css';
@@ -8,6 +9,11 @@ import './Auth.css';
 export default function Signup() {
   const { signUp }  = useAuth();
   const navigate    = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = sanitizeRedirect(searchParams.get('redirect'));
+  // Preserved on the "go sign in" link below so the redirect survives the
+  // email-confirmation detour and still hands off to the editor afterward.
+  const loginHref = redirectTo ? `/login?redirect=${encodeURIComponent(redirectTo)}` : '/login';
 
   const [name,     setName]     = useState('');
   const [email,    setEmail]    = useState('');
@@ -21,9 +27,17 @@ export default function Signup() {
     setError('');
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setLoading(true);
-    const { error: err } = await signUp(email, password, name);
+    const { data, error: err } = await signUp(email, password, name);
     setLoading(false);
     if (err) { setError(err.message); return; }
+
+    // Email confirmation disabled on this project — a session comes back
+    // immediately, so there's no need to detour through "check your email".
+    if (redirectTo && data?.session) {
+      window.location.href = withSessionFragment(redirectTo, data.session);
+      return;
+    }
+
     setDone(true);
   }
 
@@ -41,7 +55,7 @@ export default function Signup() {
             We sent a confirmation link to <strong style={{ color: '#F0EBFF' }}>{email}</strong>.
             Click it to activate your account, then come back to sign in.
           </p>
-          <Link to="/login" className="auth-submit" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 8 }}>
+          <Link to={loginHref} className="auth-submit" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: 8 }}>
             Go to sign in
           </Link>
         </div>

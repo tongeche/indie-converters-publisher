@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { sanitizeRedirect, withSessionFragment } from '../lib/ssoRedirect';
 import logoIndie from '../assets/logo-indie.png';
 import SEO from '../components/SEO';
 import './Auth.css';
@@ -10,6 +11,8 @@ export default function Login() {
   const navigate   = useNavigate();
   const location   = useLocation();
   const from       = location.state?.from ?? '/dashboard';
+  const [searchParams] = useSearchParams();
+  const redirectTo = sanitizeRedirect(searchParams.get('redirect'));
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
@@ -20,9 +23,17 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const { error: err } = await signIn(email, password);
+    const { data, error: err } = await signIn(email, password);
     setLoading(false);
     if (err) { setError(err.message); return; }
+
+    // Coming from the editor app (or another linked platform) — hand the
+    // session off instead of landing in this site's own dashboard.
+    if (redirectTo && data?.session) {
+      window.location.href = withSessionFragment(redirectTo, data.session);
+      return;
+    }
+
     navigate(from, { replace: true });
   }
 
